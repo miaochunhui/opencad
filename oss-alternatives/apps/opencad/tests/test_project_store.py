@@ -3,15 +3,19 @@
 WAL fixtures need local storage, not 3FS. --runtime-root is an explicitly
 dedicated local fixture directory; logs and source hashes go to --evidence.
 Crash workers run this exact test file and exit without closing SQLite.
+--http-source-root additionally binds two real gateway HTTP regression tests.
 """
 
 from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
+import errno
 import hashlib
+import http.client
+import importlib
 import json
 import os
 from pathlib import Path
@@ -34,7 +38,29 @@ from project_store import (
 )
 
 RUNTIME_ROOT = Path("/data/dev/opencad-durable-fixtures-20261011")
+HTTP_SOURCE = None
+HTTP_BINDINGS = {}
+OBSERVATIONS = []
 _UNSET = object()
+
+
+class StoreTestResult(unittest.TextTestResult):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.failed_methods = set()
+
+    def addFailure(self, test, err):
+        self.failed_methods.add(test.id())
+        super().addFailure(test, err)
+
+    def addError(self, test, err):
+        self.failed_methods.add(test.id())
+        super().addError(test, err)
+
+    def addSubTest(self, test, subtest, err):
+        if err is not None:
+            self.failed_methods.add(test.id())
+        super().addSubTest(test, subtest, err)
 
 
 def workspace(version=1):
@@ -257,6 +283,129 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(results[0], results[1])
         self.assertEqual(len(self.store.list_projects("new-owner")), 1)
 
+    def test_sidecar_disappears_at_lstat_after_real_sqlite_close(self):
+        holder = sqlite3.connect(self.store.db_path)
+        holder.execute("SELECT count(*) FROM projects").fetchone()
+        sidecar = Path(str(self.store.db_path) + "-shm")
+        self.assertTrue(sidecar.is_file())
+        original = Path.lstat
+        calls = []
+
+        def disappearing(path, *args, **kwargs):
+            if path == sidecar:
+                calls.append(path)
+                holder.close()
+                self.assertFalse(sidecar.exists(), "fixture did not remove the real SQLite sidecar")
+            return original(path, *args, **kwargs)
+
+        try:
+            with patch.object(Path, "lstat", disappearing):
+                module._regular_or_absent(sidecar)
+        finally:
+            holder.close()
+        self.assertEqual(calls, [sidecar])
+        self.assertEqual(self.store.read_head(self.project), self.head)
+
+    def test_storage_file_validation_uses_one_lstat_without_exists_probe(self):
+        path = self.runtime / "regular-probe"
+        path.write_bytes(b"unchanged")
+        original = Path.lstat
+        calls = []
+
+        def counted(candidate, *args, **kwargs):
+            calls.append(candidate)
+            return original(candidate, *args, **kwargs)
+
+        with patch.object(module.os.path, "lexists",
+                          side_effect=AssertionError("separate existence probe")), \
+                patch.object(Path, "lstat", counted):
+            module._regular_or_absent(path)
+        self.assertEqual(calls, [path])
+        self.assertEqual(path.read_bytes(), b"unchanged")
+
+    def test_missing_storage_file_only_real_enoent_is_allowed(self):
+        path = self.runtime / "missing-sidecar"
+        self.assertIsNone(module._regular_or_absent(path))
+        for error in (
+            PermissionError(errno.EACCES, "fixture access denied", str(path)),
+            OSError(errno.EIO, "fixture I/O failure", str(path)),
+            NotADirectoryError(errno.ENOTDIR, "fixture invalid parent", str(path)),
+            FileNotFoundError(errno.EIO, "not a genuine ENOENT", str(path)),
+        ):
+            with self.subTest(errno=error.errno), \
+                    patch.object(Path, "lstat", side_effect=error):
+                with self.assertRaises(OSError) as caught:
+                    module._regular_or_absent(path)
+                self.assertIs(caught.exception, error)
+        self.assertEqual(self.store.read_head(self.project), self.head)
+
+    def test_storage_file_link_and_nonregular_controls_remain_rejected(self):
+        target = self.runtime / "link-target"
+        target.write_bytes(b"untouched")
+        for name, destination in (("valid-link", target), ("dangling-link", target.with_suffix(".missing"))):
+            linked = self.runtime / name
+            linked.symlink_to(destination)
+            with self.subTest(name=name), self.assertRaises(InvalidPayload):
+                module._regular_or_absent(linked)
+            self.assertTrue(linked.is_symlink())
+        directory = self.runtime / "not-regular"
+        directory.mkdir()
+        with self.assertRaises(InvalidPayload):
+            module._regular_or_absent(directory)
+        self.assertEqual(target.read_bytes(), b"untouched")
+
+    def test_connection_create_survives_real_sidecar_close_at_validation(self):
+        holder = sqlite3.connect(self.store.db_path)
+        holder.execute("SELECT count(*) FROM projects").fetchone()
+        sidecar = Path(str(self.store.db_path) + "-shm")
+        self.assertTrue(sidecar.is_file())
+        original = Path.lstat
+        calls = []
+
+        def disappearing(path, *args, **kwargs):
+            if path == sidecar and not calls:
+                calls.append(path)
+                holder.close()
+                self.assertFalse(sidecar.exists())
+            return original(path, *args, **kwargs)
+
+        try:
+            with patch.object(Path, "lstat", disappearing):
+                created = self.store.create_project(
+                    "sidecar-owner", title="Sidecar", request_id="disappearing", payload=workspace())
+        finally:
+            holder.close()
+        self.assertEqual(calls, [sidecar])
+        with ProjectStore(self.runtime) as reopened:
+            self.assertEqual(reopened.read_create_receipt(
+                "sidecar-owner", "disappearing", title="Sidecar", payload=workspace()), created)
+            self.assertEqual(reopened.read_head(created["project_id"]), created)
+
+    def test_repeated_two_connection_create_real_sidecar_lifecycle(self):
+        with ProjectStore(self.runtime) as other:
+            for index in range(32):
+                barrier = threading.Barrier(2)
+
+                def contender(store):
+                    barrier.wait(timeout=5)
+                    return store.create_project(
+                        "parallel-owner", title="Parallel", request_id=f"create-{index}",
+                        payload=workspace())
+
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    futures = [pool.submit(contender, store) for store in (self.store, other)]
+                    results = [future.result(timeout=10) for future in futures]
+                self.assertEqual(results[0], results[1])
+                self.assertEqual(other.read_create_receipt(
+                    "parallel-owner", f"create-{index}", title="Parallel",
+                    payload=workspace()), results[0])
+        with ProjectStore(self.runtime) as reopened:
+            self.assertEqual(len(reopened.list_projects("parallel-owner")), 32)
+            with reopened._connection() as conn:
+                self.assertEqual(conn.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+                self.assertEqual(conn.execute("SELECT count(*) FROM create_receipts").fetchone()[0], 33)
+                self.assertEqual(conn.execute("SELECT count(*) FROM snapshots").fetchone()[0], 33)
+
     def test_full_workspace_recovered_after_close(self):
         receipt = self.commit(payload={"doc": '{"v":2}', "undo": ['{"v":1}'],
                                      "redo": ['{"v":3}'], "standard": "ansi"})
@@ -459,6 +608,200 @@ class StoreTests(unittest.TestCase):
             self.store.read_head(self.project)
 
 
+def _load_http_runtime():
+    app = HTTP_SOURCE / "oss-alternatives/apps/opencad"
+    packages = HTTP_SOURCE / "oss-alternatives/packages"
+    os.environ["OPENCAD_CADCORE_ROOT"] = str(packages / "cadcore")
+    for path in (app, packages / "cadcore", packages / "dxf", packages / "vault"):
+        sys.path.insert(0, str(path))
+    modules = {name: importlib.import_module(name)
+               for name in ("project_gateway", "secure_web", "access_control", "server")}
+    for name, loaded in modules.items():
+        expected = app / (name + ".py")
+        if Path(loaded.__file__).resolve() != expected:
+            raise ValueError(f"foreign HTTP dependency: {name}")
+        HTTP_BINDINGS[name] = str(expected)
+    if sys.modules["project_store"] is not module:
+        raise ValueError("HTTP fixture did not bind the candidate ProjectStore")
+    HTTP_BINDINGS["project_store"] = str(APP / "project_store.py")
+    return modules, modules["server"]._load_cadcore()
+
+
+class SidecarHTTPTests(unittest.TestCase):
+    """Real loopback gateway with explicit main dependencies and candidate store."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.modules, cls.core = _load_http_runtime()
+        cls.auth = cls.modules["access_control"].AuthController(
+            RUNTIME_ROOT / "http-accounts", allow_registration=True)
+        cls.username, cls.credential = "sidecar-" + uuid.uuid4().hex, uuid.uuid4().hex
+        cls.user = cls.auth.register(cls.username, cls.credential)["user_id"]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.auth.close()
+        cls.credential = None
+
+    def setUp(self):
+        self.root = RUNTIME_ROOT / (self._testMethodName + "-" + uuid.uuid4().hex)
+        self.store = ProjectStore(self.root / "projects")
+        self.addCleanup(self.store.close)
+        self.ticket = self.auth.login(self.username, self.credential)
+        gateway = self.modules["project_gateway"].ProjectGateway(
+            self.auth, self.store, self.root / "runtime", core=self.core, secure_cookies=False)
+        self.httpd = self.modules["secure_web"].build_server(
+            gateway, web_root=HTTP_SOURCE / "oss-alternatives/apps/opencad/web")
+        self.thread = threading.Thread(target=self.httpd.serve_forever,
+                                       kwargs={"poll_interval": 0.01}, daemon=True)
+        self.thread.start()
+        self.addCleanup(self.stop_http)
+        self.assertEqual(self.httpd.server_address[0], "127.0.0.1")
+
+    def stop_http(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self.thread.join(timeout=5)
+        if self.thread.is_alive():
+            raise RuntimeError("HTTP fixture thread did not finish")
+
+    def create(self, body):
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", self.httpd.server_address[1], timeout=15)
+        try:
+            connection.request("POST", "/api/projects", json.dumps(body), {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + self.ticket.token,
+                "X-OpenCAD-Request": "1",
+            })
+            response = connection.getresponse()
+            return response.status, json.loads(response.read())
+        finally:
+            connection.close()
+
+    def check_receipt(self, body, reply):
+        self.assertEqual(reply[0], 201, reply)
+        self.assertIs(reply[1]["ok"], True)
+        with ProjectStore(self.store.root) as reopened:
+            head = reopened.read_head(reply[1]["project_id"])
+            self.assertEqual(head["revision"], 1)
+            self.assertEqual(head["sha256"], reply[1]["sha256"])
+            receipt = reopened.read_create_receipt(
+                self.user, body["request_id"], title=body["title"], payload=head["snapshot"])
+            self.assertEqual(receipt, head)
+            with reopened._connection() as conn:
+                self.assertEqual(conn.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+        return head
+
+    def test_http_create_real_sidecar_disappearance_no_500(self):
+        holder = sqlite3.connect(self.store.db_path, check_same_thread=False)
+        holder.execute("SELECT count(*) FROM projects").fetchone()
+        sidecar = Path(str(self.store.db_path) + "-shm")
+        self.assertTrue(sidecar.is_file())
+        original = Path.lstat
+        calls = []
+
+        def disappearing(path, *args, **kwargs):
+            if path == sidecar and not calls:
+                calls.append(path)
+                holder.close()
+                self.assertFalse(sidecar.exists(), "SQLite did not remove sidecar")
+            return original(path, *args, **kwargs)
+
+        body = {"title": "Sidecar HTTP", "request_id": "sidecar-http", "standard": "gbt"}
+        try:
+            with patch.object(Path, "lstat", disappearing):
+                reply = self.create(body)
+        finally:
+            holder.close()
+        self.assertEqual(calls, [sidecar])
+        OBSERVATIONS.append({"case": self._testMethodName, "status": reply[0],
+                             "real_sidecar_removed": bool(calls)})
+        head = self.check_receipt(body, reply)
+        self.assertEqual(self.create(body), reply)
+        self.assertEqual(self.store.read_head(head["project_id"]), head)
+
+    def test_http_concurrent_same_id_real_db_only_one_project_and_receipt(self):
+        for index in range(24):
+            body = {"title": "Concurrent HTTP", "request_id": f"parallel-http-{index}",
+                    "standard": "gbt"}
+            barrier = threading.Barrier(2)
+
+            def contender():
+                barrier.wait(timeout=5)
+                return self.create(body)
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [pool.submit(contender) for _ in range(2)]
+                replies = [future.result(timeout=20) for future in futures]
+            OBSERVATIONS.append({"case": self._testMethodName, "round": index,
+                                 "statuses": [reply[0] for reply in replies]})
+            self.assertEqual([reply[0] for reply in replies], [201, 201], replies)
+            self.assertEqual(replies[0], replies[1])
+            head = self.check_receipt(body, replies[0])
+            before = self.store.list_projects(self.user)
+            conflict = self.create({**body, "title": "Changed body"})
+            self.assertEqual(conflict[0], 409, conflict)
+            self.assertEqual(conflict[1]["error"], "idempotency_conflict")
+            self.assertEqual(self.store.list_projects(self.user), before)
+            self.assertEqual(self.store.read_head(head["project_id"]), head)
+        with ProjectStore(self.store.root) as reopened:
+            self.assertEqual(len(reopened.list_projects(self.user)), 24)
+            with reopened._connection() as conn:
+                for table in ("projects", "snapshots", "create_receipts"):
+                    self.assertEqual(conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0], 24)
+                self.assertEqual(conn.execute("SELECT count(*) FROM receipts").fetchone()[0], 0)
+
+
+def load_tests(loader, _tests, _pattern):
+    # Normal discovery has no gateway in the store-only development worktree.
+    suite = loader.loadTestsFromTestCase(StoreTests)
+    if HTTP_SOURCE is not None:
+        suite.addTests(loader.loadTestsFromTestCase(SidecarHTTPTests))
+    return suite
+
+
+def _source_hashes():
+    sources = [APP / "project_store.py", Path(__file__).resolve(),
+               ROOT / "oss-alternatives/docs/design/project-store.md"]
+    if HTTP_SOURCE is not None:
+        for relative in ("apps/opencad", "packages/cadcore/cadcore",
+                         "packages/dxf/dxf", "packages/vault/freechat_vault"):
+            tree = HTTP_SOURCE / "oss-alternatives" / relative
+            if not tree.is_dir() or tree.is_symlink():
+                raise ValueError(f"HTTP source tree missing or linked: {tree}")
+            for directory, dirs, names in os.walk(tree, followlinks=False):
+                dirs[:] = [name for name in dirs if name not in {
+                    "tests", "build", "__pycache__", ".git", "web"}]
+                for name in names:
+                    path = Path(directory) / name
+                    if path.suffix in {".py", ".json", ".yaml", ".yml", ".txt", ".l1"}:
+                        sources.append(path)
+    hashes = {}
+    for path in sources:
+        if path.is_symlink() or any(parent.is_symlink() for parent in path.parents) \
+                or not path.is_file():
+            raise ValueError(f"source missing, linked or nonregular: {path}")
+        hashes[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return dict(sorted(hashes.items()))
+
+
+def _runtime_origins(hashes):
+    origins = {}
+    for name, loaded in tuple(sys.modules.items()):
+        path = getattr(loaded, "__file__", None)
+        if not path or not (name.startswith(("cadcore.", "dxf.", "freechat_vault.", "industrial_"))
+                            or name in {"project_store", "project_gateway", "secure_web",
+                                        "access_control", "server", "release_state",
+                                        "solid_commands", "viewer3d_page", "render_service"}):
+            continue
+        actual = str(Path(path).resolve())
+        if actual not in hashes:
+            raise ValueError(f"runtime dependency is not source-bound: {name}: {actual}")
+        origins[name] = actual
+    return origins
+
+
 def _write(path, value):
     with path.open("xb") as handle:
         handle.write(value)
@@ -467,16 +810,20 @@ def _write(path, value):
 
 
 def main():
-    global RUNTIME_ROOT
+    global RUNTIME_ROOT, HTTP_SOURCE
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence", type=Path)
     parser.add_argument("--runtime-root", type=Path, default=RUNTIME_ROOT)
+    parser.add_argument("--http-source-root", type=Path,
+                        help="Explicit gateway/core dependency root for real HTTP tests")
     parser.add_argument("--crash-mode", choices=("before", "after"))
     parser.add_argument("--project")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
+    HTTP_SOURCE = args.http_source_root.resolve() if args.http_source_root else None
     RUNTIME_ROOT = args.runtime_root.resolve()
-    if RUNTIME_ROOT.is_relative_to(ROOT):
+    if RUNTIME_ROOT.is_relative_to(ROOT) or (
+            HTTP_SOURCE is not None and RUNTIME_ROOT.is_relative_to(HTTP_SOURCE)):
         parser.error("runtime fixture root must be external")
     if args.crash_mode:
         store = (CrashBeforeCommitStore if args.crash_mode == "before" else ProjectStore)(RUNTIME_ROOT)
@@ -488,25 +835,27 @@ def main():
                      response={"ok": True, "crash": "response-lost"})
         os._exit(73)
     RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
-    suite = unittest.defaultTestLoader.loadTestsFromTestCase(StoreTests)
+    suite = load_tests(unittest.defaultTestLoader, None, None)
     discovered = suite.countTestCases()
     if args.evidence is None:
-        result = unittest.TextTestRunner(verbosity=2).run(suite)
+        result = unittest.TextTestRunner(verbosity=2, resultclass=StoreTestResult).run(suite)
         return 0 if result.wasSuccessful() else 1
     out = args.evidence.resolve()
-    if out.is_relative_to(ROOT) or out.is_relative_to(RUNTIME_ROOT):
+    if out.is_relative_to(ROOT) or out.is_relative_to(RUNTIME_ROOT) or (
+            HTTP_SOURCE is not None and out.is_relative_to(HTTP_SOURCE)):
         parser.error("evidence must be external and separate from runtime")
     out.mkdir(parents=True, exist_ok=False)
     started, wall = datetime.now(timezone.utc).isoformat(), time.monotonic()
-    sources = [APP / "project_store.py", Path(__file__).resolve(),
-               ROOT / "oss-alternatives/docs/design/project-store.md"]
-    hashes = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-              for path in sources}
+    hashes = _source_hashes()
     with (out / "tests.log").open("x", encoding="utf-8") as log:
-        result = unittest.TextTestRunner(stream=log, verbosity=2).run(suite)
-        after = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-                 for path in sources}
-        drift = sorted(name for name in hashes if hashes[name] != after[name])
+        with redirect_stdout(log), redirect_stderr(log):
+            result = unittest.TextTestRunner(
+                stream=log, verbosity=2, resultclass=StoreTestResult).run(suite)
+        after = _source_hashes()
+        drift = sorted(name for name in hashes.keys() | after.keys()
+                       if hashes.get(name) != after.get(name))
+        origins = _runtime_origins(hashes) if HTTP_SOURCE is not None else {
+            "project_store": str(Path(module.__file__).resolve())}
         passed = (result.wasSuccessful() and result.testsRun == discovered and discovered > 0
                   and not result.skipped and not drift)
         finished = datetime.now(timezone.utc).isoformat()
@@ -520,11 +869,17 @@ def main():
         "verdict": "PASS" if passed else "FAIL", "started_at": started, "finished_at": finished,
         "wall_s": time.monotonic() - wall, "tests": result.testsRun,
         "discovered": discovered,
-        "passed": result.testsRun - len(result.errors) - len(result.failures) - len(result.skipped),
+        "passed": result.testsRun - len(result.failed_methods) - len(result.skipped),
+        "failed_tests": len(result.failed_methods),
         "failures": len(result.failures), "errors": len(result.errors),
         "skip": len(result.skipped), "source_sha256": hashes, "source_drift": drift,
         "runtime_root": str(RUNTIME_ROOT), "log_sha256": hashlib.sha256(
             (out / "tests.log").read_bytes()).hexdigest(),
+        "http_source_root": str(HTTP_SOURCE) if HTTP_SOURCE else None,
+        "http_tests": "ASSESSED" if HTTP_SOURCE is not None else "NOT_ASSESSED",
+        "http_same_source": HTTP_SOURCE == ROOT if HTTP_SOURCE is not None else None,
+        "http_bindings": HTTP_BINDINGS, "observations": OBSERVATIONS,
+        "runtime_origins": origins,
         "production": "NOT_ASSESSED", "power_loss_hardware": "NOT_ASSESSED",
     }
     _write(out / "result.json", (json.dumps(report, indent=2, sort_keys=True) + "\n").encode())

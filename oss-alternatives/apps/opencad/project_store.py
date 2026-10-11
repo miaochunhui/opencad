@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import errno
 import hashlib
 import json
 import math
@@ -224,7 +225,14 @@ _DDL = (
 
 
 def _regular_or_absent(path: Path) -> None:
-    if os.path.lexists(path) and not stat.S_ISREG(path.lstat().st_mode):
+    try:
+        mode = path.lstat().st_mode
+    except OSError as exc:
+        # SQLite can remove WAL sidecars when another connection closes.
+        if exc.errno == errno.ENOENT:
+            return
+        raise
+    if not stat.S_ISREG(mode):
         raise InvalidPayload(f"storage file is linked or non-regular: {path}")
 
 
