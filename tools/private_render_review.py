@@ -2,17 +2,19 @@
 """Read-only source review with isolated auth/project/FreeCAD/EGL fixtures.
 
 Never connect to a deployed service, load existing accounts or patch a gateway.
---gateway-root selects read-only source dependencies; all new runtime data goes
-to a never-existing 3FS directory. An absent route yields PARTIAL, not full PASS.
+--http-db exercises the original secure CLI with new local durable fixtures;
+evidence stays on 3FS. Historical --handler-only is explicitly narrower.
 """
 
 from __future__ import annotations
 
 import argparse
 import copy
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import http.client
+from http.cookies import SimpleCookie
 import importlib.util
 import json
 import logging
@@ -20,6 +22,7 @@ import math
 import os
 from pathlib import Path
 import secrets
+import socket
 import sqlite3
 import struct
 import subprocess
@@ -56,11 +59,12 @@ def write_json(path, value):
 
 
 def source_state(roots):
-    paths = {Path(__file__).resolve(), ROOT / "docs/research/official-sources.json"}
+    paths = {Path(__file__).resolve(), ROOT / "docs/research/official-sources.json",
+             ROOT / "docs/design/private-render-review.md"}
     for root in roots:
         for folder in (root / APP_REL, root / "oss-alternatives/packages"):
-            paths.update(folder.rglob("*.py"))
-        paths.add(root / APP_REL / "web/js/project-session.js")
+            for suffix in ("*.py", "*.js", "*.css"):
+                paths.update(folder.rglob(suffix))
     return {str(path): digest(path.read_bytes()) for path in sorted(paths) if path.is_file()}
 
 
@@ -270,6 +274,489 @@ class ObservedRenderer:
     def render(self, payload):
         self.counts["render"] += 1
         return self.real.render(payload)
+
+
+@contextmanager
+def secure_cli(app, runtime, out, label, flags, report):
+    """Launch only a new owned loopback process; never attach to a service."""
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        port = reservation.getsockname()[1]
+    origin = f"http://127.0.0.1:{port}"
+    command = [sys.executable, "-B", str(app / "secure_web.py"),
+               "--host", "127.0.0.1", "--port", str(port),
+               "--data-root", str(runtime), "--public-origin", origin, *flags]
+    dependency = app.parents[2]
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", TMPDIR=str(out),
+               OPENCAD_CADCORE_ROOT=str(dependency / "oss-alternatives/packages/cadcore"),
+               PYTHONPATH=os.pathsep.join(str(path) for path in (
+                   app, dependency / "oss-alternatives/packages/cadcore",
+                   dependency / "oss-alternatives/packages/dxf",
+                   dependency / "oss-alternatives/packages/vault")))
+    log_path = out / (label + "-secure-cli.log")
+    entry = {"name": label, "argv": command, "log": str(log_path),
+             "started_at": stamp(), "patched": False}
+    report.setdefault("cli_processes", []).append(entry)
+    with log_path.open("xb") as log:
+        process = subprocess.Popen(command, cwd=dependency, env=env,
+                                   stdout=log, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 30
+            marker = f"OPENCAD_PRIVATE_WEB verdict=READY port={port}"
+            while marker not in log_path.read_text(errors="replace"):
+                if process.poll() is not None:
+                    raise RuntimeError(f"{label}: secure CLI exited rc={process.returncode}; {log_path}")
+                if time.monotonic() > deadline:
+                    raise RuntimeError(f"{label}: secure CLI READY absent; {log_path}")
+                time.sleep(0.05)
+            entry.update(ready_at=stamp(), origin=origin)
+            yield port, origin
+        finally:
+            # These are our Popen children, not existing service PIDs.
+            if process.poll() is None:
+                process.terminate()
+            try:
+                entry["rc"] = process.wait(timeout=10)
+            except subprocess.TimeoutExpired as exc:
+                process.kill()
+                entry["rc"] = process.wait(timeout=5)
+                entry["shutdown_error"] = "owned CLI required kill after SIGTERM"
+                raise RuntimeError(f"{label}: graceful fixture shutdown failed") from exc
+            entry.update(finished_at=stamp(), log_sha256=digest(log_path.read_bytes()))
+            if entry["rc"] != 0:
+                raise RuntimeError(f"{label}: owned CLI exit rc={entry['rc']}; {log_path}")
+
+
+def run_http_db(args, out, report):
+    """Real HTTP cookie login/create/open/mesh/render, with unchanged product."""
+    dependency = args.gateway_root.resolve()
+    app = dependency / APP_REL
+    required = ("access_control.py", "project_store.py", "project_gateway.py",
+                "secure_web.py", "server.py", "industrial_render.py", "render_service.py")
+    for name in required:
+        if not (app / name).is_file():
+            raise FileNotFoundError(f"read-only private source absent: {app / name}")
+    for path in (app, dependency / "oss-alternatives/packages/cadcore",
+                 dependency / "oss-alternatives/packages/dxf",
+                 dependency / "oss-alternatives/packages/vault"):
+        sys.path.insert(0, str(path))
+    # Unlike handler-only review, never replace the integrated renderer module.
+    import access_control
+    import project_store
+    import industrial_render as adapter
+    from cadcore.ops import sw_drawings
+    from server import _load_cadcore
+    for module in (access_control, project_store, adapter, sys.modules["render_service"],
+                   sys.modules["server"]):
+        if Path(module.__file__).resolve() != app / (module.__name__ + ".py"):
+            raise RuntimeError(f"foreign runtime import: {module.__name__}")
+    report["runtime_origins"] = {
+        name: str(Path(sys.modules[name].__file__).resolve())
+        for name in ("access_control", "project_store", "industrial_render", "render_service", "server")
+    }
+    runtime_parent = args.runtime_root.absolute()
+    approved = Path("/data/dev/opencad-private-fixtures")
+    for part in (runtime_parent, *runtime_parent.parents):
+        if part.is_symlink():
+            raise ValueError("local fixture root cannot contain symlinks")
+    if runtime_parent != approved or not runtime_parent.is_dir():
+        raise ValueError("use the existing /data/dev/opencad-private-fixtures parent only")
+    runtime = runtime_parent / ("research-gpu-" + out.name + "-" + secrets.token_hex(6))
+    runtime.mkdir(mode=0o700, exist_ok=False)
+    report.update(runtime_root=str(runtime), head_source="DURABLE_PROJECT_DB",
+                  durable_db="NOT_TESTED", cookie_login="NOT_TESTED",
+                  product_patched=False, production_speedup="NOT_ESTABLISHED")
+    write_json(out / "fixture-manifest.json", {
+        "runtime_root": str(runtime), "evidence_root": str(out),
+        "new_owned_fixture": True, "existing_accounts_read": False,
+        "local_storage_reason": "ProjectStore rejects network/FUSE SQLite WAL",
+        "recipe": str(dependency / "tools/private_web_acceptance.py"),
+        "at": stamp(),
+    })
+    credentials, cookies, principals = {}, {}, {}
+    secret_bytes = []
+    setup_auth = access_control.AuthController(runtime / "accounts", allow_registration=True)
+    try:
+        for name in ("alice", "bob"):
+            credentials[name] = secrets.token_hex(24)
+            secret_bytes.append(credentials[name].encode())
+            setup_auth.register(name, credentials[name])
+    finally:
+        setup_auth.close()
+    checks = report["checks"] = []
+    requests = report["http_requests"] = []
+    heads, meshes, frames = {}, {}, {}
+    core = _load_cadcore()
+    store = project_store.ProjectStore(runtime / "projects")
+
+    def record(label, **facts):
+        checks.append({"name": label, "verdict": "PASS", "at": stamp(), **facts})
+        LOG.info("CHECK verdict=PASS name=%s", label)
+
+    def request(port, origin, label, method, route, body=None, user=None, project=None,
+                cross_origin=False, forged=False, csrf=True):
+        headers = {"Origin": "https://example.invalid" if cross_origin else origin}
+        if csrf:
+            headers["X-OpenCAD-Request"] = "1"
+        if user:
+            headers["Cookie"] = ("opencad_session=forged-session" if forged else cookies[user])
+        if project:
+            headers["X-OpenCAD-Project"] = project
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+        start = time.perf_counter()
+        try:
+            connection.request(method, route, canonical(body) if body is not None else None, headers)
+            response = connection.getresponse()
+            raw = response.read(2 * 1024 * 1024 + 1)
+            if len(raw) > 2 * 1024 * 1024:
+                raise AssertionError("HTTP response byte budget exceeded")
+            response_headers = dict(response.getheaders())
+            entry = {"name": label, "at": stamp(), "method": method, "path": route,
+                     "user": user, "project_id": project, "status": response.status,
+                     "bytes": len(raw), "http_elapsed_s": time.perf_counter() - start}
+            # Login body/cookie/token never enters logs, hashes or evidence.
+            if route != "/api/auth/login":
+                entry.update(response_sha256=digest(raw), headers={
+                    key: value for key, value in response_headers.items()
+                    if key.lower() != "set-cookie"})
+            requests.append(entry)
+            return adapter.RenderReply(response.status, raw,
+                                       response_headers.get("Content-Type", "").split(";")[0],
+                                       response_headers)
+        finally:
+            connection.close()
+
+    def json_reply(reply, status):
+        if reply.status != status or reply.content_type != "application/json":
+            raise AssertionError(f"expected HTTP JSON {status}, got {reply.status}/{reply.content_type}")
+        return json.loads(reply.payload)
+
+    def denial(port, origin, label, body, expected, code, *, user="alice", project=None,
+               cross_origin=False, forged=False, csrf=True):
+        reply = request(port, origin, label, "POST", "/api/render", body, user, project,
+                        cross_origin, forged, csrf)
+        if args.diagnostic and (reply.status != expected or
+                                json.loads(reply.payload).get("error") != code):
+            finding = {"name": label, "verdict": "FAIL", "at": stamp(),
+                       "expected_status": expected, "observed_status": reply.status,
+                       "expected_error": code, "observed": json.loads(reply.payload)}
+            if reply.content_type != "application/json":
+                raise AssertionError(f"{label}: diagnostic denial is not JSON")
+            report.setdefault("findings", []).append(finding)
+            checks.append(finding)
+            LOG.error("CHECK verdict=FAIL name=%s expected=%s observed=%s",
+                      label, expected, reply.status)
+            return finding["observed"]
+        value = json_reply(reply, expected)
+        if value.get("ok") is not False or value.get("error") != code:
+            raise AssertionError(f"{label}: wrong denial code {value.get('error')}")
+        if any(key.startswith("X-OpenCAD-Frame") for key in reply.headers):
+            raise AssertionError(f"{label}: denied request leaked a frame header")
+        record(label, status=reply.status, error=value["error"], detail=value.get("detail"))
+        return value
+
+    def persist_state(label):
+        state = store_state(store)
+        write_json(out / (label + "-project-db.json"), state)
+        return state
+
+    def assert_head_http(port, origin, name, head):
+        reply = request(port, origin, "state_" + name, "GET", "/api/state",
+                        user=name, project=head["project_id"])
+        state = json_reply(reply, 200)
+        if (state.get("revision"), state.get("sha256"), state.get("project_id")) != (
+                head["revision"], head["sha256"], head["project_id"]):
+            raise AssertionError("real HTTP state is not the durable head")
+
+    def frame(port, origin, label, name, options):
+        head = heads[name]
+        body = dict(options, expected_revision=head["revision"],
+                    expected_sha=head["sha256"], request_id="read-only-" + label)
+        reply = request(port, origin, label, "POST", "/api/render", body,
+                        name, head["project_id"])
+        pixels = verify_reply(reply, head, meshes[name], body)
+        with (out / (label + ".png")).open("xb") as handle:
+            handle.write(reply.payload)
+        write_json(out / (label + "-headers.json"), reply.headers)
+        return reply, pixels, body
+
+    try:
+        flags = ["--enable-gpu", "--cuda-device", str(args.cuda_device)] if args.require_gpu else []
+        # Arms depend on the same persisted heads and cookies across CLI restarts.
+        with secure_cli(app, runtime, out, "owner-opt-in", flags, report) as (port, origin):
+            for name in ("alice", "bob"):
+                reply = request(port, origin, "login_" + name, "POST", "/api/auth/login",
+                                {"username": name, "password": credentials[name]})
+                value = json_reply(reply, 200)
+                cookie = SimpleCookie()
+                cookie.load(reply.headers.get("Set-Cookie", ""))
+                item = cookie.get("opencad_session")
+                if (value.get("ok") is not True or item is None or not item["httponly"]
+                        or item["samesite"] != "Strict" or item["path"] != "/"):
+                    raise AssertionError("real HTTP login cookie contract invalid")
+                cookies[name] = "opencad_session=" + item.value
+                secret_bytes.append(item.value.encode())
+                principals[name] = value["user"]["user_id"]
+                record("http_login_cookie_" + name, httponly=True, samesite="Strict",
+                       cookie_values_logged=False)
+            credentials.clear()
+            report["cookie_login"] = "PASS"
+            for name, depth in (("alice", 20), ("bob", 10)):
+                created = json_reply(request(
+                    port, origin, "create_" + name, "POST", "/api/projects",
+                    {"title": "isolated render " + name, "request_id": name + "-create"},
+                    user=name), 201)
+                doc = sw_drawings._sample_model()
+                doc.features[0]["params"]["distance_nm"] = depth * 1_000_000
+                text = core["docmodel"].document_to_l1(doc)
+                opened = json_reply(request(port, origin, "open_" + name, "POST", "/api/open", {
+                    "doc": text, "request_id": name + "-open",
+                    "expected_revision": created["revision"], "expected_sha": created["sha256"],
+                }, name, created["project_id"]), 200)
+                head = store.read_head(created["project_id"])
+                if (head["snapshot"]["doc"] != text or head["owner"] != principals[name]
+                        or head["revision"] != 2 or opened["sha256"] != head["sha256"]
+                        or digest(canonical(head["snapshot"])) != head["sha256"]):
+                    raise AssertionError("HTTP import is not the exact persisted owner/revision/model")
+                heads[name] = head
+                write_json(out / (name + "-db-head.json"), head)
+                assert_head_http(port, origin, name, head)
+                mesh = json_reply(request(port, origin, "mesh_" + name, "GET", "/api/mesh",
+                                          user=name, project=head["project_id"]), 200)
+                if (mesh.get("revision"), mesh.get("sha256")) != (head["revision"], head["sha256"]):
+                    raise AssertionError("HTTP mesh version is not the persisted head")
+                meshes[name] = mesh
+                write_json(out / (name + "-http-mesh.json"), mesh)
+                if len(mesh["solids"]) != 1:
+                    raise AssertionError("expected one real BRep solid")
+                solid = mesh["solids"][0]
+                extent = [max(p[i] for p in solid["vertices_mm"]) -
+                          min(p[i] for p in solid["vertices_mm"]) for i in range(3)]
+                if (len(solid["triangles"]) != 12 or any(abs(a - b) > 1e-7
+                                                       for a, b in zip(extent, (60, 40, depth)))):
+                    raise AssertionError("real HTTP FreeCAD geometry differs from analytic cuboid")
+                record("http_db_real_geometry_" + name, extent_mm=extent, triangles=12,
+                       revision=head["revision"], snapshot_sha256=head["sha256"])
+            empty = json_reply(request(port, origin, "create_empty", "POST", "/api/projects",
+                                      {"title": "empty negative", "request_id": "empty-create"},
+                                      user="alice"), 201)
+            before = persist_state("before-render")
+            expected_counts = {"projects": 3, "snapshots": 5, "receipts": 2, "create_receipts": 3}
+            if before["counts"] != expected_counts:
+                raise AssertionError(f"fixture schema/counts mismatch: {before['counts']}")
+            report["store_before"] = before
+            options = {"camera": "isometric", "width": 128, "height": 128,
+                       "backend": "cpu", "allow_cpu_fallback": False}
+            for name in ("alice", "bob"):
+                for camera in ("isometric", "front"):
+                    body_options = dict(options, camera=camera)
+                    cpu, pixels, cpu_body = frame(port, origin, name + "-" + camera + "-cpu",
+                                                name, body_options)
+                    if cpu.headers.get("X-OpenCAD-Hardware") != "false":
+                        raise AssertionError("HTTP CPU response claims hardware")
+                    frames[name, camera, "cpu"] = pixels
+                    record("http_cpu_" + name + "_" + camera, headers=cpu.headers)
+                    if name == "alice" and camera == "isometric":
+                        report["ruler_negative_controls"] = pixel_validator_controls(
+                            cpu, heads[name], meshes[name], cpu_body)
+                    if args.require_gpu:
+                        gpu_options = dict(body_options, backend="gpu")
+                        gpu, pixels, _ = frame(port, origin, name + "-" + camera + "-gpu",
+                                              name, gpu_options)
+                        observed = gpu.headers.get("X-OpenCAD-Renderer", "").lower()
+                        if (gpu.headers.get("X-OpenCAD-Hardware") != "true"
+                                or "nvidia" not in observed or "rtx 3080" not in observed
+                                or any(v in observed for v in
+                                       ("swiftshader", "angle", "llvmpipe", "software"))):
+                            raise AssertionError("integrated HTTP did not observe real NVIDIA RTX3080")
+                        cpu_pixels = frames[name, camera, "cpu"]
+                        mismatch = sum(pixels[i:i + 4] != cpu_pixels[i:i + 4]
+                                       for i in range(0, len(pixels), 4))
+                        center = ((128 // 2) * 128 + 128 // 2) * 4
+                        if (mismatch > 0.02 * 128 * 128
+                                or pixels[center:center + 4] != cpu_pixels[center:center + 4]):
+                            raise AssertionError("HTTP GPU/CPU independent pixels disagree")
+                        again, repeated, _ = frame(port, origin,
+                                                  name + "-" + camera + "-gpu-repeat", name, gpu_options)
+                        if repeated != pixels or again.headers["X-OpenCAD-Geometry-SHA256"] != gpu.headers[
+                                "X-OpenCAD-Geometry-SHA256"]:
+                            raise AssertionError("real repeated GPU geometry/frame drift")
+                        frames[name, camera, "gpu"] = pixels
+                        record("http_gpu_" + name + "_" + camera,
+                               mismatched_pixels=mismatch, repeat_sha_equal=True, headers=gpu.headers)
+            if frames["alice", "isometric", "cpu"] == frames["bob", "isometric", "cpu"]:
+                raise AssertionError("different persisted projects produced identical frames")
+            record("http_distinct_project_frames")
+            report["hardware_stage"] = "PASS" if args.require_gpu else "NOT_TESTED"
+            alice, bob = heads["alice"], heads["bob"]
+            stolen = dict(options, backend="gpu" if args.require_gpu else "cpu",
+                          expected_revision=alice["revision"], expected_sha=alice["sha256"])
+            denial(port, origin, "cross_owner_bob_to_alice", stolen, 403, "project_forbidden",
+                   user="bob", project=alice["project_id"])
+            denial(port, origin, "cross_owner_alice_to_bob", stolen, 403, "project_forbidden",
+                   project=bob["project_id"])
+            denial(port, origin, "anonymous", stolen, 401, "missing_token",
+                   user=None, project=alice["project_id"])
+            denial(port, origin, "forged_cookie", stolen, 401, "invalid_token",
+                   project=alice["project_id"], forged=True)
+            denial(port, origin, "csrf_wrong_origin", stolen, 403, "cross_site_request",
+                   project=alice["project_id"], cross_origin=True)
+            denial(port, origin, "csrf_missing_marker", stolen, 403, "cross_site_request",
+                   project=alice["project_id"], csrf=False)
+            denial(port, origin, "missing_project", stolen, 400, "project_required")
+            for label, body, status, code in (
+                ("cross_project_sha", dict(stolen, expected_sha=bob["sha256"]), 409, "revision_conflict"),
+                ("stale_revision", dict(stolen, expected_revision=1), 409, "revision_conflict"),
+                ("external_url", dict(stolen, url="https://example.invalid/mesh"), 400, "invalid_render_input"),
+                ("unauthorized_path", dict(stolen, path="/etc/passwd"), 400, "invalid_render_input"),
+                ("client_mesh", dict(stolen, mesh={}), 400, "invalid_render_input"),
+                ("client_cuda_device", dict(stolen, cuda_device=0), 400, "invalid_render_input"),
+                ("client_shader", dict(stolen, shader="not-accepted"), 400, "invalid_render_input"),
+                ("oversize_frame", dict(stolen, width=1024, height=1024), 400, "invalid_render_input"),
+                ("unknown_camera", dict(stolen, camera="perspective"), 400, "invalid_render_input"),
+            ):
+                denial(port, origin, label, body, status, code, project=alice["project_id"])
+            denial(port, origin, "empty_project", options, 422, "no_solid_feature",
+                   project=empty["project_id"])
+            if persist_state("after-opt-in") != before:
+                raise AssertionError("render/denial changed logical DB or receipts")
+            report["gateway_route"] = {"verdict": "CPU_GPU_HTTP_PASS" if args.require_gpu else "CPU_HTTP_PASS",
+                                       "source": str(app / "project_gateway.py"), "patched": False}
+        # Restarting the ORIGINAL CLI proves persistent heads/sessions, not a mock.
+        arms = [("owner-disabled", [], "GPU disabled by service configuration")]
+        if args.require_gpu:
+            arms.insert(0, ("owner-missing-device", ["--enable-gpu", "--cuda-device", "63"],
+                            "no NVIDIA EGL device for CUDA ordinal 63"))
+        for label, flags, cause in arms:
+            with secure_cli(app, runtime, out, label, flags, report) as (port, origin):
+                assert_head_http(port, origin, "alice", heads["alice"])
+                missing_body = dict(options, backend="gpu", expected_revision=alice["revision"],
+                                    expected_sha=alice["sha256"])
+                value = denial(port, origin, label + "_fail_loud", missing_body, 503,
+                               "gpu_unavailable", project=alice["project_id"])
+                if cause not in value.get("detail", ""):
+                    raise AssertionError("real GPU denial lost first cause")
+                reply, pixels, _ = frame(port, origin, label + "-explicit-fallback", "alice",
+                                         dict(options, backend="gpu", allow_cpu_fallback=True))
+                if (pixels != frames["alice", "isometric", "cpu"]
+                        or reply.headers.get("X-OpenCAD-Render-Status") != "CPU_FALLBACK"
+                        or cause not in reply.headers.get("X-OpenCAD-Fallback-Reason", "")):
+                    raise AssertionError("explicit HTTP CPU fallback differs or hides cause")
+                record(label + "_explicit_cpu_fallback", headers=reply.headers)
+                if persist_state("after-" + label) != before:
+                    raise AssertionError("fallback/restarted CLI changed logical project DB")
+        store.close()
+        store = project_store.ProjectStore(runtime / "projects")
+        if persist_state("after-reopen") != before:
+            raise AssertionError("reopened durable DB differs after read-only render")
+        for name, head in heads.items():
+            if store.read_head(head["project_id"]) != head:
+                raise AssertionError("persisted head differs after original CLI restarts")
+        record("durable_db_heads_receipts_unchanged_across_cli_restarts", counts=before["counts"])
+        report.update(store_after=store_state(store), durable_db="PASS",
+                      private_chain="REAL_COOKIE_DB_HTTP_FAIL" if report.get("findings") else
+                      "REAL_COOKIE_DB_HTTP_PASS", verdict="FAIL" if report.get("findings") else "PASS")
+        report["check_counts"] = {
+            verdict: sum(check["verdict"] == verdict for check in checks)
+            for verdict in ("PASS", "FAIL")}
+        artifact_files = [path for path in out.rglob("*") if path.is_file()]
+        if not artifact_files:
+            raise AssertionError("empty credential evidence scan")
+        for path in artifact_files:
+            raw = path.read_bytes()
+            if any(value in raw for value in secret_bytes):
+                raise AssertionError(f"fixture secret found in evidence: {path.name}")
+        if any(value in canonical(report) for value in secret_bytes):
+            raise AssertionError("fixture secret found in report")
+        report["credential_evidence_scan"] = {
+            "verdict": "PASS", "files": len(artifact_files), "matches": 0,
+            "scope": "exact generated fixture passwords and session cookies"}
+        report["untested"].extend([
+            "deployed production service/HTTPS ingress", "browser panel clicks at the private endpoint",
+            "industrial surface/assembly complete-model rendering", "representative performance/controlled A/B",
+            "concurrent render/edit race and multi-process GPU admission",
+            "instrumented no-kernel-call count inside the unmodified CLI",
+        ])
+    finally:
+        store.close()
+        credentials.clear()
+        cookies.clear()
+        secret_bytes.clear()
+
+
+def verify_saved_result(evidence, out):
+    """Re-read real PNG/headers/DB fingerprints; a failed suite stays failed."""
+    evidence = evidence.resolve()
+    evidence.relative_to(Path("/hf3fs-jd/data/tmp").resolve())
+    report = json.loads((evidence / "result.json").read_text())
+    if report.get("head_source") != "DURABLE_PROJECT_DB" or report.get("cookie_login") != "PASS":
+        raise AssertionError("not a completed real-cookie DB review")
+    if report.get("source_drift") or report["source_before"] != report["source_after"]:
+        raise AssertionError("source drift in saved evidence")
+    if len(report["source_before"]) < 1 or report["check_count"] != len(report["checks"]):
+        raise AssertionError("empty source manifest or invalid check count")
+    counts = {v: sum(check["verdict"] == v for check in report["checks"]) for v in ("PASS", "FAIL")}
+    if counts != report.get("check_counts") or sum(counts.values()) != len(report["checks"]):
+        raise AssertionError("check verdict/count mismatch")
+    findings = [check for check in report["checks"] if check["verdict"] == "FAIL"]
+    if findings != report.get("findings", []):
+        raise AssertionError("failure ledger differs from actual checks")
+    if report["verdict"] != ("FAIL" if findings else "PASS"):
+        raise AssertionError("suite verdict masks findings")
+    if report.get("durable_db") != "PASS" or report["store_before"] != report["store_after"]:
+        raise AssertionError("logical project DB changed")
+    db_files = list(evidence.glob("*-project-db.json"))
+    if len(db_files) != 5 or any(json.loads(path.read_text()) != report["store_before"] for path in db_files):
+        raise AssertionError("persisted DB arm fingerprints differ/missing")
+    if {k: v["verdict"] for k, v in report["ruler_negative_controls"].items()} != {
+            "revision": "REJECTED", "snapshot": "REJECTED", "frame": "REJECTED", "png_crc": "REJECTED"}:
+        raise AssertionError("ruler corruption controls missing")
+    verified = []
+    for entry in report["http_requests"]:
+        if entry.get("headers", {}).get("Content-Type") != "image/png":
+            continue
+        label = entry["name"]
+        if "/" in label or ".." in label:
+            raise AssertionError("invalid artifact name")
+        name = "bob" if label.startswith("bob-") else "alice"
+        head = json.loads((evidence / (name + "-db-head.json")).read_text())
+        mesh = json.loads((evidence / (name + "-http-mesh.json")).read_text())
+        if digest(canonical(head["snapshot"])) != head["sha256"]:
+            raise AssertionError("persisted head snapshot checksum invalid")
+        png = (evidence / (label + ".png")).read_bytes()
+        headers = json.loads((evidence / (label + "-headers.json")).read_text())
+        if headers != entry["headers"] or digest(png) != entry["response_sha256"] or len(png) != entry["bytes"]:
+            raise AssertionError("HTTP artifact differs from captured response")
+        fallback = headers["X-OpenCAD-Render-Status"] == "CPU_FALLBACK"
+        options = {"camera": headers["X-OpenCAD-Render-Camera"], "width": 128, "height": 128,
+                   "backend": "gpu" if fallback else headers["X-OpenCAD-Render-Backend"],
+                   "allow_cpu_fallback": fallback}
+        pixels = verify_reply(type("SavedReply", (), {
+            "status": entry["status"], "payload": png, "headers": headers,
+            "content_type": "image/png"})(), head, mesh, options)
+        verified.append({"name": label, "frame_sha256": digest(pixels),
+                         "geometry_sha256": headers["X-OpenCAD-Geometry-SHA256"]})
+    if len(verified) != 14 or len(report["cli_processes"]) != 3:
+        raise AssertionError("expected 14 PNG responses and three original CLI arms")
+    for process in report["cli_processes"]:
+        raw = Path(process["log"]).read_bytes()
+        if digest(raw) != process["log_sha256"] or process["rc"] != 0:
+            raise AssertionError("CLI log/exit evidence changed")
+    result = {"at": stamp(), "verdict": "EVIDENCE_VERIFIED", "suite_verdict": report["verdict"],
+              "check_counts": counts, "hardware_stage": report["hardware_stage"],
+              "durable_db": report["durable_db"], "source_drift": False,
+              "result_sha256": digest((evidence / "result.json").read_bytes()),
+              "source": str(evidence), "verified_pngs": verified, "findings": findings,
+              "wall_s": report["wall_s"], "untested": report["untested"]}
+    write_json(out / "verification.json", result)
+    line = (f"PRIVATE_RENDER_EVIDENCE verdict=EVIDENCE_VERIFIED suite={report['verdict']} "
+            f"passed={counts['PASS']} failed={counts['FAIL']} pngs={len(verified)} at={stamp()}")
+    with (out / "verification.log").open("x") as handle:
+        handle.write(line + "\n")
+    print(line)
+    return 0
 
 
 def run_review(args, out, report):
@@ -573,13 +1060,29 @@ def run_review(args, out, report):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--gateway-root", type=Path, required=True)
+    parser.add_argument("--gateway-root", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--require-gpu", action="store_true")
     parser.add_argument("--handler-only", action="store_true",
                         help="explicit in-memory heads; real auth/Workspace/renderer, NOT durable DB acceptance")
+    parser.add_argument("--http-db", action="store_true",
+                        help="original secure CLI + real HTTP login/project DB/render; no product patch")
+    parser.add_argument("--runtime-root", type=Path,
+                        help="http-db only: existing isolated local private fixture parent")
+    parser.add_argument("--diagnostic", action="store_true",
+                        help="http-db: collect HTTP denial mismatches; any finding keeps final FAIL")
+    parser.add_argument("--verify-result", type=Path,
+                        help="only re-read saved HTTP/PNG/DB evidence; never changes a failed suite verdict")
     parser.add_argument("--cuda-device", type=int, choices=range(64), default=0)
     args = parser.parse_args()
+    if args.verify_result is None and args.gateway_root is None:
+        parser.error("--gateway-root is required for a live fixture review")
+    if args.http_db and (args.handler_only or args.runtime_root is None):
+        parser.error("--http-db requires --runtime-root and forbids --handler-only")
+    if args.runtime_root is not None and not args.http_db:
+        parser.error("--runtime-root is only accepted with --http-db")
+    if args.diagnostic and not args.http_db:
+        parser.error("--diagnostic requires --http-db")
     if os.geteuid() == 0:
         parser.error("review refuses root execution")
     out = args.out.resolve()
@@ -588,6 +1091,17 @@ def main():
     os.environ["TMPDIR"] = str(out)
     os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
     sys.dont_write_bytecode = True
+    if args.verify_result is not None:
+        try:
+            return verify_saved_result(args.verify_result, out)
+        except Exception as exc:
+            write_json(out / "verification-failure.json", {
+                "verdict": "FAIL", "at": stamp(), "source": str(args.verify_result),
+                "error": {"type": type(exc).__name__, "detail": str(exc),
+                          "traceback": traceback.format_exc()}})
+            with (out / "verification.log").open("x") as handle:
+                handle.write(f"PRIVATE_RENDER_EVIDENCE verdict=FAIL at={stamp()}\n")
+            raise
     logging.basicConfig(level=logging.INFO, handlers=[
         logging.FileHandler(out / "review.log", mode="x"), logging.StreamHandler()])
     before = source_state((ROOT, args.gateway_root.resolve()))
@@ -601,7 +1115,10 @@ def main():
                                   "--format=csv,noheader"], capture_output=True, text=True, timeout=15)
         report["hardware_inventory"] = {"rc": process.returncode, "stdout": process.stdout,
                                         "stderr": process.stderr, "at": stamp()}
-        run_review(args, out, report)
+        if args.http_db:
+            run_http_db(args, out, report)
+        else:
+            run_review(args, out, report)
     except Exception as exc:
         report["error"] = {"type": type(exc).__name__, "detail": str(exc),
                            "traceback": traceback.format_exc()}
@@ -615,9 +1132,9 @@ def main():
         report["finished_at"], report["wall_s"] = stamp(), time.perf_counter() - start
         report["check_count"] = len(report.get("checks", []))
         write_json(out / "result.json", report)
-        LOG.info("PRIVATE_RENDER_REVIEW verdict=%s chain=%s hardware=%s at=%s evidence=%s",
+        LOG.info("PRIVATE_RENDER_REVIEW verdict=%s chain=%s hardware=%s checks=%s at=%s evidence=%s",
                  report["verdict"], report["private_chain"], report["hardware_stage"],
-                 report["finished_at"], out)
+                 report["check_count"], report["finished_at"], out)
     return 0 if report["verdict"] in ("PASS", "PARTIAL") else 1
 
 
