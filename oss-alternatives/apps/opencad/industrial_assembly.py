@@ -8,21 +8,22 @@ accepts server paths, or acknowledges a durable commit.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import hashlib
 import json
+import math
 from pathlib import Path
 
 from cadcore.assembly import (
     Assembly, Component, Mate, PartReference, Transform, bom, evaluate_assembly,
     solve_mates,
 )
-from cadcore.docmodel import document_from_l1, document_to_l1, load_blocking_problems
+from cadcore.docmodel import Document, document_from_l1, document_to_l1, load_blocking_problems
 from cadcore.errors import CadError
 from cadcore.kernel.subproc import SubprocessKernel
 
 __all__ = ["ASSEMBLY_KEY", "READ_ACTIONS", "WRITE_ACTIONS", "AssemblyCandidate",
-           "read_assembly", "prepare_assembly"]
+           "read_assembly", "prepare_assembly", "validate_document"]
 
 ASSEMBLY_KEY = "industrial_assembly_v1"
 READ_ACTIONS = frozenset(("state", "mesh", "collisions", "bom", "export"))
@@ -47,6 +48,56 @@ def _sha(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _fingerprint(value):
+    return _sha(json.dumps(value, sort_keys=True, ensure_ascii=True,
+                           separators=(",", ":"), allow_nan=False))
+
+
+def _first_cause(exc):
+    reason = getattr(exc, "reason", "")
+    message = getattr(exc, "message", str(exc))
+    return "%s%s: %s" % (type(exc).__name__, "(" + reason + ")" if reason else "",
+                         str(message).replace("\n", " ")[:240])
+
+
+def _validate_part_domains(assembly):
+    for part in assembly.parts:
+        doc = document_from_l1(part.l1_text)
+        problems = load_blocking_problems(doc)
+        if problems:
+            raise _error("bad_part_reference", "; ".join(problems[:8]))
+        namespaces = sorted(set(doc.extra) & {"x_industrial_surfaces", ASSEMBLY_KEY})
+        if namespaces:
+            raise _error("unsupported_geometry_domain",
+                         "feature-only part evaluator cannot consume namespaces: " +
+                         ", ".join(namespaces))
+    return assembly
+
+
+def validate_document(doc):
+    """Validate extension schema and exact independent L1 references, without mutation.
+
+    Returns Assembly or None for an absent extension. This is not a geometry
+    rebuild or constraint solve; the gateway must still validate measured writes.
+    """
+    if not isinstance(doc, Document):
+        raise _error("invalid_document", "assembly validation requires a Document")
+    problems = load_blocking_problems(doc)
+    if problems:
+        raise _error("invalid_document", "; ".join(problems[:8]))
+    if ASSEMBLY_KEY not in doc.extra:
+        return None
+    if (doc.features or any(sketch.get("entities") for sketch in doc.sketches)
+            or "x_industrial_surfaces" in doc.extra):
+        raise _error("unsupported_geometry_domain", "assembly document mixes geometry domains")
+    try:
+        text = json.dumps(doc.extra[ASSEMBLY_KEY], ensure_ascii=True, allow_nan=False)
+        return _validate_part_domains(Assembly.from_json(text))
+    except (ValueError, TypeError, RecursionError) as exc:
+        raise _error("bad_assembly_input",
+                     "assembly extension must be bounded finite JSON; " + _first_cause(exc)) from exc
+
+
 def _arguments(body, actions):
     if (not isinstance(body, dict) or not isinstance(body.get("action"), str)
             or body["action"] not in actions):
@@ -65,11 +116,7 @@ def _document(workspace):
     # its mutable sketch accessor or change its history while constructing L1.
     source = workspace.l1_text() if hasattr(workspace, "l1_text") else document_to_l1(workspace)
     doc = document_from_l1(source)
-    problems = load_blocking_problems(doc)
-    if problems:
-        raise _error("invalid_document", "; ".join(problems[:8]))
-    assembly = None if ASSEMBLY_KEY not in doc.extra else Assembly.from_json(
-        json.dumps(doc.extra[ASSEMBLY_KEY], ensure_ascii=True, allow_nan=False))
+    assembly = validate_document(doc)
     return source, doc, assembly
 
 
@@ -124,11 +171,96 @@ def read_assembly(workspace, body, *, kernel=None):
 
 @dataclass(frozen=True)
 class AssemblyCandidate:
-    """No commit has happened. Gateway must CAS doc + undo + redo + receipt."""
+    """Creation-bound measured candidate; verification is mandatory before CAS.
+
+    Seals are init fields so dataclasses.replace inherits the original binding.
+    They detect accidental/partial mutation, not hostile code in this process.
+    """
 
     before_document_sha256: str
     doc: str
     response: dict
+    envelope_sha256: str | None = field(default=None, repr=False)
+    _creation_binding: tuple | None = field(default=None, repr=False)
+
+    def __post_init__(self):
+        if self.envelope_sha256 is None:
+            if self._creation_binding is not None:
+                raise _error("candidate_changed", "candidate seal cannot be reset")
+            try:
+                binding = (self.doc, self.before_document_sha256, _fingerprint(self.response))
+                envelope = _fingerprint(binding)
+            except (ValueError, TypeError, RecursionError, UnicodeError) as exc:
+                raise _error("candidate_changed",
+                             "candidate envelope is not finite JSON; " + _first_cause(exc)) from exc
+            object.__setattr__(self, "_creation_binding", binding)
+            object.__setattr__(self, "envelope_sha256", envelope)
+
+    def verify_integrity(self):
+        try:
+            binding = (self.doc, self.before_document_sha256, _fingerprint(self.response))
+            if (self._creation_binding != binding
+                    or self.envelope_sha256 != _fingerprint(binding)):
+                raise _error("candidate_changed", "candidate changed after measurement")
+            if (not isinstance(self.doc, str) or not isinstance(self.before_document_sha256, str)
+                    or len(self.before_document_sha256) != 64
+                    or any(c not in "0123456789abcdef" for c in self.before_document_sha256)):
+                raise _error("candidate_changed", "candidate base/document binding is invalid")
+            doc = document_from_l1(self.doc)
+            if document_to_l1(doc) != self.doc:
+                raise _error("candidate_changed", "candidate L1 is not exact canonical bytes")
+            assembly = validate_document(doc)
+            if assembly is None:
+                raise _error("candidate_changed", "measured candidate has no assembly")
+            response = self.response
+            digest, assembly_text = _sha(self.doc), assembly.to_json()
+            assembly_digest = _sha(assembly_text)
+            if (response.get("ok") is not True or response.get("present") is not True
+                    or response.get("action") not in WRITE_ACTIONS
+                    or response.get("doc") != self.doc
+                    or response.get("document_sha256") != digest
+                    or response.get("assembly_sha256") != assembly_digest
+                    or response.get("assembly_json") != assembly_text
+                    or _fingerprint(response.get("assembly")) != _fingerprint(assembly.as_dict())
+                    or _fingerprint(response.get("bom")) != _fingerprint(bom(assembly))):
+                raise _error("candidate_changed", "candidate response disagrees with document/assembly")
+            evaluation = response.get("evaluation")
+            if (not isinstance(evaluation, dict) or evaluation.get("backend") != "FreeCAD-BRep"
+                    or evaluation.get("document_sha256") != digest
+                    or evaluation.get("assembly_sha256") != assembly_digest):
+                raise _error("candidate_changed", "measurement document/assembly binding changed")
+            leaves = [c for c in assembly.components if c.part_id is not None]
+            instances = evaluation.get("instances")
+            if not isinstance(instances, list) or len(instances) != len(leaves):
+                raise _error("candidate_changed", "measured instance inventory changed")
+            parts = {(p.part_id, p.configuration): p for p in assembly.parts}
+            for component, measured in zip(leaves, instances):
+                part = parts[(component.part_id, component.configuration)]
+                if (measured.get("component_id") != component.component_id
+                        or measured.get("part_id") != part.part_id
+                        or measured.get("configuration") != part.configuration
+                        or measured.get("document_sha256") != part.document_sha256):
+                    raise _error("candidate_changed", "measured independent part binding changed")
+                mesh = measured.get("mesh", {})
+                vertices, triangles = mesh.get("vertices_mm"), mesh.get("triangles")
+                if (not isinstance(vertices, list) or not vertices
+                        or not isinstance(triangles, list) or not triangles
+                        or len(triangles) > 250000):
+                    raise _error("candidate_changed", "candidate mesh is empty or exceeds bound")
+                if any(not isinstance(v, list) or len(v) != 3 or any(
+                        type(n) not in (int, float) or not math.isfinite(n) for n in v) for v in vertices):
+                    raise _error("candidate_changed", "candidate mesh vertex is invalid")
+                if any(not isinstance(t, list) or len(t) != 3 or any(
+                        type(i) is not int or not 0 <= i < len(vertices) for i in t) for t in triangles):
+                    raise _error("candidate_changed", "candidate mesh triangle is invalid")
+            return None
+        except CadError as exc:
+            if exc.reason == "candidate_changed":
+                raise
+            raise _error("candidate_changed",
+                         "candidate document/measurement invalid; " + _first_cause(exc)) from exc
+        except (ValueError, TypeError, KeyError, AttributeError, RecursionError, UnicodeError) as exc:
+            raise _error("candidate_changed", "candidate envelope invalid; " + _first_cause(exc)) from exc
 
 
 def _component(value):
@@ -210,7 +342,7 @@ def prepare_assembly(workspace, body, *, kernel=None):
     """
     action = _arguments(body, WRITE_ACTIONS)
     before, doc, original = _document(workspace)
-    assembly = _updated(original, action, body)
+    assembly = _validate_part_domains(_updated(original, action, body))
     solver = None
     with _kernel(workspace, kernel) as actual:
         if assembly.mates:
@@ -231,4 +363,6 @@ def prepare_assembly(workspace, body, *, kernel=None):
     response["action"] = action
     # A candidate response is suitable for a store receipt, not an HTTP reply.
     # There is deliberately no saved/committed flag before the transaction.
-    return AssemblyCandidate(_sha(before), candidate, response)
+    result = AssemblyCandidate(_sha(before), candidate, response)
+    result.verify_integrity()
+    return result

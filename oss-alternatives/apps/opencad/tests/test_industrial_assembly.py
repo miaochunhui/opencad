@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime, timezone
 import hashlib
@@ -41,6 +42,7 @@ from cadcore.docmodel import document_from_l1, document_to_l1, new_document
 from cadcore.errors import CadError
 from cadcore.kernel.subproc import SubprocessKernel
 from industrial_assembly import ASSEMBLY_KEY, prepare_assembly, read_assembly
+import industrial_assembly
 
 OWNED = [
     APP / "industrial_assembly.py", APP / "web/js/assembly-panel.js",
@@ -342,6 +344,160 @@ class IndustrialAssemblyTests(unittest.TestCase):
             "document_sha256": candidate.response["document_sha256"],
             "l1_bytes": len(candidate.doc.encode()), "roundtrip_exact": True})
 
+    def test_20_candidate_seal_real_BRep_positive(self):
+        before = snapshot(self.ws)
+        candidate = self.load_ring_pin()
+        candidate.verify_integrity()
+        self.assertEqual(candidate.response["evaluation"]["backend"], "FreeCAD-BRep")
+        self.assertEqual(len(candidate.envelope_sha256), 64)
+        self.assertEqual(replace(candidate).envelope_sha256, candidate.envelope_sha256)
+        replace(candidate).verify_integrity()
+        self.assertEqual(candidate.before_document_sha256,
+                         hashlib.sha256(before["doc"].encode()).hexdigest())
+        self.record("candidate_seal", {"envelope_sha256": candidate.envelope_sha256,
+            "document_sha256": candidate.response["document_sha256"], "verified": True})
+
+    def test_21_candidate_seal_replace_document_rejected(self):
+        candidate = self.load_ring_pin()
+        before = snapshot(self.ws)
+        doc = document_from_l1(candidate.doc)
+        doc.meta["title_key"] = "tampered-after-measurement"
+        changed = replace(candidate, doc=document_to_l1(doc))
+        self.assert_reason("candidate_changed", changed.verify_integrity)
+        self.assertEqual(changed.envelope_sha256, candidate.envelope_sha256)
+        self.assertEqual(snapshot(self.ws), before)
+
+    def test_22_candidate_seal_nested_response_SHA_rejected(self):
+        candidate = self.load_ring_pin()
+        before = snapshot(self.ws)
+        candidate.response["evaluation"]["document_sha256"] = "0" * 64
+        self.assert_reason("candidate_changed", candidate.verify_integrity)
+        self.assertEqual(snapshot(self.ws), before)
+
+    def test_23_candidate_seal_nested_mesh_vertex_rejected(self):
+        candidate = self.load_ring_pin()
+        before = snapshot(self.ws)
+        candidate.response["evaluation"]["instances"][0]["mesh"]["vertices_mm"][0][0] += 1
+        self.assert_reason("candidate_changed", candidate.verify_integrity)
+        self.assertEqual(snapshot(self.ws), before)
+
+    def test_24_candidate_seal_coherent_replace_and_base_rejected(self):
+        candidate = self.load_ring_pin()
+        response = deepcopy(candidate.response)
+        doc = document_from_l1(candidate.doc)
+        doc.meta["title_key"] = "coherent-tamper"
+        text = document_to_l1(doc)
+        response["doc"] = text
+        response["document_sha256"] = hashlib.sha256(text.encode()).hexdigest()
+        response["evaluation"]["document_sha256"] = response["document_sha256"]
+        changed = replace(candidate, doc=text, response=response)
+        self.assert_reason("candidate_changed", changed.verify_integrity)
+        self.assertEqual(changed.envelope_sha256, candidate.envelope_sha256)
+        changed_base = replace(candidate, before_document_sha256="0" * 64)
+        self.assert_reason("candidate_changed", changed_base.verify_integrity)
+        self.assert_reason("candidate_changed",
+                           lambda: replace(candidate, envelope_sha256=None))
+
+    def test_25_candidate_seal_creation_measurement_domain_and_canonical_bytes(self):
+        candidate = self.load_ring_pin()
+        for field in ("assembly_sha256", "assembly_json", "assembly"):
+            response = deepcopy(candidate.response)
+            response[field] = None
+            self.assert_reason("candidate_changed", lambda: industrial_assembly.AssemblyCandidate(
+                candidate.before_document_sha256, candidate.doc, response).verify_integrity())
+        response = deepcopy(candidate.response)
+        response["evaluation"]["instances"][0]["document_sha256"] = "0" * 64
+        self.assert_reason("candidate_changed", lambda: industrial_assembly.AssemblyCandidate(
+            candidate.before_document_sha256, candidate.doc, response).verify_integrity())
+        response = deepcopy(candidate.response)
+        response["evaluation"]["assembly_sha256"] = "0" * 64
+        self.assert_reason("candidate_changed", lambda: industrial_assembly.AssemblyCandidate(
+            candidate.before_document_sha256, candidate.doc, response).verify_integrity())
+        text = json.dumps(json.loads(candidate.doc))
+        response = deepcopy(candidate.response)
+        response["doc"] = text
+        response["document_sha256"] = hashlib.sha256(text.encode()).hexdigest()
+        response["evaluation"]["document_sha256"] = response["document_sha256"]
+        self.assert_reason("candidate_changed", lambda: industrial_assembly.AssemblyCandidate(
+            candidate.before_document_sha256, text, response).verify_integrity())
+
+    def test_26_candidate_document_schema_and_part_L1_validation(self):
+        empty = snapshot(self.ws)
+        self.assertIsNone(industrial_assembly.validate_document(self.ws.doc))
+        self.assertEqual(snapshot(self.ws), empty)
+        candidate = self.load_ring_pin()
+        before = snapshot(self.ws)
+        assembly = industrial_assembly.validate_document(self.ws.doc)
+        self.assertEqual(assembly.to_json(), candidate.response["assembly_json"])
+        self.assertEqual(snapshot(self.ws), before)
+        for invalid in (None, [], {}, {"schema": True}):
+            doc = document_from_l1(candidate.doc)
+            doc.extra[ASSEMBLY_KEY] = invalid
+            with self.assertRaises(CadError):
+                industrial_assembly.validate_document(doc)
+        invalid = deepcopy(candidate.response["assembly"])
+        invalid["parts"][0]["document_sha256"] = "0" * 64
+        doc = document_from_l1(candidate.doc)
+        doc.extra[ASSEMBLY_KEY] = invalid
+        self.assert_reason("part_digest_mismatch",
+                           lambda: industrial_assembly.validate_document(doc))
+        invalid = deepcopy(candidate.response["assembly"])
+        invalid["parts"][0]["l1_text"] = "{}"
+        invalid["parts"][0]["document_sha256"] = hashlib.sha256(b"{}").hexdigest()
+        doc.extra[ASSEMBLY_KEY] = invalid
+        self.assert_reason("bad_part_reference",
+                           lambda: industrial_assembly.validate_document(doc))
+        self.assertEqual(snapshot(self.ws), before)
+
+    def test_28_candidate_part_namespaces_not_silently_ignored(self):
+        assembly = fixtures.fixture()
+        before = snapshot(self.ws)
+        for namespace in ("x_industrial_surfaces", ASSEMBLY_KEY):
+            for feature_only in (True, False):
+                part_doc = document_from_l1(assembly.parts[0].l1_text)
+                if not feature_only:
+                    part_doc.features.clear()
+                    part_doc.sketches.clear()
+                part_doc.extra[namespace] = (
+                    {"schema": 1, "recipe": None} if namespace == "x_industrial_surfaces"
+                    else assembly.as_dict())
+                part = PartReference.from_document("ring", part_doc)
+                nested = replace(assembly, parts=(part, assembly.parts[1]))
+                doc = document_from_l1(document_to_l1(new_document()))
+                doc.extra[ASSEMBLY_KEY] = nested.as_dict()
+                self.assert_reason("unsupported_geometry_domain",
+                                   lambda: industrial_assembly.validate_document(doc))
+                self.assert_reason("unsupported_geometry_domain", lambda: self.candidate({
+                    "action": "reopen", "assembly_json": nested.to_json()}))
+        for namespace in ("x_industrial_surfaces", ASSEMBLY_KEY):
+            doc = document_from_l1(assembly.parts[0].l1_text)
+            doc.extra[ASSEMBLY_KEY] = assembly.as_dict()
+            if namespace != ASSEMBLY_KEY:
+                doc.extra[namespace] = None
+            self.assert_reason("unsupported_geometry_domain",
+                               lambda: industrial_assembly.validate_document(doc))
+        self.assertEqual(snapshot(self.ws), before)
+
+    def test_29_candidate_verifier_keeps_short_first_cause(self):
+        candidate = self.load_ring_pin()
+        response = deepcopy(candidate.response)
+        doc = document_from_l1(candidate.doc)
+        doc.extra[ASSEMBLY_KEY]["parts"][0]["document_sha256"] = "0" * 64
+        text = document_to_l1(doc)
+        response["doc"] = text
+        response["document_sha256"] = hashlib.sha256(text.encode()).hexdigest()
+        response["evaluation"]["document_sha256"] = response["document_sha256"]
+        invalid = industrial_assembly.AssemblyCandidate(
+            candidate.before_document_sha256, text, response)
+        with self.assertRaises(CadError) as caught:
+            invalid.verify_integrity()
+        self.assertEqual(caught.exception.reason, "candidate_changed")
+        self.assertIn("part_digest_mismatch", str(caught.exception))
+        self.assertIn("part L1 bytes", str(caught.exception))
+        self.assertLess(len(str(caught.exception)), 400)
+        self.assertIsInstance(caught.exception.__cause__, CadError)
+        self.record("verifier_first_cause", str(caught.exception))
+
     def new_store(self):
         # SQLite/socket state must live on a local filesystem, outside sources.
         runtime = Path("/data/dev/opencad-assembly-fixtures")
@@ -353,6 +509,117 @@ class IndustrialAssemblyTests(unittest.TestCase):
         head = store.create_project("fixture-owner", title="Assembly HTTP",
                                     request_id=uuid.uuid4().hex, payload=snapshot(self.ws))
         return store, head, Path(directory.name)
+
+    def test_27_actual_HTTP_seal_rejection_before_DB_commit(self):
+        store, head, _ = self.new_store()
+        test = self
+        evidence = []
+
+        class SealHandler(BaseHTTPRequestHandler):
+            def log_message(self, format, *args):
+                pass
+
+            def do_POST(self):
+                status, response = 200, {}
+                try:
+                    if self.path not in ("/candidate", "/open"):
+                        raise CadError("unknown fixture route", reason="fixture_route")
+                    body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                    current = store.read_head(head["project_id"])
+                    if self.path == "/open":
+                        doc = document_from_l1(body["doc"])
+                        industrial_assembly.validate_document(doc)
+                        payload, response = dict(current["snapshot"]), {"ok": True}
+                        payload["doc"] = document_to_l1(doc)
+                    else:
+                        doc = document_from_l1(current["snapshot"]["doc"])
+                        candidate = prepare_assembly(doc, body["operation"], kernel=test.kernel)
+                        # Explicit post-measurement variants only in this owned
+                        # loopback fixture; product code is not monkeypatched.
+                        if body["mutation"] == "replace-doc":
+                            changed = document_from_l1(candidate.doc)
+                            changed.meta["title_key"] = "changed-after-measurement"
+                            candidate = replace(candidate, doc=document_to_l1(changed))
+                        elif body["mutation"] == "response-SHA":
+                            candidate.response["document_sha256"] = "0" * 64
+                        elif body["mutation"] == "mesh-vertex":
+                            candidate.response["evaluation"]["instances"][0][
+                                "mesh"]["vertices_mm"][0][0] += 1
+                        elif body["mutation"] != "none":
+                            raise CadError("unknown fixture mutation", reason="fixture_mutation")
+                        candidate.verify_integrity()
+                        payload, response = dict(current["snapshot"]), candidate.response
+                        payload["undo"] = [*payload["undo"], payload["doc"]]
+                        payload["redo"] = []
+                        payload["doc"] = candidate.doc
+                    receipt = store.commit(head["project_id"],
+                        expected_revision=body["expected_revision"], expected_sha=body["expected_sha"],
+                        request_id=body["request_id"], request_payload=body,
+                        payload=payload, response=response)
+                    response = {**receipt["response"], "revision": receipt["revision"]}
+                except CadError as exc:
+                    status, response = 422, {"ok": False, "error": exc.reason}
+                except Exception:
+                    status, response = 500, {"ok": False, "error": "fixture_failed"}
+                    evidence.append({"first_cause": traceback.format_exc()})
+                raw = json.dumps(response).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+        http = ThreadingHTTPServer(("127.0.0.1", 0), SealHandler)
+        thread = threading.Thread(target=http.serve_forever, kwargs={"poll_interval": .01}, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join, 3)
+        self.addCleanup(http.server_close)
+        self.addCleanup(http.shutdown)
+
+        def send(route, body):
+            request = urllib.request.Request(
+                "http://127.0.0.1:%d/%s" % (http.server_port, route),
+                data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+            try:
+                response = urllib.request.urlopen(request, timeout=60)
+            except urllib.error.HTTPError as exc:
+                response = exc
+            with response:
+                return response.status, json.loads(response.read())
+
+        operation = {"action": "reopen", "assembly_json": fixtures.fixture().to_json()}
+        for mutation in ("replace-doc", "response-SHA", "mesh-vertex"):
+            before = store.read_head(head["project_id"])
+            body = {"operation": operation, "mutation": mutation, "request_id": uuid.uuid4().hex,
+                    "expected_revision": before["revision"], "expected_sha": before["sha256"]}
+            status, value = send("candidate", body)
+            self.assertEqual((status, value), (422, {"ok": False, "error": "candidate_changed"}))
+            self.assertEqual(store.read_head(head["project_id"]), before)
+            self.assertIsNone(store.read_receipt(head["project_id"], body["request_id"],
+                                                request_payload=body))
+            evidence.append({"mutation": mutation, "status": status, "error": value["error"],
+                             "revision_unchanged": True, "receipt_absent": True})
+        doc = new_document()
+        doc.extra[ASSEMBLY_KEY] = None
+        before = store.read_head(head["project_id"])
+        body = {"doc": document_to_l1(doc), "request_id": uuid.uuid4().hex,
+                "expected_revision": before["revision"], "expected_sha": before["sha256"]}
+        status, value = send("open", body)
+        self.assertEqual(status, 422)
+        self.assertEqual(value["error"], "bad_assembly_input")
+        self.assertEqual(store.read_head(head["project_id"]), before)
+        self.assertIsNone(store.read_receipt(head["project_id"], body["request_id"], request_payload=body))
+        body = {"operation": operation, "mutation": "none", "request_id": uuid.uuid4().hex,
+                "expected_revision": before["revision"], "expected_sha": before["sha256"]}
+        status, value = send("candidate", body)
+        self.assertEqual(status, 200)
+        self.assertEqual(value["evaluation"]["backend"], "FreeCAD-BRep")
+        self.assertEqual(value["evaluation"]["solid_count"], 2)
+        self.assertEqual(value["revision"], before["revision"] + 1)
+        self.assertEqual(store.read_head(head["project_id"])["snapshot"]["doc"], value["doc"])
+        self.assertIsNotNone(store.read_receipt(head["project_id"], body["request_id"], request_payload=body))
+        self.record("seal_HTTP_DB", {"controls": evidence, "positive_status": status,
+                    "scope": "owned loopback verifier/CAS fixture; not chair gateway/authentication"})
 
     def test_14_real_cas_restart_last_confirmed_and_duplicate_request(self):
         store, head, path = self.new_store()
@@ -493,6 +760,7 @@ class IndustrialAssemblyTests(unittest.TestCase):
                             raise test.store_module.RevisionConflict(actual["revision"], actual["sha256"])
                         doc = document_from_l1(actual["snapshot"]["doc"])
                         candidate = prepare_assembly(doc, body, kernel=test.kernel)
+                        candidate.verify_integrity()
                         state["builds"] += 1
                         payload = dict(actual["snapshot"])
                         if candidate.doc != payload["doc"]:
@@ -733,7 +1001,7 @@ def verify_report(path):
     checks = {
         "pass": report["verdict"] == "PASS",
         "counts": (report["tests"], report["failures"], report["errors"], report["skips"]) ==
-                  (19, 0, 0, 0),
+                  (29, 0, 0, 0),
         "source_unchanged": report["source_unchanged"] and
                             report["source_before"] == report["source_after"],
         "current_sources": hashes(Path(p) for p in report["source_after"]) == report["source_after"],
@@ -768,6 +1036,8 @@ def main():
     parser.add_argument("--out", type=Path)
     parser.add_argument("--gateway-root", type=Path)
     parser.add_argument("--discovery", action="store_true")
+    parser.add_argument("--integrity-only", action="store_true",
+                        help="only candidate seal/schema controls; explicitly not full browser acceptance")
     parser.add_argument("--verify-result", type=Path,
                         help="read-only verify counts, current sources, screenshots and raw jobs")
     args = parser.parse_args()
@@ -783,6 +1053,8 @@ def main():
     before = hashes(sources)
     started = time.monotonic()
     with (OUT / "tests.log").open("x") as stream:
+        if args.integrity_only:
+            unittest.defaultTestLoader.testNamePatterns = ["*candidate_*", "*HTTP_seal_*"]
         if args.discovery:
             suite = unittest.defaultTestLoader.discover(str(APP / "tests"),
                 pattern="test_industrial_assembly.py", top_level_dir=str(APP))
@@ -799,10 +1071,12 @@ def main():
     jobs = [json.loads(p.read_text()) for p in OUT.rglob("process.json")]
     valid_jobs = bool(jobs) and all(
         p["rc"] == 0 and p["rc_measured"] and not p["timed_out"] for p in jobs)
-    valid_images = all(artifacts.get("browser/" + name, {}).get("bytes", 0) > 10000
-                       for name in ("assembly-desktop.png", "assembly-narrow.png"))
-    complete = (result.wasSuccessful() and not result.skipped and result.testsRun == 19
-                and before == after and valid_jobs and valid_images)
+    valid_images = (not args.integrity_only and all(
+        artifacts.get("browser/" + name, {}).get("bytes", 0) > 10000
+        for name in ("assembly-desktop.png", "assembly-narrow.png")))
+    complete = (result.wasSuccessful() and not result.skipped
+                and result.testsRun == (10 if args.integrity_only else 29)
+                and before == after and valid_jobs and (args.integrity_only or valid_images))
     report = {"verdict": "PASS" if complete else "FAIL", "tests": result.testsRun,
               "failures": len(result.failures), "errors": len(result.errors), "skips": len(result.skipped),
               "source_before": before, "source_after": after, "source_unchanged": before == after,
@@ -810,6 +1084,7 @@ def main():
               "duration_s": time.monotonic() - started,
               "raw_jobs_valid": valid_jobs, "raw_jobs": len(jobs),
               "screenshots_valid": valid_images,
+              "scope": "candidate integrity only" if args.integrity_only else "full adapter and browser",
               "finished_at": datetime.now(timezone.utc).isoformat(),
               "production_requests": 0, "authentication": "NOT_ASSESSED",
               "chair_gateway_dispatch": "NOT_INTEGRATED"}
