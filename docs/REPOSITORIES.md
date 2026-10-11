@@ -145,3 +145,38 @@ branch is still the retained historical master; use main for current code.
 No credential permissions, host keys, service state, or private-entry files
 were changed. Complete CAD regression is not industrial parity, private
 production readiness, or deployment acceptance. The broader goal stays active.
+
+## Explicit API Transport
+
+During the resumed documentation synchronization, GitHub Git HTTPS stopped
+responding before any push. Both default and HTTP/1.1 read-only HTTP probes
+received zero bytes within 20 seconds, while `api.github.com` returned HTTP 200.
+The stalled Git transport child was explicitly terminated; its actual Git
+status 128 and signal-15 diagnostic are retained under
+`/hf3fs-jd/data/tmp/opencad-repository-resume-sync-20261011-v1/`.
+This was an operator-stopped failed preflight, not an automatic timeout,
+successful push, or proof of the underlying network cause. A separate GitLab
+query was reset by the peer; a later read-only query worked. No proxy, host key,
+credential file, permission, or remote URL was changed.
+
+`tools/github_api_sync.py` is an explicit alternative transport, not an
+automatic fallback or scheduled mirror. Run it as infra with `--action plan`
+first, then `--action sync`, `--source` pointing to a clean reviewed worktree,
+its full `--commit` and a fresh external `--out`. It only supports up to eight
+ordinary linear commits, 32 changed regular files per commit and 1 MiB per
+file. Root, merge, signed/extended commits and deletions are refused before
+publication. The same existing GitHub account, repository and PAT are used.
+GitLab and Gitee are updated by the original checked Git path before GitHub.
+The API upload must return the exact existing blob, tree and commit IDs before
+the named main ref is fast-forwarded with `force=false`. All three refs are
+read again. Any failure stops and retains partial outcomes; it does not erase
+already published objects or retry. Never run two synchronization invocations
+concurrently. This entry does not install a cross-tool synchronization lease.
+
+Local tests independently reconstruct API blobs, trees and commits using real
+Git, and cover dirty input, unsupported headers/deletions, wrong object IDs,
+remote drift, primary failure, read-only planning and forbidden force/scope.
+Run `python3 -B tools/test_github_api_sync.py --out NEW_EXTERNAL_DIRECTORY`.
+The original v1 test fixture incorrectly deleted required LICENSE and hit the
+earlier source-integrity guard; its failed result remains preserved. Synthetic
+API tests are not live GitHub upload or production acceptance.
