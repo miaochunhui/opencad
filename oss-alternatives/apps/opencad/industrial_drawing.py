@@ -9,15 +9,33 @@ Runtime artifacts remain in the service-owned external directory.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import html
 import json
 from pathlib import Path
+import re
 import tempfile
 
 KEY = "x_industrial_drawing"
 SCHEMA = "industrial-drawing-definition/1"
+_NEW_SEAL = object()
+MAX_CANDIDATE_BYTES = 16 * 1024 * 1024
+
+
+def _candidate_digest(base, doc, response_text):
+    if not isinstance(base, str) or not re.fullmatch(r"[0-9a-f]{64}", base):
+        raise ValueError("before_document_sha256 must be a lowercase SHA256")
+    for name, text in (("doc", doc), ("response_text", response_text)):
+        if not isinstance(text, str):
+            raise ValueError(f"{name} must be text")
+        # Reject oversized character counts before allocating encoded JSON.
+        if (not 0 < len(text) <= MAX_CANDIDATE_BYTES
+                or len(text.encode("utf-8")) > MAX_CANDIDATE_BYTES):
+            raise ValueError(f"{name} exceeds candidate byte limit or is empty")
+    data = json.dumps([base, doc, response_text], ensure_ascii=True,
+                      separators=(",", ":"), allow_nan=False).encode("ascii")
+    return hashlib.sha256(data).hexdigest()
 
 
 class DrawingWebError(Exception):
@@ -38,6 +56,45 @@ class DrawingCandidate:
     before_document_sha256: str
     doc: str
     response_text: str
+    # An init field is intentionally copied by dataclasses.replace.
+    _creation_seal: str = field(default=_NEW_SEAL, repr=False, compare=False)
+
+    def __post_init__(self):
+        if self._creation_seal is _NEW_SEAL:
+            from cadcore.errors import CadError
+            try:
+                object.__setattr__(self, "_creation_seal", _candidate_digest(
+                    self.before_document_sha256, self.doc, self.response_text))
+            except (CadError, DrawingWebError, ValueError, TypeError, UnicodeError,
+                    OverflowError, RecursionError, AttributeError) as exc:
+                raise DrawingWebError("candidate_changed",
+                                      f"Invalid candidate creation bytes: {exc}") from exc
+            self.verify_integrity()
+
+    def verify_integrity(self):
+        """Reject post-measurement changes without rebuilding geometry."""
+        from cadcore.errors import CadError
+        try:
+            if (not isinstance(self._creation_seal, str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", self._creation_seal)):
+                raise ValueError("_creation_seal must be a lowercase SHA256")
+            if _candidate_digest(self.before_document_sha256, self.doc,
+                                 self.response_text) != self._creation_seal:
+                raise ValueError("Candidate bytes differ from creation seal")
+            from cadcore import docmodel
+            document = docmodel.document_from_l1(self.doc)
+            if docmodel.document_to_l1(document) != self.doc:
+                raise ValueError("Candidate document is not canonical L1")
+            value = json.loads(self.response_text)
+            if not isinstance(value, dict) or core().canonical(value) != self.response_text:
+                raise ValueError("Candidate response is not canonical finite JSON")
+            if value.get("source_document_sha256") != hashlib.sha256(self.doc.encode()).hexdigest():
+                raise ValueError("response_text.source_document_sha256 does not bind doc SHA256")
+            validate_document(document)
+        except (CadError, DrawingWebError, ValueError, TypeError, UnicodeError,
+                OverflowError, RecursionError, AttributeError) as exc:
+            raise DrawingWebError("candidate_changed",
+                                  f"Drawing candidate verification failed: {exc}") from exc
 
     @property
     def response(self):
@@ -84,16 +141,44 @@ def model_document(workspace):
 
 
 def definition(workspace):
-    raw = workspace.doc.extra.get(KEY)
-    if raw is None:
-        return None
-    if (not isinstance(raw, dict) or set(raw) != {"schema", "definition", "definition_sha256"}
-            or raw["schema"] != SCHEMA):
-        raise DrawingWebError("bad_drawing_definition", "Stored drawing definition is invalid")
-    value = call(lambda: core().normalized_spec(raw["definition"]))
-    if core().sha(core().canonical(value).encode()) != raw["definition_sha256"]:
-        raise DrawingWebError("bad_drawing_definition", "Stored drawing definition SHA changed")
-    return value
+    return validate_document(workspace.doc)
+
+
+def validate_document(doc):
+    """Validate our stored metadata only, for open/history; no CAD worker."""
+    from cadcore.errors import CadError
+    path = "document"
+    try:
+        from cadcore import docmodel
+        payload = json.loads(docmodel.document_to_l1(doc))
+        if KEY not in payload:
+            return None
+        path = KEY
+        raw = payload[KEY]
+        if not isinstance(raw, dict):
+            raise ValueError("Drawing metadata must be an object")
+        if set(raw) != {"schema", "definition", "definition_sha256"}:
+            raise ValueError("Drawing metadata requires exactly schema/definition/definition_sha256")
+        path = KEY + ".schema"
+        if raw["schema"] != SCHEMA:
+            raise ValueError(f"Drawing metadata schema must be {SCHEMA}")
+        path = KEY + ".definition_sha256"
+        if (not isinstance(raw["definition_sha256"], str)
+                or not re.fullmatch(r"[0-9a-f]{64}", raw["definition_sha256"])):
+            raise ValueError("Drawing definition SHA must be a lowercase SHA256")
+        path = KEY + ".definition"
+        value = core().normalized_spec(raw["definition"])
+        canonical = core().canonical(value)
+        if core().canonical(raw["definition"]) != canonical:
+            raise ValueError("Stored drawing definition is not normalized")
+        path = KEY + ".definition_sha256"
+        if hashlib.sha256(canonical.encode()).hexdigest() != raw["definition_sha256"]:
+            raise ValueError("Stored drawing definition SHA changed")
+        return value
+    except (CadError, DrawingWebError, ValueError, TypeError, UnicodeError,
+            OverflowError, RecursionError, AttributeError) as exc:
+        raise DrawingWebError("bad_drawing_definition",
+                              f"{path}: {exc}") from exc
 
 
 def svg(snapshot):

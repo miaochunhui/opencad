@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime, timezone
 import hashlib
 import importlib.util
@@ -37,6 +38,7 @@ for path in (APP, PACKAGES / "cadcore", PACKAGES / "dxf", PACKAGES / "vault"):
 import industrial_drawing as drawing
 import server
 from cadcore import docmodel
+from cadcore.errors import CadError
 
 OUT = None
 DEPENDENCY_ROOT = Path(os.environ.get("OPENCAD_DRAWING_DEPENDENCY_ROOT", "/data/dev/opencad"))
@@ -137,6 +139,7 @@ class FixtureApplication:
             with self.workspace(head) as workspace:
                 candidate = drawing.prepare_drawing(workspace, {
                     "definition": payload["definition"], "model_version": head["revision"] + 1})
+                candidate.verify_integrity()
                 if candidate.before_document_sha256 != digest(workspace.l1_text()):
                     raise drawing.DrawingWebError("revision_conflict", "Candidate base changed", 409)
                 snapshot = {"doc": candidate.doc,
@@ -332,6 +335,7 @@ class IndustrialDrawingTests(unittest.TestCase):
         with self.app.workspace(self.head) as workspace:
             before = workspace.l1_text()
             candidate = drawing.prepare_drawing(workspace, {"definition": self.spec, "model_version": 2})
+            candidate.verify_integrity()
             self.assertEqual(workspace.l1_text(), before)
             self.assertEqual(workspace.undo_stack, [])
             self.assertEqual(candidate.before_document_sha256, digest(before))
@@ -343,6 +347,201 @@ class IndustrialDrawingTests(unittest.TestCase):
             self.assertEqual(candidate.response["model_version"], 2)
             self.assertTrue(all(view["hidden_measured"] for view in candidate.response["views"]))
             self.assertNotIn("svg", candidate.response)
+
+    def prepared_candidate(self):
+        with self.app.workspace(self.head) as workspace:
+            before = workspace.l1_text()
+            candidate = drawing.prepare_drawing(workspace, {"definition": self.spec, "model_version": 2})
+            self.assertEqual(workspace.l1_text(), before)
+            self.assertTrue(callable(getattr(candidate, "verify_integrity", None)),
+                            "Gateway requires every candidate to expose its verifier")
+            candidate.verify_integrity()
+            return candidate
+
+    def assert_changed(self, candidate):
+        with self.assertRaises(drawing.DrawingWebError) as caught:
+            candidate.verify_integrity()
+        self.assertEqual(caught.exception.code, "candidate_changed")
+
+    def test_candidate_real_prepare_and_replace_preserve_seal(self):
+        candidate = self.prepared_candidate()
+        cloned = replace(candidate)
+        self.assertIs(cloned._creation_seal, candidate._creation_seal)
+        cloned.verify_integrity()
+        response = candidate.response
+        response["model_version"] = 99
+        candidate.verify_integrity()
+        self.assertEqual(candidate.response["model_version"], 2)
+
+    def test_candidate_doc_response_and_base_mutations_rejected(self):
+        candidate = self.prepared_candidate()
+        changed_doc = json.loads(candidate.doc)
+        changed_doc["meta"]["title_key"] = "changed-after-measurement"
+        changed_response = candidate.response
+        changed_response["dimensions"][0]["value_nm"] += 1
+        for mutated in (
+                replace(candidate, doc=docmodel.document_to_l1(changed_doc)),
+                replace(candidate, response_text=drawing.core().canonical(changed_response)),
+                replace(candidate, before_document_sha256="0" * 64),
+                replace(candidate, response_text=candidate.response_text + " "),
+                replace(candidate, doc=candidate.doc + " "),
+                replace(candidate, response_text="{}"),
+                replace(candidate, response_text='{"notfinite":NaN}'),
+                replace(candidate, doc="\ud800")):
+            with self.subTest(doc=mutated.doc == candidate.doc):
+                self.assertIs(mutated._creation_seal, candidate._creation_seal)
+                self.assert_changed(mutated)
+
+    def test_candidate_coherent_replacement_cannot_reseal(self):
+        candidate = self.prepared_candidate()
+        changed_doc = json.loads(candidate.doc)
+        changed_doc["meta"]["title_key"] = "coherent-but-unmeasured"
+        text = docmodel.document_to_l1(changed_doc)
+        response = candidate.response
+        response["source_document_sha256"] = digest(text)
+        mutated = replace(candidate, doc=text, response_text=drawing.core().canonical(response))
+        self.assertIs(mutated._creation_seal, candidate._creation_seal)
+        self.assert_changed(mutated)
+
+    def test_candidate_document_response_sha_binding_required(self):
+        candidate = self.prepared_candidate()
+        response = candidate.response
+        response["source_document_sha256"] = "0" * 64
+        with self.assertRaises(drawing.DrawingWebError) as caught:
+            drawing.DrawingCandidate(candidate.before_document_sha256, candidate.doc,
+                                     drawing.core().canonical(response))
+        self.assertEqual(caught.exception.code, "candidate_changed")
+
+    def test_validate_document_schema_without_geometry_or_mutation(self):
+        self.assertTrue(callable(getattr(drawing, "validate_document", None)))
+        candidate = self.prepared_candidate()
+        document = docmodel.document_from_l1(candidate.doc)
+        before = docmodel.document_to_l1(document)
+        paths = set(self.out.rglob("*"))
+        self.assertEqual(drawing.validate_document(document), self.spec)
+        self.assertEqual(drawing.validate_document(json.loads(candidate.doc)), self.spec)
+        self.assertIsNone(drawing.validate_document(self.source_doc))
+        self.assertEqual(docmodel.document_to_l1(document), before)
+        candidate.verify_integrity()
+        self.assertEqual(set(self.out.rglob("*")), paths, "Schema/verifier must not launch geometry")
+
+    def test_validate_document_malformed_metadata_fails_loud(self):
+        self.assertTrue(callable(getattr(drawing, "validate_document", None)))
+        candidate = self.prepared_candidate()
+        original = json.loads(candidate.doc)
+        corruptions = (None, {}, {**original[drawing.KEY], "schema": "unsupported/2"},
+                       {**original[drawing.KEY], "extra": True},
+                       {**original[drawing.KEY], "definition_sha256": "0" * 64},
+                       {**original[drawing.KEY], "definition_sha256": 1},
+                       {**original[drawing.KEY], "definition": {"views": ["fake"]}})
+        for raw in corruptions:
+            value = {**original, drawing.KEY: raw}
+            before = docmodel.document_to_l1(value)
+            with self.subTest(raw=raw), self.assertRaises(drawing.DrawingWebError) as caught:
+                drawing.validate_document(value)
+            self.assertEqual(caught.exception.code, "bad_drawing_definition")
+            self.assertEqual(docmodel.document_to_l1(value), before)
+
+    def test_candidate_and_schema_failures_preserve_first_cause(self):
+        candidate = self.prepared_candidate()
+        response = candidate.response
+        response["source_document_sha256"] = "0" * 64
+        with self.assertRaises(drawing.DrawingWebError) as caught:
+            drawing.DrawingCandidate(candidate.before_document_sha256, candidate.doc,
+                                     drawing.core().canonical(response))
+        self.assertEqual(caught.exception.code, "candidate_changed")
+        self.assertIn(str(caught.exception.__cause__), caught.exception.detail)
+        self.assertIn("source_document_sha256", caught.exception.detail)
+        payload = json.loads(candidate.doc)
+        payload[drawing.KEY]["definition"]["sections"][0]["axis"] = "invalid"
+        with self.assertRaises(drawing.DrawingWebError) as caught:
+            drawing.validate_document(payload)
+        self.assertEqual(caught.exception.code, "bad_drawing_definition")
+        self.assertIsInstance(caught.exception.__cause__, CadError)
+        self.assertIn(str(caught.exception.__cause__), caught.exception.detail)
+        self.assertIn(drawing.KEY + ".definition", caught.exception.detail)
+        self.assertIn("section axis must be x/y/z", caught.exception.detail)
+        with self.assertRaises(drawing.DrawingWebError) as caught:
+            drawing.DrawingCandidate("not-a-sha", candidate.doc, candidate.response_text)
+        self.assertIn("before_document_sha256", caught.exception.detail)
+
+    def test_candidate_types_and_size_rejected_before_digest_encoding(self):
+        class OversizedText(str):
+            def encode(self, *args, **kwargs):
+                raise AssertionError("Oversized text must be refused before encoding")
+
+        oversized = OversizedText("x" * (drawing.MAX_CANDIDATE_BYTES + 1))
+        for field in ("doc", "response_text"):
+            args = {"base": "0" * 64, "doc": "{}", "response_text": "{}"}
+            args[field] = oversized
+            with self.assertRaises(ValueError) as caught:
+                drawing._candidate_digest(**args)
+            self.assertIn(field, str(caught.exception))
+            self.assertIn("byte limit", str(caught.exception))
+        for field, value in (("base", None), ("doc", {}), ("response_text", [])):
+            args = {"base": "0" * 64, "doc": "{}", "response_text": "{}"}
+            args[field] = value
+            with self.assertRaises(ValueError):
+                drawing._candidate_digest(**args)
+        multibyte = "\u00e9" * (drawing.MAX_CANDIDATE_BYTES // 2 + 1)
+        with self.assertRaises(ValueError):
+            drawing._candidate_digest("0" * 64, multibyte, "{}")
+
+    def test_schema_expected_errors_preserve_cause_and_unexpected_errors_propagate(self):
+        class PayloadFailure:
+            def __init__(self, error):
+                self.error = error
+
+            def as_dict(self):
+                raise self.error
+
+        expected = (CadError, drawing.DrawingWebError, ValueError, TypeError,
+                    UnicodeError, OverflowError, RecursionError, AttributeError)
+        for error_type in expected:
+            error = (error_type("schema_probe", "controlled schema failure")
+                     if error_type is drawing.DrawingWebError
+                     else error_type("controlled schema failure"))
+            with self.assertRaises(drawing.DrawingWebError) as caught:
+                drawing.validate_document({"probe": PayloadFailure(error)})
+            self.assertEqual(caught.exception.code, "bad_drawing_definition")
+            self.assertIs(caught.exception.__cause__, error)
+            self.assertIn(str(error), caught.exception.detail)
+        for error_type in (RuntimeError, AssertionError, KeyboardInterrupt, SystemExit):
+            error = error_type("unexpected schema failure")
+            with self.assertRaises(error_type) as caught:
+                drawing.validate_document({"probe": PayloadFailure(error)})
+            self.assertIs(caught.exception, error)
+
+    def test_candidate_unexpected_errors_and_interrupts_propagate(self):
+        candidate = self.prepared_candidate()
+
+        class EncodingFailure(str):
+            def encode(self, *args, **kwargs):
+                raise self.error
+
+        for error_type in (RuntimeError, AssertionError, KeyboardInterrupt, SystemExit):
+            text = EncodingFailure(candidate.doc)
+            text.error = error_type("unexpected candidate failure")
+            with self.assertRaises(error_type) as caught:
+                replace(candidate, doc=text).verify_integrity()
+            self.assertIs(caught.exception, text.error)
+            with self.assertRaises(error_type) as caught:
+                drawing.DrawingCandidate(candidate.before_document_sha256,
+                                         text, candidate.response_text)
+            self.assertIs(caught.exception, text.error)
+
+    def test_validate_document_accepts_normalized_default_spec(self):
+        spec = drawing.core().normalized_spec({})
+        payload = json.loads(docmodel.document_to_l1(self.source_doc))
+        payload[drawing.KEY] = {
+            "schema": drawing.SCHEMA, "definition": spec,
+            "definition_sha256": digest(drawing.core().canonical(spec))}
+        before = docmodel.document_to_l1(payload)
+        paths = set(self.out.rglob("*"))
+        self.assertEqual(drawing.validate_document(payload), spec)
+        self.assertEqual(drawing.validate_document(docmodel.document_from_l1(before)), spec)
+        self.assertEqual(docmodel.document_to_l1(payload), before)
+        self.assertEqual(set(self.out.rglob("*")), paths)
 
     def test_real_http_save_read_cas_and_model_binding(self):
         status, saved, _ = self.save()
@@ -510,6 +709,11 @@ class IndustrialDrawingTests(unittest.TestCase):
 
     def test_browser_rejects_svg_mutation_and_mismatched_export(self):
         self.assertEqual(self.save()[0], 200)
+        with urllib.request.urlopen(urllib.request.Request(
+                self.base + "/api/drawing/svg",
+                headers={"Authorization": "Bearer drawing-isolated-fixture"}), timeout=30) as response:
+            expected_export = response.read()
+        self.assertIn(b'data-layer="SECTION"', expected_export)
         helper = load("drawing_mutation_browser_helper",
                       ROOT / "oss-alternatives/tools/cad3d/viewer_controls_check.py")
         with self.browser(helper, 1440) as browser:
@@ -520,13 +724,21 @@ class IndustrialDrawingTests(unittest.TestCase):
                          "!document.querySelector('.drawing-panel').matches('[aria-busy=true]')")
             browser.click('[data-drawing-export="svg"]')
             browser.wait("document.querySelector('.drawing-panel-status').textContent.includes('已下载')")
+            download = self.out / "drawing.svg"
             deadline = time.monotonic() + 10
-            while not (self.out / "drawing.svg").exists():
+            # Chromium creates the destination before its asynchronous write finishes.
+            while not download.exists() or download.stat().st_size < len(expected_export):
                 if time.monotonic() >= deadline:
-                    self.fail("Actual same-version SVG download is missing")
+                    self.fail("Actual same-version SVG download is missing or incomplete")
                 time.sleep(.1)
-            exported = (self.out / "drawing.svg").read_bytes()
+            exported = download.read_bytes()
+            self.assertEqual(exported, expected_export)
             self.assertIn(b'data-layer="SECTION"', exported)
+            (self.out / "download-readback.json").write_text(json.dumps({
+                "expected_bytes": len(expected_export), "actual_bytes": len(exported),
+                "expected_sha256": hashlib.sha256(expected_export).hexdigest(),
+                "actual_sha256": hashlib.sha256(exported).hexdigest(),
+                "verdict": "PASS"}, indent=2) + "\n")
             self.app.export_mutation = True
             browser.click('[data-drawing-export="svg"]')
             browser.wait("document.querySelector('.drawing-panel-status').textContent.includes('已拒绝下载')")
