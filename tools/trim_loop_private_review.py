@@ -29,6 +29,7 @@ import subprocess
 import sys
 import time
 import traceback
+from types import SimpleNamespace
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +48,18 @@ def stamp():
 
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def reject_constant(value):
+    raise ValueError("Nonfinite JSON constant: " + value)
+
+
+def read_json(path):
+    return json.loads(path.read_bytes(), parse_constant=reject_constant)
+
+
+def finite_positive(value):
+    return type(value) in (int, float) and math.isfinite(value) and value > 0
 
 
 def sha(value):
@@ -99,6 +112,8 @@ def frozen(binding, expected):
 
 def external(path, source, *, local=False):
     path = path.absolute()
+    if ".." in path.parts:
+        raise ValueError("External path contains parent traversal")
     known_alias = Path("/hf3fs-jd")
     if known_alias.is_symlink() and known_alias.resolve() != Path("/3fs/research3fs"):
         raise ValueError("Authorized 3FS alias changed")
@@ -264,7 +279,7 @@ class HTTP:
                 (self.review.out / ("http-%03d.json" % len(self.review.report["http_requests"]))).write_bytes(raw)
             self.review.check(label + "/response-bounded", len(raw) <= 32 * 1024 * 1024)
             content_type = response.getheader("Content-Type", "").split(";")[0]
-            data = json.loads(raw) if content_type == "application/json" else raw
+            data = json.loads(raw, parse_constant=reject_constant) if content_type == "application/json" else raw
             return response.status, response_headers, data, raw
         finally:
             connection.close()
@@ -345,7 +360,13 @@ def mesh_measure(mesh):
 
 
 def measured_contract(result, signature, *, area=None, volume=None):
+    if area is not None and not finite_positive(area):
+        raise AssertionError("Nonfinite/nonpositive expected area")
+    if volume is not None and not finite_positive(volume):
+        raise AssertionError("Nonfinite/nonpositive expected volume")
     for item in [result["properties"], result["roundtrip"]["brep"], result["roundtrip"]["step"]]:
+        if not finite_positive(item["area_mm2"]):
+            raise AssertionError("Nonfinite/nonpositive BRep/STEP area")
         if (item["valid"] is not True or sorted(f["inner_wire_count"] for f in item["faces"]) != signature
                 or not all(f["wires_closed"] for f in item["faces"])
                 or item["face_count"] != len(signature)):
@@ -354,6 +375,7 @@ def measured_contract(result, signature, *, area=None, volume=None):
             if item["solid_count"] != 0 or item["volume_mm3"] is not None:
                 raise AssertionError("Open surface falsely reported as solid")
         elif (item["solid_count"] != 1 or item["closed"] is not True
+              or not finite_positive(item["volume_mm3"])
               or abs(item["volume_mm3"] - volume) > 1e-6):
             raise AssertionError("Closed BRep/STEP analytic volume mismatch")
         if area is not None and abs(item["area_mm2"] - area) > 1e-6:
@@ -376,6 +398,167 @@ def version_contract(response, state, head):
             raise AssertionError("Cross-project/version/snapshot response")
     if response["document_sha256"] != sha(state["doc"]):
         raise AssertionError("Response/document version mismatch")
+
+
+def suite_contract(saved):
+    """A partial or originally failed execution cannot become accepted readback."""
+    if (saved.get("verdict") != "PASS" or saved.get("rc") != 0
+            or saved.get("acceptance") != "REAL_HTTP_DB_BREP_STEP"
+            or not saved.get("finished_at") or saved.get("first_cause")
+            or saved.get("source_drift") is not False):
+        raise AssertionError("Original suite is failed, incomplete or not real acceptance")
+    checks = saved["checks"]
+    readback = saved["readback"]
+    actual = {"checks": len(checks), "passed": sum(item["passed"] is True for item in checks),
+              "failed": sum(item["passed"] is not True for item in checks),
+              "http_requests": len(saved["http_requests"]),
+              "readback_checks": len(readback["checks"]),
+              "readback_passed": sum(item["passed"] is True for item in readback["checks"])}
+    if (not checks or not readback["checks"] or not saved["http_requests"]
+            or actual != saved["counts"] or actual["failed"] != 0
+            or actual["readback_checks"] != actual["readback_passed"] or readback["ok"] is not True):
+        raise AssertionError("Saved counts disagree, are empty or contain failed checks")
+    if (len(saved["cli_processes"]) != 2 or any(
+            process.get("rc") != 0 or process.get("shutdown_error") or not process.get("ready_at")
+            for process in saved["cli_processes"])
+            or saved["readback_execution"] != {"rc": 0, "rc_measured": True}):
+        raise AssertionError("Original CLI/readback did not terminate successfully")
+    return actual
+
+
+def verify_saved(source, evidence, review):
+    """Read existing logs, HTTP receipts, local DB and artifacts; never rerun them."""
+    evidence = external(evidence, source).resolve(strict=True)
+    saved = read_json(evidence / "result.json")
+    counts = suite_contract(saved)
+    review.report.update(original_result=str(evidence / "result.json"),
+                         original_result_sha256=sha((evidence / "result.json").read_bytes()),
+                         original_finished_at=saved["finished_at"], original_counts=counts)
+    review.check("readback/original-terminal-suite", True, counts=counts)
+    before, after = saved["source_before"], saved["source_after"]
+    if Path(before["root"]).resolve() != source or before["manifest"] != after["manifest"]:
+        raise AssertionError("Original source root/drift mismatch")
+    if any(sha(canonical(item["manifest"])) != item["sha256"] for item in (before, after)):
+        raise AssertionError("Original manifest digest mismatch")
+    current = source_binding(source)
+    owned = {"tools/trim_loop_private_review.py", "docs/design/trim-loop-private-review.md"}
+    old_product = {key: value for key, value in before["manifest"].items() if key not in owned}
+    new_product = {key: value for key, value in current["manifest"].items() if key not in owned}
+    review.check("readback/current-product-byte-path-mode-binding", old_product == new_product,
+                 original_sha=before["sha256"], current_sha=current["sha256"],
+                 allowed_tool_document_changes=sorted(owned))
+
+    def bound_file(path):
+        path = Path(path)
+        resolved = path.resolve(strict=True)
+        if not resolved.is_relative_to(evidence):
+            raise AssertionError("Foreign evidence artifact: " + str(path))
+        if any(part.is_symlink() for part in (path, *path.parents)
+               if part.is_relative_to(evidence)):
+            raise AssertionError("Linked evidence artifact: " + str(path))
+        if not resolved.is_file():
+            raise AssertionError("Nonregular evidence artifact: " + str(path))
+        return resolved
+
+    for process in saved["cli_processes"]:
+        log = bound_file(process["log"])
+        text = log.read_text()
+        port = process["argv"][process["argv"].index("--port") + 1]
+        review.check("readback/cli-log-" + process["label"],
+                     sha(log.read_bytes()) == process["log_sha256"]
+                     and "OPENCAD_PRIVATE_WEB verdict=READY port=" + port in text
+                     and str(source / APP_REL / "secure_web.py") in process["argv"])
+    runtime = external(Path(saved["runtime_root"]), source, local=True).resolve(strict=True)
+    store = SimpleNamespace(db_path=runtime / "projects/projects.sqlite3")
+    review.check("readback/final-complete-project-db", db_anchor(store) == saved["final_db"])
+    with sqlite3.connect(store.db_path.as_uri() + "?mode=ro", uri=True) as connection:
+        connection.execute("BEGIN")
+        for index, request in enumerate(saved["http_requests"], 1):
+            if request["route"] == "/api/auth/login":
+                review.check("readback/login-not-recorded-%s" % index,
+                             "body" not in request and "response_sha256" not in request
+                             and not (evidence / ("http-%03d.json" % index)).exists())
+                continue
+            path = bound_file(evidence / ("http-%03d.json" % index))
+            raw = path.read_bytes()
+            review.check("readback/http-reply-%s" % index,
+                         len(raw) == request["bytes"] and sha(raw) == request["response_sha256"])
+            if request["method"] == "POST" and request["status"] == 200 and request["body"].get("request_id"):
+                row = connection.execute(
+                    "SELECT r.request_payload,r.request_sha256,r.response,r.response_sha256,"
+                    "r.revision,s.sha256 FROM receipts r JOIN snapshots s "
+                    "ON r.project_id=s.project_id AND r.revision=s.revision "
+                    "WHERE r.project_id=? AND r.request_id=?",
+                    (request["project_id"], request["body"]["request_id"])).fetchone()
+                if row is None:
+                    raise AssertionError("Acknowledged HTTP mutation has no durable receipt")
+                payload, payload_sha, response_text, response_sha, revision, snapshot_sha = row
+                response = json.loads(response_text, parse_constant=reject_constant)
+                actual = json.loads(raw, parse_constant=reject_constant)
+                review.check("readback/http-durable-receipt-%s" % index,
+                             payload == canonical({**request["body"], "route": request["route"]})
+                             and sha(payload) == payload_sha and sha(response_text) == response_sha
+                             and actual == {**response, "project_id": request["project_id"],
+                                            "revision": revision, "sha256": snapshot_sha})
+        head = saved["final_head"]
+        row = connection.execute(
+            "SELECT p.head_revision,s.sha256,s.payload FROM projects p JOIN snapshots s "
+            "ON p.project_id=s.project_id AND p.head_revision=s.revision WHERE p.project_id=?",
+            (head["project_id"],)).fetchone()
+        review.check("readback/head-canonical-snapshot", row is not None
+                     and row[0] == head["revision"] and row[1] == head["sha256"]
+                     and sha(row[2]) == row[1]
+                     and json.loads(row[2], parse_constant=reject_constant) == head["snapshot"])
+    requests = {item["name"]: (index, item) for index, item in enumerate(saved["http_requests"], 1)}
+    for measurement in saved["measurements"]:
+        index, request = requests[measurement["name"]]
+        response = read_json(evidence / ("http-%03d.json" % index))
+        state_index, _ = requests[measurement["name"] + "/state"]
+        state = read_json(evidence / ("http-%03d.json" % state_index))
+        version_contract(response, state, measurement["version"])
+        properties = response["result"]["properties"]
+        signature = sorted(item["inner_wire_count"] for item in properties["faces"])
+        area = 50 if properties["solid_count"] == 0 else None
+        volume = 100 if properties["solid_count"] == 1 else None
+        mesh = measured_contract(response["result"], signature, area=area, volume=volume)
+        review.check("readback/http-measured-version-" + measurement["name"],
+                     mesh == measurement["mesh"]
+                     and response["result"]["roundtrip"] == measurement["roundtrip"])
+    inputs = read_json(evidence / "readback-input.json")
+    saved_readback = read_json(evidence / "readback.json")
+    review.check("readback/independent-result-exact",
+                 saved_readback == saved["readback"] and len(inputs) == 4
+                 and (evidence / "readback.py").read_text() == READBACK
+                 and saved_readback["ok"] is True
+                 and all(item["passed"] is True for item in saved_readback["checks"]),
+                 stdout_marker_required=False,
+                 terminal_evidence="original measured rc plus completed readback JSON")
+    shape_map = {shape["name"]: shape for shape in saved_readback["shapes"]}
+    for fixture in inputs:
+        measured_contract(fixture["result"], fixture["signature"],
+                          area=fixture["area"], volume=fixture["volume"])
+        execution = fixture["result"]["execution"]
+        job = bound_file(Path(execution["job_dir"]) / "execution.json")
+        review.check("readback/real-worker-execution-" + fixture["name"],
+                     read_json(job) == execution and execution["rc"] == 0 and execution["rc_measured"] is True
+                     and execution["sources_before"] == execution["sources_after"]
+                     and all(str(source) in name and before["manifest"][
+                         Path(name).relative_to(source).as_posix()]["sha256"] == digest
+                             for name, digest in execution["sources_before"].items()))
+        for fmt in ("brep", "step"):
+            artifact = fixture["result"]["artifacts"][fmt]
+            path = bound_file(artifact["path"])
+            shape = shape_map[fixture["name"] + "/" + fmt]
+            review.check("readback/artifact-and-version-" + fixture["name"] + "/" + fmt,
+                         sha(path.read_bytes()) == artifact["sha256"] and path.stat().st_size == artifact["bytes"]
+                         and shape["gateway_version"] == fixture["gateway_version"]
+                         and shape["hole_signature"] == fixture["signature"]
+                         and len(shape["witnesses"]) == len(fixture["witnesses"])
+                         and all(actual["point_mm"] == point and actual["actual"] is expected
+                                 and actual["expected"] is expected
+                                 for actual, (point, expected) in zip(shape["witnesses"], fixture["witnesses"])))
+    review.report["verified_geometry"] = saved_readback["shapes"]
+    review.report["acceptance"] = "EVIDENCE_VERIFIED_ONLY_NO_HTTP_OR_WORKER_RERUN"
 
 
 READBACK = '''import FreeCAD as App
@@ -753,6 +936,42 @@ class Controls(unittest.TestCase):
                         {"a": {"sha256": "a" * 63 + "b", "bytes": 1}}):
             self.assertNotEqual(baseline, sha(canonical(changed)))
 
+    def test_nonfinite_brep_measurement_is_rejected(self):
+        item = {"valid": True, "solid_count": 0, "volume_mm3": None, "face_count": 1,
+                "faces": [{"inner_wire_count": 2, "wires_closed": True}], "area_mm2": math.nan}
+        result = {"properties": item, "roundtrip": {"brep": item, "step": item},
+                  "mesh": {"vertices_mm": [[0, 0, 0], [10, 0, 0], [0, 10, 0]],
+                           "triangles": [[0, 1, 2]]},
+                  "artifacts": {fmt: {"sha256": "a" * 64, "bytes": 12} for fmt in ("brep", "step")}}
+        with self.assertRaises(AssertionError):
+            measured_contract(result, [2], area=50)
+
+    def test_nonfinite_json_and_expected_values(self):
+        for value in ("NaN", "Infinity", "-Infinity"):
+            with self.assertRaises(ValueError):
+                json.loads('{"value":' + value + "}", parse_constant=reject_constant)
+        for value in (math.nan, math.inf, -math.inf, True, None, 0, -1):
+            self.assertFalse(finite_positive(value))
+        self.assertTrue(finite_positive(50))
+
+    def test_failed_partial_suite_never_promoted(self):
+        sample = {"verdict": "PASS", "rc": 0, "acceptance": "REAL_HTTP_DB_BREP_STEP",
+                  "finished_at": stamp(), "source_drift": False,
+                  "checks": [{"passed": True}], "http_requests": [{"status": 200}],
+                  "readback": {"ok": True, "checks": [{"passed": True}]},
+                  "counts": {"checks": 1, "passed": 1, "failed": 0, "http_requests": 1,
+                             "readback_checks": 1, "readback_passed": 1},
+                  "cli_processes": [{"rc": 0, "ready_at": stamp()} for i in range(2)],
+                  "readback_execution": {"rc": 0, "rc_measured": True}}
+        suite_contract(sample)
+        for key, value in (("verdict", "FAIL"), ("rc", 1), ("finished_at", None),
+                           ("checks", []), ("first_cause", "original failure"),
+                           ("acceptance", "PREFLIGHT_ONLY"), ("source_drift", True),
+                           ("counts", {**sample["counts"], "passed": 2}),
+                           ("cli_processes", [{"rc": -9, "ready_at": stamp()}])):
+            with self.assertRaises(AssertionError):
+                suite_contract({**sample, key: value})
+
     def test_analytic_fixture_not_rectangle(self):
         self.assertAlmostEqual(analytic_area(polygon_recipe()), 50)
         self.assertNotEqual(analytic_area(polygon_recipe()), 64)
@@ -761,7 +980,7 @@ class Controls(unittest.TestCase):
         external(Path("/data/tmp/trim-private-control"), ROOT, local=True)
         external(Path("/hf3fs-jd/data/tmp/trim-private-control"), ROOT)
         for path, local in ((ROOT / "runtime", True), (Path("/hf3fs-jd/data/tmp/runtime"), True),
-                            (Path("/data/tmp/evidence"), False)):
+                            (Path("/data/tmp/evidence"), False), (Path("/data/tmp/../dev"), True)):
             with self.assertRaises(ValueError):
                 external(path, ROOT, local=local)
 
@@ -774,6 +993,7 @@ def main():
     parser.add_argument("--expect-source-sha")
     parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--selftest", action="store_true")
+    parser.add_argument("--verify-result", type=Path, help="read an existing evidence directory; no HTTP/worker rerun")
     args = parser.parse_args()
     source = args.source_root.resolve(strict=True)
     parent = external(args.out, source)
@@ -804,6 +1024,9 @@ def main():
             if not result.wasSuccessful() or not result.testsRun:
                 raise AssertionError("Review validator selftest failed")
             report["verdict"], report["acceptance"] = "PASS", "SELFTEST_ONLY"
+        elif args.verify_result:
+            verify_saved(source, args.verify_result, review)
+            report["verdict"] = "PASS"
         elif args.preflight:
             report["verdict"], report["acceptance"] = "PASS", "PREFLIGHT_ONLY"
         else:

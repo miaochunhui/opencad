@@ -34,6 +34,29 @@ runtime: the new review's initial path guard incorrectly rejected the authorized
 admitted; links below it and local-runtime links remain rejected. This was a
 review-tool failure, not a product test result, and is not reclassified as PASS.
 
+`--verify-result EXISTING_EVIDENCE_DIR --out FRESH_PARENT` verifies an existing
+terminal suite without another HTTP request, worker build or database write.
+It checks saved counts/CLI exits, complete local project tables, actual durable
+HTTP receipts, versioned measurements, worker execution records, BRep/STEP
+bytes/hashes and readback hole witnesses. The original verdict remains immutable;
+failed, partial, empty and preflight-only results cannot become accepted.
+Only changes to this tool and its design document are permitted when comparing
+the old source with the current executor. Product byte/path/mode drift fails.
+
+The nonfinite-measurement adversarial selftest initially failed at
+`opencad-trim-loop-private-nonfinite-before-20261012-v1/20261011T184050121610Z-413a5786`:
+8 tests, 1 failure, original rc=1. An injected NaN area escaped the review's
+numeric error comparison. Explicit finite positive BRep/STEP measurement and
+expected-value guards now reject it; nonfinite JSON constants also fail loudly.
+The existing real baseline contained finite measurements and is not rewritten.
+
+First evidence-only readback retained rc=1 with 67 passed/1 failed checks in
+`opencad-trim-loop-private-readback-20261012-v1/20261011T184323926458Z-11e9cdfb`.
+The tool incorrectly required the Python print marker in FreeCAD stdout,
+which contains only the FreeCAD banner on this backend. The correction uses the
+original measured process exit and exact completed result JSON with all
+readback checks, not a stdout banner or assumed process success.
+
 ## Actual Contract
 
 POST `/api/surfaces` uses `recipe` plus `expected_revision`, `expected_sha`
