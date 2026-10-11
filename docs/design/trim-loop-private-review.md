@@ -72,6 +72,21 @@ Immutable pre-versioned evidence is admitted only for the two recorded legacy
 tool SHA256 values in `LEGACY_TOOLS`, its manifest-bound producer, and the
 recorded legacy READBACK script SHA. It still must satisfy the entire current
 v1 label/order/HTTP/fixture contract. No old result or verdict is rewritten.
+Only an absent `ledger` key selects legacy handling. An explicit `ledger:null`
+is rejected before any version branch, even with a known legacy producer SHA.
+
+Worker execution readback requires exactly the selected source's
+`surfaces.py` and `surfaces_worker.py` absolute paths and manifest SHA256s in
+both `sources_before` and `sources_after`, plus equality to the actual
+`execution.json` and a measured successful exit. Empty, missing, extra and
+wrong-SHA maps fail; mutually matching empty maps are not source evidence.
+The original 18 controls and 1430 ledger mutations are preserved. Added
+controls reject explicit null and independently mutate each worker map.
+With `--selftest-ledger`, all four real fixture results and their actual
+execution records are read, then detached copies are written to fresh
+external child directories. Both copied result and copied `execution.json`
+are co-mutated to empty/missing/extra maps and reread before rejection.
+The twelve copied-file negative controls never edit original evidence or DBs.
 
 The P1 counterexample is retained under
 `opencad-trim-ledger-completeness-20261012-v1/before/20261011T195512493076Z-5e22b1a4`:

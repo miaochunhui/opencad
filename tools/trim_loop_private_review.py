@@ -506,11 +506,12 @@ def exact_names(items, expected, label):
 
 def ledger_contract(saved):
     expected = workflow_ledger()
-    declared = saved.get("ledger")
-    if declared is None:
+    if "ledger" not in saved:
         if saved.get("tool_sha256") not in LEGACY_TOOLS:
             raise AssertionError("Unversioned ledger producer is not a supported immutable legacy tool")
-    elif declared != expected:
+    elif saved["ledger"] is None:
+        raise AssertionError("Explicit null ledger is not an absent legacy ledger")
+    elif saved["ledger"] != expected:
         raise AssertionError("Versioned ledger declaration does not match current producer")
     exact_names(saved["checks"], expected["checks"], "checks")
     exact_names(saved["http_requests"], [item["name"] for item in expected["http_requests"]], "HTTP")
@@ -655,6 +656,21 @@ def suite_counts(saved):
             "readback_passed": sum(item["passed"] is True for item in readback.get("checks", []))}
 
 
+def worker_execution_contract(source, binding, execution, recorded):
+    expected = {}
+    for name in ("surfaces.py", "surfaces_worker.py"):
+        relative = CORE_REL + "/cadcore/kernel/" + name
+        digest = binding["manifest"][relative]["sha256"]
+        if not valid_sha(digest):
+            raise AssertionError("Invalid expected worker source SHA")
+        expected[str(source / relative)] = digest
+    if (recorded != execution or type(execution.get("rc")) is not int
+            or execution["rc"] != 0 or execution.get("rc_measured") is not True
+            or execution.get("sources_before") != expected
+            or execution.get("sources_after") != expected):
+        raise AssertionError("Worker execution exact two-source path/SHA binding mismatch")
+
+
 def verify_saved(source, evidence, review):
     """Read existing logs, HTTP receipts, local DB and artifacts; never rerun them."""
     evidence = external(evidence, source).resolve(strict=True)
@@ -790,12 +806,8 @@ def verify_saved(source, evidence, review):
                           area=fixture["area"], volume=fixture["volume"])
         execution = fixture["result"]["execution"]
         job = bound_file(Path(execution["job_dir"]) / "execution.json")
-        review.check("readback/real-worker-execution-" + fixture["name"],
-                     read_json(job) == execution and execution["rc"] == 0 and execution["rc_measured"] is True
-                     and execution["sources_before"] == execution["sources_after"]
-                     and all(str(source) in name and before["manifest"][
-                         Path(name).relative_to(source).as_posix()]["sha256"] == digest
-                             for name, digest in execution["sources_before"].items()))
+        worker_execution_contract(source, before, execution, read_json(job))
+        review.check("readback/real-worker-execution-" + fixture["name"], True)
         for fmt in ("brep", "step"):
             artifact = fixture["result"]["artifacts"][fmt]
             path = bound_file(artifact["path"])
@@ -898,6 +910,53 @@ def original_ledger_controls(path, review):
         "original_verdict_unchanged": saved["verdict"], "acceptance": "IN_MEMORY_LEDGER_CONTROLS_ONLY"}
     review.check("selftest/original-complete-ledger-and-all-item-mutations", rejected > 0,
                  mutations_rejected=rejected)
+    source = Path(saved["source_before"]["root"])
+    worker_cases = []
+    for fixture in inputs:
+        execution = fixture["result"]["execution"]
+        job = Path(execution["job_dir"]) / "execution.json"
+        worker_execution_contract(source, saved["source_before"], execution, read_json(job))
+        for operation in ("empty", "missing", "extra"):
+            case = review.out / "worker-source-controls" / fixture["name"] / operation
+            case.mkdir(parents=True, exist_ok=False)
+            changed = copy.deepcopy(fixture["result"])
+            mutated = changed["execution"]
+            sources = dict(mutated["sources_before"])
+            if operation == "empty":
+                sources.clear()
+            elif operation == "missing":
+                sources.pop(str(source / CORE_REL / "cadcore/kernel/surfaces_worker.py"))
+            else:
+                sources[str(source / CORE_REL / "cadcore/kernel/foreign.py")] = "a" * 64
+            mutated.update(job_dir=str(case), sources_before=sources, sources_after=copy.deepcopy(sources))
+            write_json(case / "result.json", changed)
+            write_json(case / "execution.json", mutated)
+            reread_result = read_json(case / "result.json")
+            reread_execution = read_json(case / "execution.json")
+            if reread_result["execution"] != reread_execution:
+                raise AssertionError("Worker negative control did not co-mutate both actual files")
+            try:
+                worker_execution_contract(source, saved["source_before"],
+                                          reread_result["execution"], reread_execution)
+            except AssertionError as exc:
+                worker_cases.append({"fixture": fixture["name"], "operation": operation,
+                                     "rejected": True, "first_cause": str(exc),
+                                     "result": str(case / "result.json"),
+                                     "execution": str(case / "execution.json")})
+            else:
+                raise AssertionError("Co-mutated worker evidence accepted: " + str(case))
+    null = copy.deepcopy(saved)
+    null["ledger"] = None
+    try:
+        suite_contract(null)
+    except AssertionError as exc:
+        null_cause = str(exc)
+    else:
+        raise AssertionError("Explicit null original ledger accepted")
+    review.report["worker_source_controls"] = worker_cases
+    review.check("selftest/co-mutated-worker-two-source-negative-controls",
+                 len(worker_cases) == len(inputs) * 3, mutations_rejected=len(worker_cases))
+    review.check("selftest/explicit-null-ledger-rejected", True, first_cause=null_cause)
 
 
 READBACK = '''import FreeCAD as App
@@ -1408,6 +1467,41 @@ class Controls(unittest.TestCase):
             bad["ledger"][key] = "changed"
             with self.assertRaisesRegex(AssertionError, "declaration"):
                 suite_contract(bad)
+
+    def test_explicit_null_ledger_is_never_legacy(self):
+        sample = complete_control_fixture()
+        sample["tool_sha256"] = sorted(LEGACY_TOOLS)[0]
+        sample["ledger"] = None
+        with self.assertRaisesRegex(AssertionError, "Explicit null ledger"):
+            suite_contract(sample)
+
+    def test_worker_exact_two_sources_empty_missing_extra_and_sha(self):
+        source = Path("/data/dev/control")
+        paths = [CORE_REL + "/cadcore/kernel/" + name
+                 for name in ("surfaces.py", "surfaces_worker.py")]
+        binding = {"manifest": {path: {"sha256": str(index + 1) * 64}
+                                for index, path in enumerate(paths)}}
+        sources = {str(source / path): binding["manifest"][path]["sha256"] for path in paths}
+        execution = {"rc": 0, "rc_measured": True,
+                     "sources_before": sources, "sources_after": copy.deepcopy(sources)}
+        worker_execution_contract(source, binding, execution, copy.deepcopy(execution))
+        for field in ("sources_before", "sources_after", "both"):
+            for operation in ("empty", "missing", "extra", "wrong-sha"):
+                with self.subTest(field=field, operation=operation):
+                    bad = copy.deepcopy(execution)
+                    changed = dict(sources)
+                    if operation == "empty":
+                        changed.clear()
+                    elif operation == "missing":
+                        changed.pop(str(source / paths[1]))
+                    elif operation == "extra":
+                        changed[str(source / "foreign.py")] = "a" * 64
+                    else:
+                        changed[str(source / paths[0])] = "a" * 64
+                    for target in (("sources_before", "sources_after") if field == "both" else (field,)):
+                        bad[target] = copy.deepcopy(changed)
+                    with self.assertRaisesRegex(AssertionError, "two-source"):
+                        worker_execution_contract(source, binding, bad, copy.deepcopy(bad))
 
     def test_runtime_head_dirty_and_byte_drift_fail(self):
         sample = complete_control_fixture()
