@@ -180,3 +180,39 @@ Run `python3 -B tools/test_github_api_sync.py --out NEW_EXTERNAL_DIRECTORY`.
 The original v1 test fixture incorrectly deleted required LICENSE and hit the
 earlier source-integrity guard; its failed result remains preserved. Synthetic
 API tests are not live GitHub upload or production acceptance.
+
+## Frozen Release And Recovered Synchronization
+
+The private Web integration is locally committed at `9a62904` and its
+frozen-source full regression completed on 2026-10-12 at 00:38:43
+Asia/Shanghai: 2292 passed, 13 original skips, zero failures/errors/source
+drift and 15 HTTP checks. Browser, RTX correctness and Git-archive reviews
+also completed; none certifies production readiness or industrial parity.
+
+The first attempt did not push. At 00:36:09 all three main refs
+were read as `1c67344`, with a successful read-only synchronization plan.
+The actual synchronization at 00:43:51 failed before mutation: GitLab
+ref query returned 128/public-key rejection, with zero push/API writes.
+Read-only checks found r640-61 booted at 00:42:11 and its GitLab supervisor
+inactive, all eight GitLab services without runsv, and HTTP port 80 refusing
+connections. The reboot requester, missing startup cause and relationship
+to SSH rejection remain unconfirmed; no service or key was changed here.
+
+GitLab subsequently recovered externally: supervisor startup is recorded
+at 00:53:39, and later read-only checks obtained HTTP readiness 200, eight
+running services and successful repository reads through the unchanged key.
+A new plan passed at 01:01:56. The explicit recovered synchronization
+completed at 01:04:04 with original exit 0: actual GitLab/Gitee pushes
+succeeded, and GitHub accepted the exact existing Git objects before the
+non-forced main update. All three main refs were independently read as
+`9a62904` at 01:04:01-01:04:03. Evidence is under
+`/hf3fs-jd/data/tmp/opencad-private-release-recovered-sync-20261012-v1/`.
+The earlier failure remains retained; this is not an automatic mirror or
+global multi-service atomicity.
+
+Keep primary-first ordering for future commits. See
+`docs/handoff/20261012-release-verification.md` for evidence, remaining
+boundaries and recovery entries. This documentation-only continuation is
+not part of the frozen full-regression source snapshot. The primary local
+working tree still retains its nine original untracked assets; it has not
+been merged over them or advanced to the published release.
