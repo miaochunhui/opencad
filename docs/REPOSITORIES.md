@@ -1,5 +1,35 @@
 # OpenCAD Repository Roles
 
+## Current Verified State
+
+On 2026-10-12 at 03:06:12-03:06:14 Asia/Shanghai, GitLab, Gitee
+and GitHub independently returned
+`a43ecef01023efa7abaaeb3888f88ac17f5902ac` for `refs/heads/main`.
+The explicit synchronization completed at 03:06:15 with original process
+exit 0, `SYNCED/PASS` and 809 reachable objects scanned. Evidence is under
+`/hf3fs-jd/data/tmp/opencad-recovery-three-repo-sync-20261012-v1/`.
+This supersedes the older snapshots below, not their retained failures.
+
+GitLab `infra/opencad` remains primary; local `origin` points to its
+existing internal SSH endpoint. Gitee and GitHub are code copies. Gitee's
+historical default `master` is not current Web CAD code; use `main`.
+This task does not install automatic mirroring or change service deployment.
+
+The clean publication tree is
+`/data/dev/wt-opencad-industrial-reliability-release-20261012`.
+The original `/data/dev/opencad` workspace retains nine untracked assets;
+its local main has deliberately not been advanced over those files.
+Do not use a forced checkout or remove those assets to update it.
+
+The preceding product snapshot `67e0562` passed 2341 tests:
+2328 passed, 13 original skips, zero failures/errors, plus 15 HTTP checks.
+The newly committed recovery tool passed 49 separate tests with no skips,
+errors or source drift; independent review and source/log hashes agree.
+Its three files do not change product runtime bytes. These separate
+acceptances must not be described as a new whole-tree test run or as
+production/industrial parity. See
+`docs/handoff/20261012-primary-repository-sync.md` for the current boundary.
+
 The primary is r640HA GitLab, `infra/opencad`. Gitee
 `sdfwefqaa/opencad` and GitHub `miaochunhui/opencad` are one-way code
 copies, not independent development authorities. These roles follow the user's
