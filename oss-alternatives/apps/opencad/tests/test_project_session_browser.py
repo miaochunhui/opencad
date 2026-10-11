@@ -3,7 +3,9 @@
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
+import socket
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -158,6 +160,76 @@ class IdentityEvidenceTests(unittest.TestCase):
             "bytes": path.stat().st_size}
         with self.assertRaisesRegex(AssertionError, "download_witness_mismatch"):
             self.verify()
+
+class BrowserSocketPreflightTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="identity-preflight-")
+        self.out = Path(self.temp.name)
+        self.addCleanup(self.temp.cleanup)
+
+    def test_actual_failed_runtime_rejected_with_coordinate(self):
+        runtime = Path("/data/tmp/opencad-surface-private-release-browser-20261012-v1")
+        with self.assertRaisesRegex(AssertionError, "owned_browser_socket_path_too_long"):
+            REVIEW.browser_socket_preflight(runtime / "profiles/b-XXXXXXXX", self.out)
+        record = json.loads((self.out / "browser-preflight.json").read_text())
+        self.assertFalse(record["pass"])
+        self.assertGreater(record["path_bytes"], 107)
+        self.assertIn(str(runtime), record["socket_path_template"])
+
+    def test_requested_short_runtime_passes(self):
+        record = REVIEW.browser_socket_preflight(
+            Path("/data/tmp/oc-spr-bi-1012-v2/profiles/b-XXXXXXXX"), self.out)
+        self.assertTrue(record["pass"])
+        self.assertLessEqual(record["path_bytes"], 107)
+
+    def test_long_runtime_terminal_fail_does_not_launch_cli_or_browser(self):
+        with tempfile.TemporaryDirectory(prefix="oc-bi-", dir="/data/tmp") as directory:
+            runtime = Path(directory) / ("long-runtime-" * 9)
+            out = self.out / "producer"
+            args = REVIEW.argparse.Namespace(source_root=ROOT, out=out,
+                                             runtime_root=runtime, browser="must-not-launch")
+            frozen = {"head": "synthetic", "files": {}, "status": []}
+            with patch.object(REVIEW, "source", return_value=frozen), \
+                    patch.object(REVIEW.Review, "run") as run:
+                self.assertEqual(REVIEW.acceptance(args), 1)
+                run.assert_not_called()
+            report = json.loads((out / "result.json").read_text())
+            self.assertEqual(report["verdict"], "FAIL")
+            self.assertEqual(report["original_rc"], 1)
+            self.assertEqual(report["checks"], [])
+            self.assertEqual(report["cli"], {})
+            self.assertTrue(report["first_cause"].startswith("owned_browser_socket_path_too_long"))
+            self.assertIn("owned_browser_socket_path_too_long", (out / "failure.log").read_text())
+            self.assertEqual((out / "completion.log").read_text(),
+                             f"{REVIEW.MARKER} verdict=FAIL checks=0 rc=1\n")
+            self.assertIn("browser-preflight.json", report["artifacts"])
+
+    def test_exact_boundary_and_encoded_bytes(self):
+        suffix = "/org.chromium.Chromium.XXXXXX/SingletonSocket"
+        profile = "/" + "x" * (107 - len(suffix) - 1)
+        self.assertTrue(REVIEW.browser_socket_preflight(Path(profile), self.out)["pass"])
+        other = self.out / "overflow"
+        other.mkdir()
+        with self.assertRaisesRegex(AssertionError, "108>107"):
+            REVIEW.browser_socket_preflight(Path(profile + "x"), other)
+        encoded = self.out / "encoded"
+        encoded.mkdir()
+        with self.assertRaisesRegex(AssertionError, "owned_browser_socket_path_too_long"):
+            REVIEW.browser_socket_preflight(Path("/" + "\u4e2d" * 25), encoded)
+
+    def test_real_unix_socket_accepts_short_and_rejects_long(self):
+        with tempfile.TemporaryDirectory(prefix="oc-bi-", dir="/data/tmp") as directory:
+            path = Path(directory) / "org.chromium.Chromium.XXXXXX/SingletonSocket"
+            path.parent.mkdir()
+            with socket.socket(socket.AF_UNIX) as actor:
+                actor.bind(str(path))
+                self.assertTrue(path.exists())
+            long_path = Path(directory) / ("long-runtime-" * 9) / "SingletonSocket"
+            long_path.parent.mkdir()
+            self.assertGreaterEqual(len(os.fsencode(long_path)), 108)
+            with socket.socket(socket.AF_UNIX) as actor:
+                with self.assertRaises(OSError):
+                    actor.bind(str(long_path))
 
 
 if __name__ == "__main__":

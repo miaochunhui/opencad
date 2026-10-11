@@ -53,6 +53,18 @@ def require(condition, cause):
         raise AssertionError(cause)
 
 
+def browser_socket_preflight(profile, evidence):
+    """Reject Linux sun_path overflow before starting any browser process."""
+    path = Path(profile) / "org.chromium.Chromium.XXXXXX/SingletonSocket"
+    record = {"profile": str(profile), "socket_path_template": str(path),
+              "path_bytes": len(os.fsencode(path)), "max_path_bytes": 107}
+    record["pass"] = record["path_bytes"] <= record["max_path_bytes"]
+    write(evidence / "browser-preflight.json", record)
+    require(record["pass"], "owned_browser_socket_path_too_long:"
+            f"{record['path_bytes']}>107:{path}")
+    return record
+
+
 def write(path, value):
     data = value if isinstance(value, bytes) else (
         json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + "\n").encode()
@@ -284,6 +296,7 @@ class Review:
                 directory = Path(self.profile.name)
                 self.log = (self.out / "browser.log").open("x", encoding="utf-8")
                 try:
+                    browser_socket_preflight(directory, self.out)
                     self.proc = subprocess.Popen([
                         self.browser, "--headless", "--no-sandbox", "--disable-dev-shm-usage",
                         "--remote-debugging-port=0", "--user-data-dir=" + str(directory),
@@ -824,6 +837,8 @@ def acceptance(args):
     review = Review(root, out, runtime, args.browser)
     try:
         report["source_before"] = source(root)
+        # Predict the profile suffix, then check the actual allocated path again.
+        browser_socket_preflight(runtime / "profiles/b-XXXXXXXX", out)
         review.run()
     except Exception as error:
         report["first_cause"] = str(error)

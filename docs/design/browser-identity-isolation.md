@@ -26,6 +26,14 @@ auth-to-project order; this browser change adds no server transactions.
 
 Run as infra, with Python bytecode disabled. Both roots must be fresh and outside
 source; SQLite and Chromium profiles live in the local runtime child.
+Chromium's singleton Unix socket must fit Linux's 108-byte sun_path,
+including the trailing null. Preflight checks the encoded pathname against
+107 bytes before launching the private CLI, then checks the actual allocated
+profile again before Chromium. A rejected path records
+`browser-preflight.json`, first cause, failure log and terminal FAIL.
+Use a short fresh runtime such as `/data/tmp/oc-spr-bi-1012-v2`.
+HOME, TMPDIR, XDG state and user-data-dir retain their unique owned profile;
+no directory relocation, shared profile or existing session fallback is used.
 
 ```bash
 sudo -n -u infra python3 -B tools/browser_identity_acceptance.py \
@@ -39,6 +47,10 @@ its READY marker, PID/startticks and argv, and receives its original graceful
 exit. Temporary account passwords and session values remain in memory; CDP
 input parameters are never logged. Owned Chromium profiles may be disposed;
 failure evidence and local SQLite fixtures are retained.
+Offline preflight controls reject the observed long runtime, check the exact
+107/108-byte boundary and encoded bytes, accept the requested short runtime,
+and use a real AF_UNIX actor for short-path success and long-path rejection.
+The 44 workflow checks and successful evidence predicates are unchanged.
 
 The workflow verifies durable receipts, stale CAS without a receipt, user-only
 project lists, distinct documents/history/drafts, persisted zh-CN/en locale,
@@ -78,6 +90,13 @@ These are dated intermediate snapshots, not acceptance of later edits.
 Earlier fixture failures, including socket path length, undo's empty model,
 operator mode, suspended-Promise observation, STEP timestamps and missing JSON
 media type, remain in their original v1/v2/v4/v5/v6/v7 evidence roots.
+The integrated `opencad-surface-private-release-browser-20261012-v1`
+failed before any workflow check: Chromium reported `Socket path too long`
+and exited after its long runtime/profile path was used as TMPDIR.
+The private CLI reached its exact READY marker and exited normally.
+That FAIL is retained. The chair's controlled rerun changes only its runtime
+input while keeping release source frozen; this separate preflight amendment
+belongs to a later batch and does not certify that rerun.
 
 The product shield is reversible: same-account recovery preserves input node
 identity and drafts, while explicit logout discards them through page reload.
