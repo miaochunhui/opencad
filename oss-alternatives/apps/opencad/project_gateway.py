@@ -17,6 +17,8 @@ import uuid
 
 from secure_web import HttpError, Reply, Request, session_cookie
 
+SURFACE_EXPORT_ROUTES = {"/api/surfaces/step": "step", "/api/surfaces/brep": "brep"}
+
 
 class ProjectGateway:
     def __init__(self, auth, store, runtime_root, *, core=None, secure_cookies=True):
@@ -152,6 +154,8 @@ class ProjectGateway:
         incompatible = False
         if route == "/api/surfaces" and body is not None and body.get("action") != "check_seam":
             incompatible = assembly or part
+        elif route in SURFACE_EXPORT_ROUTES:
+            incompatible = assembly or part
         elif route == "/api/assembly" and body is not None:
             incompatible = surfaces or part
         elif route in {"/api/parametric", "/api/drawing", "/api/render", "/api/mesh",
@@ -223,6 +227,25 @@ class ProjectGateway:
         if path == "/api/surfaces":
             from industrial_surfaces import read_surfaces
             response = read_surfaces(workspace, request.payload if request.method == "POST" else {})
+        elif path in SURFACE_EXPORT_ROUTES:
+            self._query(request, set())
+            self._domain(workspace, path)
+            from industrial_surfaces import export_surfaces
+            exported = export_surfaces(workspace, {"format": SURFACE_EXPORT_ROUTES[path]})
+            document_sha = hashlib.sha256(workspace.l1_text().encode()).hexdigest()
+            if (type(exported.data) is not bytes or not exported.data
+                    or exported.headers.get("X-OpenCAD-Document-SHA256") != document_sha
+                    or exported.headers.get("X-OpenCAD-Artifact-SHA256")
+                    != hashlib.sha256(exported.data).hexdigest()):
+                raise HttpError("invalid_surface_export",
+                                "Surface artifact does not match the authorized document", 422)
+            # Export builds outside the store lock; reject late edits/revocation
+            # before returning any private artifact bytes.
+            self._current(head, principal)
+            return Reply(payload=exported.data, content_type=exported.content_type,
+                         headers={**exported.headers, "X-OpenCAD-Revision": str(head["revision"]),
+                                  "X-OpenCAD-Model-Version": str(head["revision"]),
+                                  "X-OpenCAD-Snapshot-SHA256": head["sha256"]})
         elif path == "/api/assembly":
             from industrial_assembly import read_assembly
             query = self._query(request, {"action"})
@@ -378,7 +401,8 @@ class ProjectGateway:
             with self._workspace(head["snapshot"], locale) as workspace:
                 metadata = self._metadata(head)
                 if path in {"/api/surfaces", "/api/assembly", "/api/parametric", "/api/drawing",
-                            "/api/drawing/svg", "/api/drawing/pdf", "/api/drawing/dxf"}:
+                            "/api/drawing/svg", "/api/drawing/pdf", "/api/drawing/dxf",
+                            *SURFACE_EXPORT_ROUTES}:
                     return self._industrial_read(workspace, request, head, principal)
                 if path == "/api/state":
                     return Reply(payload={**workspace.state(), **metadata,
@@ -410,6 +434,8 @@ class ProjectGateway:
             raise HttpError("not_found", "Unknown API route", 404)
         if method != "POST":
             raise HttpError("method_not_allowed", "Use GET or POST", 405)
+        if path in SURFACE_EXPORT_ROUTES:
+            raise HttpError("method_not_allowed", "Surface downloads require read-only GET", 405)
         if path == "/api/render":
             from industrial_render import handler, bind_snapshot
             with self._workspace(head["snapshot"], locale) as workspace:

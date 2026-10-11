@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import select
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -121,7 +122,8 @@ class PrivateProjectTests(unittest.TestCase):
     def test_industrial_routes_deny_other_users(self):
         head, _ = self.create()
         for route in ("/api/parametric", "/api/surfaces", "/api/assembly", "/api/drawing",
-                      "/api/drawing/pdf", "/api/drawing/dxf", "/api/drawing/svg"):
+                      "/api/drawing/pdf", "/api/drawing/dxf", "/api/drawing/svg",
+                      "/api/surfaces/step", "/api/surfaces/brep"):
             self.assertEqual(self.call("GET", route, user="bob",
                                       project=head["project_id"])[0], 403, route)
         for route in ("/api/parametric", "/api/surfaces", "/api/assembly",
@@ -258,6 +260,216 @@ class PrivateProjectTests(unittest.TestCase):
         status, _, redone = self.edit(undone, self.edit_body(undone, "redo", {}))
         self.assertEqual(status, 200, redone)
         self.assertEqual(self.state(head)["undo_depth"], 1)
+
+    @staticmethod
+    def surface_recipe():
+        return {"op": "trim", "surface": {
+            "op": "nurbs", "poles_nm": [
+                [[0, 0, 0], [0, 10000000, 0]],
+                [[10000000, 0, 0], [10000000, 10000000, 0]]],
+            "u_degree": 1, "v_degree": 1, "u_knots": [0, 1], "v_knots": [0, 1],
+            "u_mults": [2, 2], "v_mults": [2, 2], "weights": None},
+            "outer": [[0.1, 0.1], [0.9, 0.1], [0.9, 0.5], [0.6, 0.5],
+                      [0.6, 0.9], [0.1, 0.9], [0.1, 0.1]],
+            "holes": [[[0.2, 0.2], [0.2, 0.3], [0.3, 0.3], [0.3, 0.2], [0.2, 0.2]],
+                      [[0.4, 0.2], [0.4, 0.4], [0.5, 0.2], [0.4, 0.2]]]}
+
+    def project_tables(self):
+        with sqlite3.connect(self.store.db_path) as db:
+            return {table: sorted(db.execute("SELECT * FROM " + table).fetchall())
+                    for table in ("projects", "snapshots", "receipts", "create_receipts")}
+
+    def test_surface_download_exact_artifacts_are_read_only(self):
+        head, _ = self.create()
+        recipe = self.surface_recipe()
+        for value in (recipe, {"op": "thicken", "surface": recipe,
+                               "thickness_nm": 2000000, "inward": False}):
+            (status, _, head), _ = self.industrial(head, "/api/surfaces", {"recipe": value})
+            self.assertEqual(status, 200, head)
+            before = self.project_tables()
+            for fmt, media in (("step", "application/step"), ("brep", "application/octet-stream")):
+                status, headers, data = self.call("GET", "/api/surfaces/" + fmt,
+                                                  user="alice", project=head["project_id"])
+                self.assertEqual(status, 200, data)
+                self.assertIsInstance(data, bytes)
+                self.assertTrue(data)
+                self.assertEqual(headers["Content-Type"], media)
+                self.assertEqual(headers["X-OpenCAD-Revision"], str(head["revision"]))
+                self.assertEqual(headers["X-OpenCAD-Model-Version"], str(head["revision"]))
+                self.assertEqual(headers["X-OpenCAD-Snapshot-SHA256"], head["sha256"])
+                self.assertEqual(headers["X-OpenCAD-Document-SHA256"], head["document_sha256"])
+                self.assertEqual(headers["X-OpenCAD-Artifact-SHA256"],
+                                 hashlib.sha256(data).hexdigest())
+                self.assertEqual(headers["Content-Disposition"],
+                                 f'attachment; filename="surface.{fmt}"')
+                self.assertEqual(headers["Cache-Control"], "no-store")
+                if fmt == "step":
+                    self.assertTrue(data.startswith(b"ISO-10303-21;"))
+                self.assertEqual(self.project_tables(), before)
+            status, _, state = self.call("GET", "/api/surfaces", user="alice",
+                                        project=head["project_id"])
+            self.assertEqual(status, 200, state)
+            self.assertEqual(state["document_sha256"], head["document_sha256"])
+
+    def test_surface_download_denials_and_strict_routes_never_write(self):
+        head, _ = self.create()
+        (status, _, head), _ = self.industrial(head, "/api/surfaces",
+                                               {"recipe": self.surface_recipe()})
+        self.assertEqual(status, 200, head)
+        before = self.project_tables()
+        for route in ("/api/surfaces/step", "/api/surfaces/brep"):
+            self.assertEqual(self.call("GET", route, project=head["project_id"])[0], 401)
+            self.assertEqual(self.call("GET", route, user="bob",
+                                      project=head["project_id"])[0], 403)
+            self.assertEqual(self.call("GET", route, project=head["project_id"],
+                                      headers={"Authorization": "Bearer forged"})[0], 401)
+            self.assertEqual(self.call("GET", route + "?path=private.step", user="alice",
+                                      project=head["project_id"])[0], 400)
+            self.assertEqual(self.call("GET", route + "?format=step&format=brep", user="alice",
+                                      project=head["project_id"])[0], 400)
+            self.assertEqual(self.call("POST", route, {}, user="alice",
+                                      project=head["project_id"])[0], 405)
+        self.assertEqual(self.call("GET", "/api/surfaces/obj", user="alice",
+                                  project=head["project_id"])[0], 404)
+        self.assertEqual(self.project_tables(), before)
+        part, _ = self.create()
+        status, _, part = self.edit(part, self.edit_body(part))
+        self.assertEqual(status, 200, part)
+        part_before = self.project_tables()
+        for route in ("/api/surfaces/step", "/api/surfaces/brep"):
+            self.assertEqual(self.call("GET", route, user="alice",
+                                      project=part["project_id"])[0], 422)
+        self.assertEqual(self.project_tables(), part_before)
+
+    def test_surface_download_refuses_unbound_artifact(self):
+        import industrial_surfaces
+        head, _ = self.create()
+        before = self.project_tables()
+        exported = SimpleNamespace(data=b"unbound", content_type="application/step", headers={
+            "X-OpenCAD-Document-SHA256": "0" * 64,
+            "X-OpenCAD-Artifact-SHA256": hashlib.sha256(b"unbound").hexdigest()})
+        with patch.object(industrial_surfaces, "export_surfaces", return_value=exported):
+            status, _, response = self.call("GET", "/api/surfaces/step", user="alice",
+                                            project=head["project_id"])
+        self.assertEqual((status, response["error"]), (422, "invalid_surface_export"))
+        self.assertEqual(self.project_tables(), before)
+
+    def test_surface_download_refuses_corrupted_real_export_bytes(self):
+        import industrial_surfaces
+        from dataclasses import replace
+        head, _ = self.create()
+        (status, _, head), _ = self.industrial(head, "/api/surfaces",
+                                               {"recipe": self.surface_recipe()})
+        self.assertEqual(status, 200, head)
+        before = self.project_tables()
+        export, completed = industrial_surfaces.export_surfaces, []
+
+        def corrupt_real_export(workspace, body):
+            result = export(workspace, body)
+            completed.append(hashlib.sha256(result.data).hexdigest())
+            return replace(result, data=result.data + b"\ncorrupted-artifact\n")
+
+        for route in ("/api/surfaces/step", "/api/surfaces/brep"):
+            with patch.object(industrial_surfaces, "export_surfaces",
+                              side_effect=corrupt_real_export):
+                status, _, response = self.call("GET", route, user="alice",
+                                                project=head["project_id"])
+            self.assertEqual((status, response["error"]), (422, "invalid_surface_export"))
+            self.assertEqual(self.project_tables(), before)
+        self.assertEqual(len(completed), 2)
+
+    def test_surface_download_rejects_real_late_save(self):
+        import industrial_surfaces
+        head, _ = self.create()
+        (status, _, head), _ = self.industrial(head, "/api/surfaces",
+                                               {"recipe": self.surface_recipe()})
+        self.assertEqual(status, 200, head)
+        export, edits = industrial_surfaces.export_surfaces, []
+
+        def download_with_late_save(workspace, body):
+            result = export(workspace, body)
+            (saved_status, _, saved), _ = self.industrial(head, "/api/save", {})
+            self.assertEqual(saved_status, 200, saved)
+            edits.append(saved)
+            return result
+
+        with patch.object(industrial_surfaces, "export_surfaces",
+                          side_effect=download_with_late_save):
+            status, _, response = self.call("GET", "/api/surfaces/step", user="alice",
+                                            project=head["project_id"])
+        self.assertEqual(status, 409, response)
+        self.assertEqual(len(edits), 1)
+        self.assertEqual(response["revision"], edits[0]["revision"])
+        self.assertEqual(self.store.read_head(head["project_id"])["revision"],
+                         head["revision"] + 1)
+
+    def test_surface_download_rejects_real_late_geometry_edit(self):
+        import industrial_surfaces
+        head, _ = self.create()
+        recipe = self.surface_recipe()
+        (status, _, head), _ = self.industrial(head, "/api/surfaces", {"recipe": recipe})
+        self.assertEqual(status, 200, head)
+        before = self.store.read_head(head["project_id"])
+        export, edits = industrial_surfaces.export_surfaces, []
+        changed_recipe = {"op": "thicken", "surface": recipe,
+                          "thickness_nm": 2000000, "inward": False}
+
+        def download_with_geometry_edit(workspace, body):
+            result = export(workspace, body)
+            (saved_status, _, saved), edit_body = self.industrial(
+                head, "/api/surfaces", {"recipe": changed_recipe})
+            self.assertEqual(saved_status, 200, saved)
+            edits.append((saved, edit_body, self.project_tables()))
+            return result
+
+        with patch.object(industrial_surfaces, "export_surfaces",
+                          side_effect=download_with_geometry_edit):
+            status, headers, response = self.call("GET", "/api/surfaces/brep", user="alice",
+                                                  project=head["project_id"])
+        self.assertEqual((status, response["error"]), (409, "revision_conflict"))
+        self.assertNotIn("Content-Disposition", headers)
+        self.assertEqual(len(edits), 1)
+        saved, edit_body, tables_after_edit = edits[0]
+        self.assertEqual(response["revision"], saved["revision"])
+        self.assertEqual(self.project_tables(), tables_after_edit)
+        latest = self.store.read_head(head["project_id"])
+        self.assertEqual(latest["revision"], head["revision"] + 1)
+        self.assertNotEqual(latest["snapshot"]["doc"], before["snapshot"]["doc"])
+        self.assertNotEqual(latest["sha256"], before["sha256"])
+        self.assertEqual(latest["snapshot"]["undo"][-1], before["snapshot"]["doc"])
+        document = self.app.core["docmodel"].document_from_l1(latest["snapshot"]["doc"])
+        self.assertEqual(document.extra["x_industrial_surfaces"]["recipe"], changed_recipe)
+        receipt = self.store.read_receipt(
+            head["project_id"], edit_body["request_id"],
+            request_payload={**edit_body, "route": "/api/surfaces"})
+        self.assertEqual(receipt["revision"], saved["revision"])
+
+    def test_surface_download_rechecks_revoked_session(self):
+        import industrial_surfaces
+        username, cookie = self.race_identity()
+        status, _, head = self.call("POST", "/api/projects", {
+            "title": "Surface revoked export", "request_id": uuid.uuid4().hex},
+            headers={"Cookie": cookie})
+        self.assertEqual(status, 201, head)
+        status, _, head = self.call("POST", "/api/surfaces", {
+            "recipe": self.surface_recipe(), "expected_revision": head["revision"],
+            "expected_sha": head["sha256"], "request_id": uuid.uuid4().hex},
+            project=head["project_id"], headers={"Cookie": cookie})
+        self.assertEqual(status, 200, head)
+        before = self.project_tables()
+        export = industrial_surfaces.export_surfaces
+
+        def download_with_revocation(workspace, body):
+            result = export(workspace, body)
+            self.auth.logout(cookie.split("=", 1)[1])
+            return result
+
+        with patch.object(industrial_surfaces, "export_surfaces",
+                          side_effect=download_with_revocation):
+            status, _, response = self.call("GET", "/api/surfaces/brep",
+                                            project=head["project_id"], headers={"Cookie": cookie})
+        self.assertEqual(status, 401, response)
+        self.assertEqual(self.project_tables(), before)
 
     def test_parametric_and_drawing_real_shared_cas(self):
         head, _ = self.create()
