@@ -2,6 +2,34 @@
 
 ## Current Verified State
 
+On 2026-10-12 at 04:44:40-04:44:43 Asia/Shanghai, GitLab, Gitee and
+GitHub independently returned
+`02f9d5cf17471d27663595df01bc4ac0dc7baff8` for main. Actual synchronization
+completed at 04:44:43, with original parent rc 0, `SYNCED/PASS`,
+899 reachable objects scanned and eight exact linear commits. Evidence:
+`/hf3fs-jd/data/tmp/opencad-exact-eight-commit-sync-20261012-v1/`.
+The ordinary intermediate-document deletion was verified against its exact
+parent blob/mode and child tree; no ref deletion, force or history rewrite.
+Independent review verified primary-first ordering and final refs.
+
+GitLab on r640HA is primary, Gitee and GitHub are explicit code copies.
+Current development is main; Gitee's historical master is preserved.
+Automatic mirroring is not installed. The original local workspace's nine
+untracked assets are unchanged, so local main has not been forced forward.
+
+The published batch's product bytes/modes match the frozen `6044ce0`
+source. That source passed 2354 full-regression tests: 2341 passes,
+13 original skips, zero failures/errors/source drift and 15 HTTP checks.
+Its actual private exact-loop workflow passed 191 checks, 46 HTTP requests
+and 67 geometry checks, including save/undo/redo/restart. New local
+verifier fixes require final-source acceptance and another explicit sync;
+the remote snapshot above does not imply those later commits are pushed.
+See `docs/handoff/20261012-exact-loop-release.md` for receipts and boundaries.
+No private-production deployment, GPU performance, HA failover or industrial
+full-function parity is certified by this repository publication.
+
+## Earlier Recovery Snapshot
+
 On 2026-10-12 at 03:06:12-03:06:14 Asia/Shanghai, GitLab, Gitee
 and GitHub independently returned
 `a43ecef01023efa7abaaeb3888f88ac17f5902ac` for `refs/heads/main`.

@@ -1,5 +1,78 @@
 # Exact Loop Release Continuation
 
+## Latest Verified Delivery And Final Candidate
+
+On 2026-10-12 at 04:44:40-04:44:43 Asia/Shanghai, the actual eight-commit
+batch completed with original parent rc 0 and `SYNCED/PASS`. Each remote
+main returned `02f9d5cf17471d27663595df01bc4ac0dc7baff8`; 899 reachable
+objects were scanned. Source and configuration were stable. Evidence:
+`/hf3fs-jd/data/tmp/opencad-exact-eight-commit-plan-20261012-v1/` and
+`/hf3fs-jd/data/tmp/opencad-exact-eight-commit-sync-20261012-v1/`.
+Independent review verified GitLab-first ordering, both real Git push
+exits, eight exact commit checks, the non-forced main update and final refs.
+
+The batch includes the exact deletion of the intermediate
+`oss-alternatives/docs/design/industrial-surfaces.md`. Its parent regular
+blob/mode and base tree were checked before mutation; GitHub returned the
+exact child tree and original commit. The API request body is not retained,
+so the independent review does not claim a replay of those request bytes.
+Only the named main ref was updated; historical Gitee master is intact.
+
+The product tree in that published batch is byte/mode-identical to
+`6044ce00564396a6041b1ee371947c2c3f26dbf1`. That later frozen source's full
+regression completed at 04:39:09 with original rc 0: 2354 tests, 2341 passed,
+13 unchanged original skips, zero failures/errors, 15 HTTP checks and no
+source drift. Evidence:
+`/hf3fs-jd/data/tmp/opencad-primary-exact-release-all-20261012-v1/`.
+Its full acceptance source SHA256 is
+`1905f01d0ad7c83d4438e3dd5ce291995f7755ac6b5f7cf00e9269b71b5a9922`.
+
+Its real private workflow also returned original rc 0, 191 checks,
+46 HTTP requests and 67 independent geometry checks:
+`/hf3fs-jd/data/tmp/opencad-primary-exact-private-20261012-v1/20261011T202653560437Z-0f414dfa/`.
+Before/after HEAD and the mode-aware fingerprint
+`22b06e0435092d406419e2224739fd74078de93b9200c38dab028e0043122893`
+are unchanged. This 64-character SHA256 is not a Git commit ID.
+The concave two-hole surface has area 50 mm2; 2 mm thickening has volume
+100 mm3, with matching BRep/STEP and durable save/undo/redo/restart.
+
+The first new-version offline readback failed because tuple witness pairs
+become JSON arrays. Its original FAIL is retained under
+`opencad-primary-exact-private-readback-20261012-v1`.
+Canonical typed JSON now accepts unchanged serialized arrays and rejects
+type/value/order changes. The new and legacy real receipts subsequently
+passed offline readback, 82 and 81 checks respectively. This repairs the
+reader, not a rerun of the product or a rewrite of the failed receipt.
+
+Complete ledger, exact two-worker-source, explicit-null rejection and
+saved-terminal roundtrip gates have been integrated into the candidate.
+The latest source commit before this documentation is
+`bb59e2e` in the independent release worktree. The producer saves and
+rereads a fresh complete terminal candidate before publishing immutable
+PASS; corruption retains FAIL, original cause and diagnostic evidence.
+Its independent committed selftest had 23 tests, zero failures/errors/skips,
+original rc 0 and no drift. Every-item ledger mutations and copied-file
+worker-map negative controls remain.
+
+Final source freeze follows this documentation commit. Fresh full/private
+and browser runs are still required; this section does not claim those
+pending runs have passed. Use their actual new terminal results rather
+than inheriting the `6044` whole-source result. Remote main is currently
+the published `02f9d5c` batch, not the later local candidate.
+
+GPU offline verification was separately repaired at `80416d7` and
+`768968c`, but those tools are not in this release. The original three-CPU
+empty-manifest counterexample and dual-deleted-source counterexample are
+retained. Fixed independently pinned original receipts reject both.
+Supplying a different receipt and its own SHA changes the trust anchor;
+this is not a structurally approved production measurement gate.
+New-source GPU measurement and performance adoption remain closed.
+
+The private production service, automatic mirroring, physical HA failover
+and CATIA/SolidWorks full-function parity remain unaccepted. Source
+publication does not deploy the private service or migrate user drawings.
+The sections below are dated checkpoints retained with their boundaries.
+
 ## Primary Repository And Published Snapshot
 
 On 2026-10-12 at 03:53:31-03:53:33 Asia/Shanghai, actual explicit
