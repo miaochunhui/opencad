@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import traceback
 import unittest
 from unittest.mock import patch
 
@@ -439,17 +440,130 @@ class ApiTests(unittest.TestCase):
                         {"sha": self.head, "force": False})
         self.assertEqual(self.evidence.calls, [])
 
+    def run_binding_control(self, change, failing=False):
+        def completed_check():
+            self.assertTrue((self.source / "LICENSE").is_file())
+            if failing:
+                self.fail("retained first test failure")
+        suite = unittest.TestSuite([unittest.FunctionTestCase(completed_check)])
+        out = self.root / "binding-control"
+        rc = run_acceptance(out, suite, source=self.source, after_tests=change)
+        report = json.loads((out / "result.json").read_bytes())
+        self.assertEqual(rc, 1)
+        self.assertEqual(report["actual_rc"], rc)
+        self.assertEqual(report["verdict"], "FAIL")
+        self.assertEqual(report["tests"], 1)
+        self.assertEqual(report["discovered"], 1)
+        self.assertEqual(report["passed"], 0 if failing else 1)
+        self.assertFalse(report["source_stable"])
+        self.assertEqual(report["log_sha256"],
+                         sync.digest((out / "tests.log").read_bytes()))
+        self.assertEqual(self.calls, [])
+        return report, (out / "tests.log").read_text()
 
-def source_fingerprints():
-    source = Path(__file__).resolve().parents[1]
+    def test_acceptance_head_only_drift(self):
+        report, _ = self.run_binding_control(
+            lambda: self.git("commit", "--allow-empty", "-m", "HEAD-only control"))
+        self.assertEqual(report["source_before"], report["source_after"])
+        self.assertEqual(report["source_files_before"], report["source_files_after"])
+        self.assertEqual(report["source_drift"], [])
+        before, after = report["source_binding_before"], report["source_binding_after"]
+        self.assertEqual(before["status"], "")
+        self.assertEqual(after["status"], "")
+        self.assertEqual(before["branch"], after["branch"])
+        self.assertNotEqual(before["head"], after["head"])
+        self.assertEqual(report["first_failure"], "SOURCE_BINDING_DRIFT")
+        self.assertEqual(report["capture_errors"], [])
+
+    def test_acceptance_file_drift(self):
+        report, _ = self.run_binding_control(
+            lambda: (self.source / "LICENSE").write_text("changed during tests\n"))
+        self.assertEqual(report["source_binding_before"]["head"],
+                         report["source_binding_after"]["head"])
+        self.assertEqual(report["source_drift"], ["LICENSE"])
+        self.assertEqual(report["first_failure"], "SOURCE_FILES_DRIFT")
+        self.assertEqual(report["capture_errors"], [])
+
+    def test_acceptance_late_fingerprint_read_error(self):
+        report, log = self.run_binding_control(
+            lambda: (self.source / "LICENSE").unlink())
+        self.assertIsNone(report["after"])
+        self.assertIsNone(report["source_after"])
+        self.assertIsNone(report["source_files_after"])
+        self.assertIsNone(report["source_binding_after"])
+        self.assertIsNone(report["source_drift"])
+        self.assertEqual(report["failures"], 0)
+        self.assertEqual(report["errors"], 0)
+        self.assertEqual(report["first_failure"], "SOURCE_CAPTURE_after_files")
+        error = report["capture_errors"][0]
+        self.assertEqual(error["stage"], "after_files")
+        self.assertEqual(error["exception_type"], "FileNotFoundError")
+        self.assertEqual(error["errno"], 2)
+        self.assertIn(str(self.source / "LICENSE"), error["message"])
+        self.assertIn("FileNotFoundError", log)
+        self.assertIn(str(self.source / "LICENSE"), log)
+
+    def test_acceptance_late_tool_fingerprint_read_error(self):
+        original, calls = api.own_sha, []
+        missing = self.root / "missing-tool-fingerprint"
+        self.assertFalse(missing.exists())
+        def read_fingerprint():
+            calls.append(True)
+            return original() if len(calls) == 1 else sync.digest(missing.read_bytes())
+        with patch.object(api, "own_sha", side_effect=read_fingerprint):
+            report, log = self.run_binding_control(lambda: None)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(report["first_failure"], "SOURCE_CAPTURE_after_tools")
+        self.assertEqual(report["capture_errors"][0]["exception_type"],
+                         "FileNotFoundError")
+        self.assertIsNone(report["after"])
+        self.assertIsNone(report["source_after"])
+        partial = report["source_captures"]["after"]["values"]
+        self.assertIsNone(partial["tools"])
+        self.assertEqual(partial["files"], report["source_files_before"])
+        self.assertEqual(partial["binding"], report["source_binding_before"])
+        self.assertIn(str(missing), log)
+
+    def test_acceptance_late_git_read_error(self):
+        report, log = self.run_binding_control(
+            lambda: (self.source / ".git").rename(self.root / "relocated-git"))
+        self.assertIsNone(report["after"])
+        self.assertIsNone(report["source_after"])
+        self.assertIsNone(report["source_binding_after"])
+        self.assertEqual(report["first_failure"], "SOURCE_CAPTURE_after_files")
+        self.assertEqual([row["stage"] for row in report["capture_errors"]],
+                         ["after_files", "after_binding"])
+        for error in report["capture_errors"]:
+            self.assertEqual(error["exception_type"], "CalledProcessError")
+            self.assertEqual(error["actual_rc"], 128)
+            self.assertIn(str(self.source), error["argv"])
+            self.assertIn("not a git repository", error["stderr"]["text"])
+            self.assertFalse(error["stderr"]["redacted"])
+            self.assertGreater(error["stderr"]["bytes"], 0)
+        self.assertIn("not a git repository", log)
+        self.assertIn('"actual_rc": 128', log)
+
+    def test_acceptance_test_failure_keeps_first_cause_on_late_error(self):
+        report, log = self.run_binding_control(
+            lambda: (self.source / "LICENSE").unlink(), failing=True)
+        self.assertEqual(report["failures"], 1)
+        self.assertEqual(report["errors"], 0)
+        self.assertIsNone(report["after"])
+        self.assertIn("completed_check", report["first_failure"])
+        self.assertIn("retained first test failure", report["first_failure_detail"])
+        self.assertEqual(report["capture_errors"][0]["stage"], "after_files")
+        self.assertIn("retained first test failure", log)
+        self.assertIn("FileNotFoundError", log)
+
+
+def source_fingerprints(source):
     process = subprocess.run(["git", "-C", str(source), "ls-files", "-z"],
                              capture_output=True, check=True)
     return {name: sync.digest((source / name).read_bytes())
             for name in process.stdout.decode().split("\0") if name}
 
 
-def source_binding():
-    source = Path(__file__).resolve().parents[1]
+def source_binding(source):
     values = {"root": str(source)}
     for name, args in (("head", ["rev-parse", "HEAD"]),
                        ("branch", ["branch", "--show-current"]),
@@ -460,51 +574,148 @@ def source_binding():
     return values
 
 
+def diagnostic_output(raw):
+    if raw is None:
+        return None
+    raw = raw.encode() if isinstance(raw, str) else raw
+    unsafe = bool(sync.SECRET.search(raw))
+    return {"bytes": len(raw), "sha256": sync.digest(raw), "redacted": unsafe,
+            "text": None if unsafe else raw.decode(errors="replace")}
+
+
+def capture_exception(stage, error, stream):
+    message = diagnostic_output(str(error))
+    record = {"at": sync.stamp(), "stage": stage,
+              "exception_type": type(error).__name__,
+              "message": message["text"], "message_output": message,
+              "errno": getattr(error, "errno", None),
+              "filename": getattr(error, "filename", None)}
+    if isinstance(error, subprocess.CalledProcessError):
+        record.update(actual_rc=error.returncode, argv=error.cmd,
+                      stdout=diagnostic_output(error.stdout),
+                      stderr=diagnostic_output(error.stderr))
+    record["traceback"] = diagnostic_output(
+        "".join(traceback.format_exception(type(error), error, error.__traceback__)))
+    stream.write("\nSOURCE_CAPTURE_FAILURE\n" + sync.encode(record).decode())
+    stream.flush()
+    return record
+
+
+def capture_source(source, stage, stream):
+    values, errors = {}, []
+    collectors = (
+        ("tools", lambda: (api.own_sha(), sync.tool_sha(),
+                           sync.digest(Path(__file__).read_bytes()))),
+        ("files", lambda: source_fingerprints(source)),
+        ("binding", lambda: source_binding(source)))
+    for name, collect in collectors:
+        try:
+            values[name] = collect()
+        except Exception as error:
+            values[name] = None
+            errors.append(capture_exception(stage + "_" + name, error, stream))
+    # A partial capture is evidence, but cannot masquerade as an actual snapshot.
+    return {"snapshot": None if errors else values, "values": values, "errors": errors}
+
+
+class AcceptanceResult(unittest.TextTestResult):
+    first_failure = None
+    first_failure_detail = None
+
+    def retain_first(self, test, err):
+        if self.first_failure is None:
+            self.first_failure = test.id()
+            self.first_failure_detail = self._exc_info_to_string(err, test)
+
+    def addFailure(self, test, err):
+        self.retain_first(test, err)
+        super().addFailure(test, err)
+
+    def addError(self, test, err):
+        self.retain_first(test, err)
+        super().addError(test, err)
+
+
+def run_acceptance(out, suite, source=None, after_tests=None):
+    evidence = sync.Evidence(out)
+    source = source or Path(__file__).resolve().parents[1]
+    started, discovered = sync.stamp(), suite.countTestCases()
+    with (out / "tests.log").open("x") as stream:
+        before_capture = capture_source(source, "before", stream)
+        runner = unittest.TextTestRunner(stream=stream, verbosity=2, failfast=True,
+                                         resultclass=AcceptanceResult)
+        if before_capture["snapshot"] is None:
+            result = runner._makeResult()
+        else:
+            result = runner.run(suite)
+        hook_errors = []
+        if after_tests is not None:
+            try:
+                after_tests()
+            except Exception as error:
+                hook_errors.append(capture_exception("after_tests", error, stream))
+        after_capture = capture_source(source, "after", stream)
+    before, after = before_capture["snapshot"], after_capture["snapshot"]
+    capture_errors = before_capture["errors"] + hook_errors + after_capture["errors"]
+    files_before = None if before is None else before["files"]
+    files_after = None if after is None else after["files"]
+    drift = None if files_before is None or files_after is None else sorted(
+        name for name in files_before.keys() | files_after.keys()
+        if files_before.get(name) != files_after.get(name))
+    stable = before is not None and after is not None and before == after
+    first_failure, detail = result.first_failure, result.first_failure_detail
+    if before_capture["errors"]:
+        first_failure = "SOURCE_CAPTURE_" + before_capture["errors"][0]["stage"]
+        detail = before_capture["errors"][0]
+    elif first_failure is None and capture_errors:
+        first_failure = "SOURCE_CAPTURE_" + capture_errors[0]["stage"]
+        detail = capture_errors[0]
+    elif first_failure is None and not stable:
+        first_failure = ("SOURCE_FILES_DRIFT" if drift else
+                         "SOURCE_TOOLS_DRIFT" if before["tools"] != after["tools"]
+                         else "SOURCE_BINDING_DRIFT")
+    if first_failure is None and not result.testsRun == discovered > 0:
+        first_failure = "TEST_COUNT_NOT_CLOSED"
+    passed = (result.wasSuccessful() and stable and not capture_errors
+              and result.testsRun == discovered > 0)
+    report = {"verdict": "PASS" if passed else "FAIL", "at": sync.stamp(),
+              "tests": result.testsRun, "failures": len(result.failures),
+              "errors": len(result.errors), "skips": len(result.skipped),
+              "actual_rc": 0 if passed else 1,
+              "source_before": None if before is None else before["tools"],
+              "source_after": None if after is None else after["tools"],
+              "source_files_before": files_before, "source_files_after": files_after,
+              "source_drift": drift,
+              "source_file_count": None if files_before is None else len(files_before),
+              "source_binding_before": None if before is None else before["binding"],
+              "source_binding_after": None if after is None else after["binding"],
+              "before": before, "after": after,
+              "source_captures": {"before": before_capture, "after": after_capture},
+              "capture_errors": capture_errors,
+              "started_at": started, "discovered": discovered,
+              "passed": result.testsRun - len(result.failures) - len(result.errors)
+              - len(result.skipped),
+              "log_sha256": sync.digest((out / "tests.log").read_bytes()),
+              "source_stable": stable,
+              "first_failure": first_failure, "first_failure_detail": detail,
+              "scope": "LOCAL_GIT_INDEPENDENT_OBJECT_RECONSTRUCTION_NO_LIVE_SECRET"}
+    evidence.save("result.json", report)
+    print("EXACT_API_TESTS verdict=%s rc=%d tests=%d failures=%d errors=%d drift=%s "
+          "at=%s result=%s" % (report["verdict"], report["actual_rc"], result.testsRun,
+                               len(result.failures), len(result.errors),
+                               "null" if drift is None else len(drift),
+                               report["at"], out / "result.json"), flush=True)
+    return 0 if passed else 1
+
+
 def main():
     global ROOT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    sync.Evidence(args.out)
     ROOT = args.out
-    started = sync.stamp()
-    before = (api.own_sha(), sync.tool_sha(), sync.digest(Path(__file__).read_bytes()))
-    files_before = source_fingerprints()
-    binding_before = source_binding()
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(ApiTests)
-    discovered = suite.countTestCases()
-    with (ROOT / "tests.log").open("x") as stream:
-        result = unittest.TextTestRunner(stream=stream, verbosity=2, failfast=True).run(
-            suite)
-    after = (api.own_sha(), sync.tool_sha(), sync.digest(Path(__file__).read_bytes()))
-    files_after = source_fingerprints()
-    binding_after = source_binding()
-    drift = sorted(name for name in files_before.keys() | files_after.keys()
-                   if files_before.get(name) != files_after.get(name))
-    stable = before == after and not drift and binding_before == binding_after
-    passed = result.wasSuccessful() and stable and result.testsRun == discovered > 0
-    report = {"verdict": "PASS" if passed else "FAIL", "at": sync.stamp(),
-              "tests": result.testsRun, "failures": len(result.failures),
-              "errors": len(result.errors), "skips": len(result.skipped),
-              "actual_rc": 0 if passed else 1,
-              "source_before": before, "source_after": after,
-              "source_files_before": files_before, "source_files_after": files_after,
-              "source_drift": drift, "source_file_count": len(files_before),
-              "source_binding_before": binding_before, "source_binding_after": binding_after,
-              "started_at": started, "discovered": discovered,
-              "passed": result.testsRun - len(result.failures) - len(result.errors)
-              - len(result.skipped),
-              "log_sha256": sync.digest((ROOT / "tests.log").read_bytes()),
-              "source_stable": stable,
-              "first_failure": (result.failures + result.errors)[0][0].id()
-              if result.failures or result.errors else None,
-              "scope": "LOCAL_GIT_INDEPENDENT_OBJECT_RECONSTRUCTION_NO_LIVE_SECRET"}
-    (ROOT / "result.json").write_bytes(sync.encode(report))
-    print("EXACT_API_TESTS verdict=%s rc=%d tests=%d failures=%d errors=%d drift=%d "
-          "at=%s result=%s" % (report["verdict"], report["actual_rc"], result.testsRun,
-                               len(result.failures), len(result.errors), len(drift),
-                               report["at"], ROOT / "result.json"), flush=True)
-    return 0 if passed else 1
+    return run_acceptance(ROOT, suite)
 
 
 if __name__ == "__main__":

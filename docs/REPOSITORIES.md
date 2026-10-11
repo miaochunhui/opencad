@@ -230,6 +230,14 @@ deletions, wrong object IDs, remote drift, primary failure, GET-only planning
 and forbidden force/scope. Tree or commit mismatch stops before any main PATCH;
 regular-file deletion never permits DELETE requests or ref deletion.
 Run `python3 -B tools/test_github_api_sync.py --out NEW_EXTERNAL_DIRECTORY`.
+The runner binds tool bytes, all tracked source bytes, HEAD, branch and status
+before and after testing. A capture exception produces `result.json` FAIL with
+the actual snapshot and drift set to null, completed test counts and the first
+failure retained. Partial captures, exception coordinates, traceback and Git
+rc/stdout/stderr are preserved; secret-shaped diagnostics are explicitly redacted
+with byte counts and hashes, never silently discarded. Independent new local
+Git fixtures control HEAD-only changes with identical source bytes, file drift,
+late missing-file reads and Git-read errors, including a prior test failure.
 The original v1 test fixture incorrectly deleted required LICENSE and hit the
 earlier source-integrity guard; its failed result remains preserved. Synthetic
 API tests are not live GitHub upload or production acceptance.
