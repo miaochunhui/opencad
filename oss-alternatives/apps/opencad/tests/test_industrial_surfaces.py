@@ -26,6 +26,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 import uuid
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -33,7 +34,9 @@ APP = ROOT / "oss-alternatives/apps/opencad"
 PACKAGE = ROOT / "oss-alternatives/packages/cadcore"
 sys.path[:0] = [str(APP), str(PACKAGE)]
 from server import ApiError, Workspace, _load_cadcore
-from industrial_surfaces import NAMESPACE, prepare_surfaces, read_surfaces, validate_document
+from industrial_surfaces import (
+    NAMESPACE, export_surfaces, prepare_surfaces, read_surfaces, validate_document,
+)
 
 EVIDENCE = Path("/hf3fs-jd/data/tmp/opencad-industrial-surfaces-20261011/seat-surfaces-web")
 RUN_DIR = EVIDENCE / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid.uuid4().hex)
@@ -97,6 +100,35 @@ def publish(workspace, candidate):
     return candidate.response
 
 
+EXPORT_READBACK = """import hashlib, json, os
+from pathlib import Path
+import FreeCAD
+import Part
+spec = json.loads(Path(os.environ["SURFACE_EXPORT_READBACK_INPUT"]).read_text())
+path = Path(spec["path"])
+if spec["format"] == "brep":
+    shape = Part.Shape()
+    shape.importBrep(str(path))
+else:
+    shape = Part.read(str(path))
+signature = sorted(len(face.Wires) - 1 for face in shape.Faces)
+result = {
+    "marker": "surface-download-independent-v1",
+    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    "bytes": path.stat().st_size,
+    "valid": shape.isValid(), "closed": shape.isClosed(),
+    "area_mm2": shape.Area,
+    "volume_mm3": shape.Volume if shape.Solids else None,
+    "solid_count": len(shape.Solids), "hole_signature": signature,
+    "wires_closed": all(wire.isClosed() for face in shape.Faces for wire in face.Wires),
+    "witnesses": [shape.isInside(FreeCAD.Vector(*point), 1e-7, True)
+                  for point in spec["witnesses"]] if shape.Solids else [],
+}
+Path(os.environ["SURFACE_EXPORT_READBACK_RESULT"]).write_text(json.dumps(result, allow_nan=False))
+print("SURFACE_DOWNLOAD_READBACK verdict=PASS")
+"""
+
+
 PAGE = """<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="/fixture.css"><title>Surface acceptance</title>
@@ -120,11 +152,13 @@ class FixtureHTTP(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
-    def reply(self, value, status=200, media="application/json"):
+    def reply(self, value, status=200, media="application/json", headers=None):
         raw = json.dumps(value, allow_nan=False).encode() if media == "application/json" else value
         self.send_response(status)
         self.send_header("Content-Type", media)
         self.send_header("Content-Length", str(len(raw)))
+        for name, content in (headers or {}).items():
+            self.send_header(name, content)
         self.end_headers()
         self.wfile.write(raw)
 
@@ -132,6 +166,9 @@ class FixtureHTTP(BaseHTTPRequestHandler):
         try:
             if self.path == "/api/surfaces":
                 self.reply(read_surfaces(self.server.workspace, {}))
+            elif self.path in ("/api/surfaces/step", "/api/surfaces/brep"):
+                exported = export_surfaces(self.server.workspace, {"format": self.path.rsplit("/", 1)[1]})
+                self.reply(exported.data, media=exported.content_type, headers=exported.headers)
             elif self.path == "/api/state":
                 self.reply({"ok": True, **snapshot(self.server.workspace)})
             elif self.path == "/":
@@ -220,6 +257,197 @@ class IndustrialSurfaceTests(unittest.TestCase):
     def post(self, recipe):
         return self.call("POST", "/api/surfaces", {
             "recipe": recipe, "expected_document_sha256": digest(self.workspace.l1_text())})
+
+    def download(self, fmt):
+        connection = HTTPConnection("127.0.0.1", self.server.server_port, timeout=60)
+        try:
+            connection.request("GET", "/api/surfaces/" + fmt)
+            response = connection.getresponse()
+            data = response.read()
+            headers = dict(response.getheaders())
+            self.events.append({"method": "GET", "route": "/api/surfaces/" + fmt,
+                                "status": response.status, "bytes": len(data),
+                                "sha256": hashlib.sha256(data).hexdigest()})
+            return response.status, data, headers
+        finally:
+            connection.close()
+
+    def independent_export_readback(self, data, fmt, solid):
+        out = self.directory / ("download-readback-" + fmt + "-" + uuid.uuid4().hex)
+        out.mkdir()
+        artifact = out / ("download." + fmt)
+        artifact.write_bytes(data)
+        spec = {"path": str(artifact), "format": fmt,
+                "witnesses": [[1.5, 5, 1], [2.5, 2.5, 1], [4.3, 2.5, 1], [7, 7, 1]]}
+        input_path, result_path, script = out / "input.json", out / "result.json", out / "readback.py"
+        input_path.write_text(json.dumps(spec))
+        script.write_text(EXPORT_READBACK)
+        from cadcore.kernel.subproc import find_executable
+        executable = find_executable()
+        self.assertTrue(executable, "real FreeCAD executable is required")
+        with (out / "cli.log").open("xb") as log:
+            child = subprocess.run([str(executable), str(script)], cwd=out, stdout=log,
+                                   stderr=subprocess.STDOUT, timeout=60, env=dict(
+                                       os.environ, PYTHONDONTWRITEBYTECODE="1", QT_QPA_PLATFORM="offscreen",
+                                       SURFACE_EXPORT_READBACK_INPUT=str(input_path),
+                                       SURFACE_EXPORT_READBACK_RESULT=str(result_path)))
+        self.assertEqual(child.returncode, 0, (out / "cli.log").read_text())
+        result = json.loads(result_path.read_text())
+        self.assertIn("SURFACE_DOWNLOAD_READBACK verdict=PASS", (out / "cli.log").read_text())
+        self.assertEqual(result["marker"], "surface-download-independent-v1")
+        self.assertEqual(result["sha256"], hashlib.sha256(data).hexdigest())
+        self.assertEqual(result["bytes"], len(data))
+        self.assertTrue(result["valid"] and result["wires_closed"])
+        self.assertEqual(result["solid_count"], int(solid))
+        self.assertEqual(sum(result["hole_signature"]), 4 if solid else 2)
+        if solid:
+            self.assertTrue(result["closed"])
+            self.assertAlmostEqual(result["volume_mm3"], 100, delta=1e-6)
+            self.assertEqual(result["witnesses"], [True, False, False, False])
+        else:
+            self.assertIsNone(result["volume_mm3"])
+            self.assertAlmostEqual(result["area_mm2"], 50, delta=1e-6)
+        return result
+
+    def test_export_real_concave_two_holes_brep_step_and_frozen_receipt(self):
+        for solid in (False, True):
+            operation = ({"op": "thicken", "surface": polygon_plate(),
+                          "thickness_nm": 2 * MM, "inward": False} if solid else polygon_plate())
+            self.assertEqual(self.post(operation)[0], 200)
+            before = snapshot(self.workspace)
+            for fmt in ("brep", "step"):
+                status, data, headers = self.download(fmt)
+                self.assertEqual(status, 200, data[:200])
+                self.assertEqual(headers["X-OpenCAD-Document-SHA256"], digest(before["doc"]))
+                self.assertEqual(headers["X-OpenCAD-Artifact-SHA256"], hashlib.sha256(data).hexdigest())
+                self.assertEqual(headers["Content-Disposition"], 'attachment; filename="surface.%s"' % fmt)
+                self.assertNotIn(str(self.directory), json.dumps(headers))
+                self.independent_export_readback(data, fmt, solid)
+                self.assertEqual(snapshot(self.workspace), before)
+        exported = export_surfaces(self.workspace, {"format": "step"})
+        with self.assertRaises(TypeError):
+            exported.headers["X-OpenCAD-Artifact-SHA256"] = "0" * 64
+        with self.assertRaises(AttributeError):
+            exported.data = b"changed"
+
+    def test_export_save_reopen_recipe_bytes_same_document(self):
+        self.assertEqual(self.post(polygon_plate())[0], 200)
+        saved = self.workspace.l1_text()
+        self.assertEqual(self.call("POST", "/api/save", {"path": "download.l1"})[0], 200)
+        reopened = Workspace(self.core, locale="en", standard="gbt", out_root=str(self.directory))
+        reopened.open_doc(str(self.directory / "download.l1"))
+        before = snapshot(reopened)
+        self.assertEqual(before["doc"], saved)
+        self.assertEqual(validate_document(reopened.doc)["recipe"], polygon_plate())
+        for fmt in ("brep", "step"):
+            exported = export_surfaces(reopened, {"format": fmt})
+            self.assertEqual(exported.headers["X-OpenCAD-Document-SHA256"], digest(saved))
+            self.independent_export_readback(exported.data, fmt, False)
+            self.assertEqual(snapshot(reopened), before)
+
+    def test_export_bad_format_empty_and_mixed_domains_no_worker(self):
+        before = snapshot(self.workspace)
+        for body in ({}, {"format": None}, {"format": True}, {"format": "stl"},
+                     {"format": "STEP"}, {"format": "../step"}, {"format": "step", "path": "x"}):
+            with self.subTest(body=body):
+                with self.assertRaises(ApiError) as caught:
+                    export_surfaces(self.workspace, body)
+                self.assertEqual(caught.exception.status, 400)
+                self.assertEqual(snapshot(self.workspace), before)
+        with self.assertRaises(ApiError) as caught:
+            export_surfaces(self.workspace, {"format": "step"})
+        self.assertEqual(caught.exception.status, 404)
+        self.assertFalse((self.directory / "surface-jobs").exists())
+        self.workspace.doc.extra[NAMESPACE] = {"schema": 1, "recipe": polygon_plate()}
+        for domain in ("sketch", "features", "assembly"):
+            original = copy.deepcopy(self.workspace.doc)
+            if domain == "sketch":
+                self.workspace.command("add_line", {"p1": [0, 0], "p2": [MM, 0]})
+            elif domain == "features":
+                self.workspace.doc.features.append({
+                    "uuid": str(uuid.uuid4()), "kind": "import_step",
+                    "params": {"step_text": "unconsumed"}, "suppressed": False})
+            else:
+                self.workspace.doc.extra["industrial_assembly_v1"] = {}
+            with self.assertRaises(ApiError) as caught:
+                export_surfaces(self.workspace, {"format": "step"})
+            self.assertEqual(caught.exception.payload()["error"], "unsupported_geometry_domain")
+            self.assertFalse((self.directory / "surface-jobs").exists())
+            self.workspace.doc = original
+
+    def test_export_artifact_postbuild_corruption_and_symlink_refused_atomically(self):
+        self.assertEqual(self.post(polygon_plate())[0], 200)
+        before = snapshot(self.workspace)
+        import industrial_surfaces as adapter
+        kernel = adapter._kernel(self.workspace)
+        build = kernel.build
+        for operation in ("bytes", "length", "sha", "symlink", "missing", "source-map"):
+            def changed_build(recipe):
+                result = build(recipe)
+                item = result["artifacts"]["step"]
+                path = Path(item["path"])
+                if operation == "bytes":
+                    path.write_bytes(path.read_bytes() + b"corruption")
+                elif operation == "length":
+                    item["bytes"] += 1
+                elif operation == "sha":
+                    item["sha256"] = "0" * 64
+                elif operation == "symlink":
+                    held = path.with_name("held.step")
+                    path.rename(held)
+                    path.symlink_to(held)
+                elif operation == "missing":
+                    path.rename(path.with_name("retained.step"))
+                else:
+                    result["execution"]["sources_before"] = {}
+                return result
+            with self.subTest(operation=operation), mock.patch.object(adapter, "_kernel", return_value=kernel):
+                with mock.patch.object(kernel, "build", side_effect=changed_build):
+                    with self.assertRaises(ApiError) as caught:
+                        export_surfaces(self.workspace, {"format": "step"})
+                self.assertEqual(caught.exception.status, 422)
+                self.assertTrue(caught.exception.payload()["first_cause"])
+                self.assertNotIn(str(self.directory), json.dumps(caught.exception.payload()))
+                self.assertEqual(snapshot(self.workspace), before)
+
+    def test_export_during_document_or_source_drift_no_stale_bytes_returned(self):
+        self.assertEqual(self.post(polygon_plate())[0], 200)
+        import industrial_surfaces as adapter
+        kernel = adapter._kernel(self.workspace)
+        build = kernel.build
+        before = snapshot(self.workspace)
+        def concurrent_change(recipe):
+            result = build(recipe)
+            with self.workspace._lock:
+                self.workspace.doc.meta["title_key"] = "other-operation"
+            return result
+        with mock.patch.object(adapter, "_kernel", return_value=kernel):
+            with mock.patch.object(kernel, "build", side_effect=concurrent_change):
+                with self.assertRaises(ApiError) as caught:
+                    export_surfaces(self.workspace, {"format": "step"})
+        self.assertEqual(caught.exception.status, 409)
+        self.assertEqual(self.workspace.doc.meta["title_key"], "other-operation")
+        self.assertEqual(snapshot(self.workspace)["undo"], before["undo"])
+        current = snapshot(self.workspace)
+        sources = adapter._sources()
+        with mock.patch.object(adapter, "_sources", side_effect=[sources, {**sources, "surfaces.py": "0" * 64}]):
+            with self.assertRaises(ApiError) as caught:
+                export_surfaces(self.workspace, {"format": "step"})
+        self.assertEqual(caught.exception.payload()["reason"], "source_drift")
+        self.assertEqual(snapshot(self.workspace), current)
+
+    def test_export_real_kernel_failure_retains_firstcause_no_model_mutation(self):
+        operation = {"op": "thicken", "surface": cylinder(), "thickness_nm": 6 * MM, "inward": True}
+        self.workspace.doc.extra[NAMESPACE] = {"schema": 1, "recipe": operation}
+        before = snapshot(self.workspace)
+        with self.assertRaises(ApiError) as caught:
+            export_surfaces(self.workspace, {"format": "step"})
+        self.assertEqual(caught.exception.status, 422)
+        self.assertIn("focal crossing", caught.exception.payload()["first_cause"])
+        self.assertNotIn(str(self.directory), json.dumps(caught.exception.payload()))
+        self.assertEqual(snapshot(self.workspace), before)
+        logs = list((self.directory / "surface-jobs").glob("surface-*/stderr.log"))
+        self.assertTrue(any(caught.exception.payload()["first_cause"] in path.read_text() for path in logs))
 
     def test_empty_read_and_prepare_are_strictly_nonmutating(self):
         before = snapshot(self.workspace)
@@ -734,6 +962,58 @@ class IndustrialSurfaceTests(unittest.TestCase):
     def test_browser_mobile_actual_click_and_mesh(self):
         self.browser(390)
 
+    def browser_download(self, width):
+        self.assertEqual(self.post(polygon_plate())[0], 200)
+        before = snapshot(self.workspace)
+        path = ROOT / "oss-alternatives/tools/cad3d/viewer_controls_check.py"
+        spec = importlib.util.spec_from_file_location("surface_download_browser_helper", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        downloads = self.directory / "browser-downloads"
+        downloads.mkdir()
+        browser = module.BrowserSession(
+            "/home/mch2/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome",
+            self.directory / "download-browser", width=width, height=900, source_root=ROOT)
+        with browser:
+            browser.call("Browser.setDownloadBehavior", {
+                "behavior": "allow", "downloadPath": str(downloads)})
+            browser.call("Page.navigate", {"url": "http://127.0.0.1:%s/" % self.server.server_port})
+            browser.wait("window.panel && !panel.model.busy && panel.model.response")
+            draft = json.dumps(cylinder(), indent=2)
+            browser.click('[data-surface-field="recipe"]')
+            browser.call("Input.dispatchKeyEvent", {
+                "type": "keyDown", "key": "a", "code": "KeyA", "modifiers": 2,
+                "windowsVirtualKeyCode": 65})
+            browser.call("Input.dispatchKeyEvent", {
+                "type": "keyUp", "key": "a", "code": "KeyA", "modifiers": 2,
+                "windowsVirtualKeyCode": 65})
+            browser.call("Input.insertText", {"text": draft})
+            self.assertEqual(browser.evaluate("document.querySelector('.surfaces-recipe').value"), draft)
+            browser.evaluate("window.downloadOriginalNode=document.querySelector('.surfaces-recipe')")
+            for fmt in ("step", "brep"):
+                browser.click('[data-surface-action="download-%s"]' % fmt)
+                browser.wait("!panel.model.busy && !panel.model.error && "
+                             "document.querySelector('.surfaces-status').textContent.includes('downloaded')")
+                target = downloads / ("surface." + fmt)
+                deadline = time.monotonic() + 20
+                while not target.is_file() or not target.stat().st_size:
+                    if time.monotonic() >= deadline:
+                        self.fail("Real browser download did not create " + str(target))
+                    time.sleep(.1)
+                self.independent_export_readback(target.read_bytes(), fmt, False)
+                self.assertEqual(browser.evaluate("document.querySelector('.surfaces-recipe').value"), draft)
+                self.assertTrue(browser.evaluate(
+                    "downloadOriginalNode===document.querySelector('.surfaces-recipe')"))
+                self.assertEqual(snapshot(self.workspace), before)
+            self.assertFalse(browser.evaluate("document.documentElement.scrollWidth>innerWidth"))
+            browser.screenshot("surface-download-%s" % width)
+
+    def test_browser_desktop_real_download_keeps_unsaved_recipe(self):
+        self.browser_download(1280)
+
+    def test_browser_mobile_real_download_keeps_unsaved_recipe(self):
+        self.browser_download(390)
+
 
 def run_acceptance():
     global RUN_DIR
@@ -746,7 +1026,8 @@ def run_acceptance():
     RUN_DIR.mkdir(parents=True, exist_ok=False)
     paths = [Path(__file__).resolve(), APP / "industrial_surfaces.py",
              APP / "web/js/surfaces-panel.js", APP / "web/css/surfaces-panel.css",
-             ROOT / "docs/design/industrial-surfaces.md", APP / "server.py",
+             ROOT / "docs/design/industrial-surfaces.md", ROOT / "docs/design/surface-download.md",
+             APP / "server.py",
              PACKAGE / "cadcore/kernel/surfaces.py", PACKAGE / "cadcore/kernel/surfaces_worker.py"]
     before = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
     clock = time.monotonic()

@@ -34,6 +34,9 @@
 .surfaces-actions [data-surface-action="apply"] {
   background: var(--surface-accent); color: #fff; border-color: var(--surface-accent);
 }
+.surfaces-actions [data-surface-action^="download-"] {
+  border-color: var(--surface-accent); background: #edf5f3;
+}
 .surfaces-panel button:disabled { opacity: 0.6; cursor: progress; }
 .surfaces-panel :focus-visible { outline: 3px solid #c68c3b; outline-offset: 2px; }
 .surfaces-panel[data-surface-state="error"] .surfaces-status { color: #9d2e25; }

@@ -207,6 +207,43 @@
     }
     button("apply", "Validate & save candidate", function () { return perform({recipe: recipe()}); }, actions);
     button("reload", "Read saved surfaces", function () { return perform(); }, actions);
+    async function download(fmt) {
+      if (model.busy) throw new Error("surface_request_in_progress");
+      const current = ++sequence;
+      busy(true);
+      try {
+        const response = await window.fetch("/api/surfaces/" + fmt, {credentials: "same-origin"});
+        if (!response.ok) {
+          const value = await response.json();
+          throw new Error(value.first_cause || value.detail || value.error || "surface_export_failed");
+        }
+        const blob = await response.blob();
+        const digest = response.headers.get("X-OpenCAD-Artifact-SHA256");
+        const documentSHA = response.headers.get("X-OpenCAD-Document-SHA256");
+        if (!blob.size || !/^[a-f0-9]{64}$/.test(digest || "") ||
+            !/^[a-f0-9]{64}$/.test(documentSHA || "") ||
+            response.headers.get("Content-Disposition") !== 'attachment; filename="surface.' + fmt + '"') {
+          throw new Error("surface_export_receipt_invalid");
+        }
+        const actual = Array.from(new Uint8Array(await crypto.subtle.digest(
+          "SHA-256", await blob.arrayBuffer()))).map(function (byte) {
+          return byte.toString(16).padStart(2, "0");
+        }).join("");
+        if (actual !== digest) throw new Error("surface_export_bytes_changed");
+        if (disposed || current !== sequence) return;
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url; anchor.download = "surface." + fmt;
+        try { anchor.click(); } finally {
+          setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        }
+        model.error = "";
+        status.textContent = text("downloaded", "Saved exact surface downloaded; unsaved recipe retained.");
+        root.dataset.surfaceState = "ready";
+      } finally { if (!disposed && current === sequence) busy(false); }
+    }
+    button("download-step", "Download saved STEP", function () { return download("step"); }, actions);
+    button("download-brep", "Download saved BRep", function () { return download("brep"); }, actions);
     setRecipe(plane());
     const observer = new ResizeObserver(function () { try { draw(); } catch (error) { fail(error); } });
     observer.observe(canvas);

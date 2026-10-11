@@ -20,7 +20,11 @@ import copy
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
+import stat
+from types import MappingProxyType
+from typing import Mapping
 
 from cadcore import docmodel
 from cadcore.errors import CadError
@@ -29,6 +33,19 @@ from server import ApiError
 
 NAMESPACE = "x_industrial_surfaces"
 SCHEMA = 1
+MAX_EXPORT_BYTES = 64 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class SurfaceExport:
+    data: bytes
+    content_type: str
+    headers: Mapping[str, str]
+
+    def __post_init__(self):
+        if type(self.data) is not bytes or not self.data:
+            raise ValueError("Surface export requires nonempty immutable bytes")
+        object.__setattr__(self, "headers", MappingProxyType(dict(self.headers)))
 
 
 @dataclass(frozen=True)
@@ -198,6 +215,101 @@ def _capture(workspace):
         before = workspace.l1_text()
         doc = workspace.docmodel.document_from_l1(before)
     return before, doc
+
+
+def export_surfaces(workspace, body):
+    """Export only the captured complete saved surface; never publish or return paths.
+
+    The gateway must authorize before this call and recheck auth/head afterwards.
+    A private workspace snapshot is required; its document hash is not a project
+    revision or snapshot hash. Kernel failures retain their original job evidence.
+    """
+    try:
+        return _export(workspace, body)
+    except ApiError:
+        raise
+    except SurfaceExecutionError as exc:
+        cause = (exc.details.get("worker_result") or {}).get("error", "")
+        if not cause or any(char in cause for char in ("/", "\\", "\n")):
+            cause = "Exact kernel failed: " + exc.reason
+        raise ApiError("surface_export_failed", "Exact surface export failed", status=422,
+                       reason=exc.reason,
+                       first_cause=cause) from exc
+    except OSError as exc:
+        raise ApiError("surface_export_failed", "Owned surface artifact could not be read",
+                       status=422, reason="artifact_unreadable",
+                       first_cause=type(exc).__name__ + " while reading owned surface artifact") from exc
+    except ValueError as exc:
+        raise ApiError("surface_export_failed", str(exc), status=422,
+                       reason="artifact_invalid", first_cause=str(exc)) from exc
+
+
+def _export(workspace, body):
+    _fields(body, {"format"}, {"format"})
+    fmt = body["format"]
+    if type(fmt) is not str or fmt not in {"brep", "step"}:
+        raise ApiError("bad_surface_format", "Use brep or step", status=400)
+    before, doc = _capture(workspace)
+    state = validate_document(doc)
+    if (doc.features or any(sketch.get("entities") for sketch in doc.sketches)
+            or "industrial_assembly_v1" in doc.extra):
+        raise ApiError("unsupported_geometry_domain",
+                       "Surface export requires a separate complete surface project", status=422)
+    if state["recipe"] is None:
+        raise ApiError("surface_not_defined", "Save an exact surface recipe first", status=404)
+    sources = _sources()
+    kernel = _kernel(workspace)
+    result = kernel.build(state["recipe"])
+    execution = result["execution"]
+    import cadcore.kernel.surfaces as module
+    expected_sources = {str(Path(module.__file__).resolve().with_name(name)): digest
+                        for name, digest in sources.items()}
+    if (result.get("ok") is not True or result["properties"]["valid"] is not True
+            or type(execution["rc"]) is not int or execution["rc"] != 0
+            or execution["rc_measured"] is not True
+            or execution["sources_before"] != expected_sources
+            or execution["sources_after"] != expected_sources):
+        raise ValueError("Surface export worker source binding changed")
+    job = Path(execution["job_dir"])
+    if (not job.is_absolute() or job.is_symlink()
+            or job.parent.resolve() != kernel.evidence_dir.resolve()
+            or set(result["artifacts"]) != {"brep", "step"}):
+        raise ValueError("Surface export artifact is not from the owned exact build")
+    artifact = result["artifacts"][fmt]
+    if Path(artifact["path"]) != job / ("shape." + fmt):
+        raise ValueError("Surface export artifact name or location changed")
+    # Hold the job directory and open the fixed child without following links.
+    parent = os.open(kernel.evidence_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        directory = os.open(job.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        try:
+            descriptor = os.open("shape." + fmt, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)
+            with os.fdopen(descriptor, "rb") as handle:
+                info = os.fstat(handle.fileno())
+                if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= MAX_EXPORT_BYTES:
+                    raise ValueError("Surface export artifact is nonregular, empty or oversized")
+                data = handle.read(MAX_EXPORT_BYTES + 1)
+        finally:
+            os.close(directory)
+    finally:
+        os.close(parent)
+    digest = hashlib.sha256(data).hexdigest()
+    if (type(artifact["bytes"]) is not int or len(data) != artifact["bytes"]
+            or not 0 < len(data) <= MAX_EXPORT_BYTES or not _is_sha(artifact["sha256"])
+            or digest != artifact["sha256"]):
+        raise ValueError("Surface export artifact SHA or byte length changed")
+    if _sources() != sources:
+        raise ApiError("surface_export_failed", "Kernel source changed during export",
+                       status=422, reason="source_drift", first_cause="Kernel source drift")
+    with workspace._lock:
+        if workspace.l1_text() != before:
+            raise ApiError("revision_conflict", "Surface document changed during export", status=409)
+    return SurfaceExport(data, "application/step" if fmt == "step" else "application/octet-stream", {
+        "X-OpenCAD-Document-SHA256": _sha(before),
+        "X-OpenCAD-Artifact-SHA256": digest,
+        "X-OpenCAD-Surface-Recipe-SHA256": _json_sha(state["recipe"]),
+        "Content-Disposition": 'attachment; filename="surface.%s"' % fmt,
+    })
 
 
 def read_surfaces(workspace, body=None):
