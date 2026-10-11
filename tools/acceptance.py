@@ -6,13 +6,14 @@ real HTTP selftest, document/store/DXF tests), core (all cadcore tests), web
 (all OpenCAD tests), all (negative controls + HTTP + core + Web + DXF).
 Coupling is a targeted regression for the migrated infra dependencies.
 No test exclusions or new skips.
-Evidence and child temporary files are kept outside the worktree.
+Evidence is external on 3FS; child temporary files and SQLite use /data/tmp.
 """
 
 from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import faulthandler
 import importlib
 import json
 import os
@@ -20,8 +21,10 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import traceback
 import unittest
+from urllib.parse import unquote, urlsplit
 
 import bootstrap_from_infra as bootstrap
 
@@ -37,6 +40,122 @@ RUNTIME_ORIGINS = {
     "freechat_vault.fcx": PACKAGES / "vault/freechat_vault/fcx.py",
     "server": APP / "server.py",
 }
+LOCAL_RUNTIME_PARENT = Path("/data/tmp")
+PERSISTENT_FILESYSTEMS = {"ext2/ext3", "ext4", "xfs", "btrfs", "zfs"}
+
+
+def local_runtime_path(value: Path, *, fresh: bool = False, short: bool = False) -> Path:
+    """Validate actual ancestors, not a declaration or a resolved symlink alias."""
+    path = Path(value)
+    if (not path.is_absolute() or ".." in path.parts or
+            not path.is_relative_to(LOCAL_RUNTIME_PARENT) or path == LOCAL_RUNTIME_PARENT):
+        raise ValueError("SQLite runtime must be an absolute /data/tmp child")
+    if short and len(os.fsencode(path)) > 80:
+        raise ValueError("SQLite runtime root exceeds the short-path limit of 80 bytes")
+    existing = LOCAL_RUNTIME_PARENT
+    for parent in (*reversed(path.parents), path):
+        if parent.is_symlink():
+            raise ValueError(f"symlink SQLite runtime path: {parent}")
+        if parent.exists():
+            if parent != path and not parent.is_dir():
+                raise ValueError(f"non-directory SQLite runtime ancestor: {parent}")
+            if parent.is_dir():
+                existing = parent
+                if (parent / ".git").exists():
+                    raise ValueError("SQLite runtime must not be inside a repository")
+    filesystem = subprocess.check_output(
+        ["stat", "-f", "-c", "%T", str(existing)], text=True).strip()
+    if filesystem not in PERSISTENT_FILESYSTEMS:
+        raise ValueError(f"SQLite runtime is not local persistent storage: {filesystem}")
+    if fresh and path.exists():
+        raise FileExistsError(f"SQLite runtime already exists: {path}")
+    return path
+
+
+class SQLiteRuntimeGuard:
+    def __init__(self, root: Path):
+        self.root = local_runtime_path(root, short=True)
+        self.opens = 0
+        self.paths = {}
+        self.rejected = []
+
+    def audit(self, event, args):
+        if event != "sqlite3.connect":
+            return
+        value = os.fsdecode(args[0])
+        if value == ":memory:" or value == "file::memory:" or value.startswith(
+                "file::memory:?"):
+            return
+        if value.startswith("file:"):
+            uri = urlsplit(value)
+            if uri.netloc or uri.fragment:
+                self.reject("SQLite URI authority/fragment rejected")
+            value = unquote(uri.path)
+        try:
+            if not value:
+                raise ValueError("empty SQLite filename is not an isolated database")
+            path = local_runtime_path(Path(value).absolute())
+            if not path.is_relative_to(self.root):
+                raise ValueError("actual SQLite path is outside the declared local runtime")
+            if not path.parent.is_dir():
+                raise ValueError("SQLite database parent is absent")
+            for suffix in ("-wal", "-shm", "-journal"):
+                local_runtime_path(Path(str(path) + suffix))
+            if (os.environ.get("OPENCAD_TEST_RUNTIME_ROOT") != str(self.root) or
+                    tempfile.gettempdir() != str(self.root)):
+                raise ValueError("SQLite runtime declaration/tempfile drift")
+            filesystem = subprocess.check_output(
+                ["stat", "-f", "-c", "%T", str(path.parent)], text=True).strip()
+            self.paths[str(path)] = filesystem
+            self.opens += 1
+        except Exception as exc:
+            self.reject(str(exc))
+
+    def reject(self, reason):
+        self.rejected.append(reason)
+        print(f"INDEPENDENT_SQLITE_REJECT reason={reason}", file=sys.stderr, flush=True)
+        raise ValueError(reason)
+
+    def summary(self) -> dict:
+        return {"root": str(self.root), "TMPDIR": os.environ.get("TMPDIR"),
+                "tempfile": tempfile.gettempdir(),
+                "filesystem": subprocess.check_output(
+                    ["stat", "-f", "-c", "%T", str(self.root)], text=True).strip(),
+                "sqlite_opens": self.opens, "sqlite_paths": dict(sorted(self.paths.items())),
+                "rejected": list(self.rejected)}
+
+
+def configure_runtime(runtime: Path | None = None) -> SQLiteRuntimeGuard:
+    active = getattr(sys, "_opencad_acceptance_sqlite_guard", None)
+    if active is not None:
+        if runtime is not None and active.root != runtime:
+            raise ValueError("cannot replace the active SQLite runtime")
+        return active
+    declared = os.environ.get("OPENCAD_TEST_RUNTIME_ROOT")
+    if runtime is None:
+        if declared is not None:
+            if not declared:
+                raise ValueError("empty explicit SQLite runtime declaration")
+            runtime = local_runtime_path(Path(declared), short=True)
+        else:
+            runtime = Path(tempfile.mkdtemp(prefix="oc-a-", dir=LOCAL_RUNTIME_PARENT))
+    runtime = local_runtime_path(runtime, short=True)
+    if not runtime.is_dir():
+        raise ValueError("SQLite runtime directory must exist")
+    for name in ("TMPDIR", "TMP", "TEMP", "OPENCAD_TEST_RUNTIME_ROOT"):
+        os.environ[name] = str(runtime)
+    tempfile.tempdir = str(runtime)
+    guard = SQLiteRuntimeGuard(runtime)
+    sys.addaudithook(guard.audit)
+    sys._opencad_acceptance_sqlite_guard = guard
+    faulthandler.enable(all_threads=True)
+    return guard
+
+
+def runtime_marker(guard: SQLiteRuntimeGuard) -> dict:
+    summary = guard.summary()
+    print("INDEPENDENT_RUNTIME_BINDING " + json.dumps(summary, sort_keys=True), flush=True)
+    return summary
 
 
 def source_manifest(root: Path) -> dict:
@@ -131,6 +250,7 @@ def counts_reconcile(summary: dict) -> bool:
 
 
 def run_suite(start: Path, pattern: str, top: Path, case: str | None = None) -> dict:
+    guard = configure_runtime()
     scan(ROOT)
     # Sibling packages all use "tests"; prioritize this child process's root.
     sys.path[:] = [str(top)] + [path for path in sys.path if path != str(top)]
@@ -150,9 +270,11 @@ def run_suite(start: Path, pattern: str, top: Path, case: str | None = None) -> 
         "loaded_cad_origins": runtime_bindings(ROOT),
     }
     summary["counts_reconciled"] = counts_reconcile(summary)
-    if not summary["counts_reconciled"]:
+    summary["sqlite_runtime"] = guard.summary()
+    if not summary["counts_reconciled"] or guard.rejected:
         summary["successful"] = False
     print("INDEPENDENT_TEST_COUNTS " + json.dumps(summary, sort_keys=True))
+    runtime_marker(guard)
     return summary
 
 
@@ -161,6 +283,10 @@ def http_selftest(workspace: Path) -> int:
     workspace = workspace.resolve()
     if workspace == ROOT or ROOT in workspace.parents:
         raise ValueError("HTTP selftest workspace must be outside source tree")
+    guard = configure_runtime()
+    workspace = local_runtime_path(workspace)
+    if not workspace.is_relative_to(guard.root):
+        raise ValueError("HTTP workspace outside declared SQLite runtime")
     workspace.mkdir(parents=True, exist_ok=False)
     sys.path.insert(0, str(APP))
     server = importlib.import_module("server")
@@ -169,14 +295,20 @@ def http_selftest(workspace: Path) -> int:
     rc = server.selftest(temp_root=str(workspace))
     origins = runtime_bindings(ROOT)
     print("INDEPENDENT_HTTP_BINDINGS " + json.dumps(origins, sort_keys=True))
+    runtime_marker(guard)
+    if guard.rejected:
+        return 1
     return rc
 
 
 def child(args: list[str], cwd: Path, out: Path, label: str, runtime: Path) -> dict:
+    runtime = local_runtime_path(runtime, short=True)
     log = out / (label + ".log")
     env = dict(os.environ)
-    env.update(PYTHONDONTWRITEBYTECODE="1", TMPDIR=str(out / "tmp"),
-               OPENCAD_OUT_ROOT=str(out / "workspace"),
+    env.update(PYTHONDONTWRITEBYTECODE="1", PYTHONFAULTHANDLER="1",
+               TMPDIR=str(runtime), TMP=str(runtime), TEMP=str(runtime),
+               OPENCAD_OUT_ROOT=str(runtime / "workspace"),
+               OPENCAD_EVIDENCE_ROOT=str(out),
                OPENCAD_CADCORE_ROOT=str(PACKAGES / "cadcore"),
                OPENCAD_TEST_RUNTIME_ROOT=str(runtime),
                PYTHONPATH=os.pathsep.join(str(path) for path in
@@ -194,7 +326,13 @@ def child(args: list[str], cwd: Path, out: Path, label: str, runtime: Path) -> d
     result = {"label": label, "argv": args, "cwd": str(cwd), "rc": process.returncode,
               "log_sha256": bootstrap.sha_bytes(log.read_bytes()), "counts": summary,
               "test_runtime_root": str(runtime)}
-    compact = ({key: value for key, value in summary.items() if key != "loaded_cad_origins"}
+    bindings = [json.loads(line.removeprefix("INDEPENDENT_RUNTIME_BINDING "))
+                for line in text.splitlines()
+                if line.startswith("INDEPENDENT_RUNTIME_BINDING ")]
+    if len(bindings) == 1:
+        result["sqlite_runtime"] = bindings[0]
+    compact = ({key: value for key, value in summary.items()
+                if key not in {"loaded_cad_origins", "sqlite_runtime"}}
                if summary else None)
     print(f"INDEPENDENT_STEP label={label} rc={process.returncode} counts={compact}")
     if process.returncode:
@@ -209,6 +347,10 @@ def child(args: list[str], cwd: Path, out: Path, label: str, runtime: Path) -> d
         result["marker_error"] = "unittest count marker absent or duplicated"
     elif summary is not None and not summary["successful"]:
         result["marker_error"] = "unittest result is unsuccessful"
+    if (len(bindings) != 1 or bindings[0]["root"] != str(runtime) or
+            bindings[0]["TMPDIR"] != str(runtime) or
+            bindings[0]["tempfile"] != str(runtime) or bindings[0]["rejected"]):
+        result["runtime_error"] = "actual local SQLite runtime binding absent/invalid/rejected"
     return result
 
 
@@ -235,36 +377,50 @@ def main() -> int:
     if out == ROOT or ROOT in out.parents:
         parser.error("evidence must be outside the source tree")
     out.mkdir(parents=True, exist_ok=False)
-    (out / "tmp").mkdir()
-    (out / "workspace").mkdir()
     report = {"verdict": "FAIL", "stage": args.stage, "at": bootstrap.now(), "steps": [],
               "production_deployment": "NOT_ASSESSED",
               "industrial_parity": "NOT_ASSESSED", "multi_tenant_readiness": "NOT_ASSESSED"}
     before = None
     try:
-        runtime = (args.runtime_root or (Path(os.environ.get(
-            "OPENCAD_TEST_RUNTIME_ROOT", "/data/tmp/opencad-test-runtime")) / stamp)).resolve()
-        if runtime == ROOT or ROOT in runtime.parents or runtime == out or out in runtime.parents:
-            raise ValueError("SQLite test runtime must be local and outside source/evidence")
-        runtime.mkdir(parents=True, exist_ok=False)
-        filesystem = subprocess.check_output(
-            ["stat", "-f", "-c", "%T", str(runtime)], text=True).strip()
+        declared = os.environ.get("OPENCAD_TEST_RUNTIME_ROOT")
+        if args.runtime_root is not None:
+            runtime = local_runtime_path(args.runtime_root, fresh=True, short=True)
+            runtime.mkdir()
+        elif declared is not None:
+            if not declared:
+                raise ValueError("empty explicit SQLite runtime declaration")
+            runtime = local_runtime_path(Path(declared) / stamp, fresh=True, short=True)
+            runtime.mkdir()
+        else:
+            runtime = Path(tempfile.mkdtemp(prefix="oc-a-", dir=LOCAL_RUNTIME_PARENT))
+        if runtime == out or runtime in out.parents or out in runtime.parents:
+            raise ValueError("SQLite test runtime overlaps evidence")
+        (runtime / "workspace").mkdir()
+        guard = configure_runtime(runtime)
+        filesystem = guard.summary()["filesystem"]
         report["test_runtime"] = {"root": str(runtime), "filesystem": filesystem,
-                                  "env": "OPENCAD_TEST_RUNTIME_ROOT"}
-        if (filesystem.startswith("fuse") or filesystem in {
-                "tmpfs", "ramfs", "nfs", "nfs4", "smb2", "cifs"}):
-            raise ValueError(f"SQLite test runtime is not local persistent storage: {filesystem}")
+                                  "env": "OPENCAD_TEST_RUNTIME_ROOT", "TMPDIR": str(runtime)}
         print(f"INDEPENDENT_RUNTIME root={runtime} filesystem={filesystem}")
+        report["source_head_before"] = subprocess.check_output(
+            ["git", "--no-replace-objects", "-C", str(ROOT), "rev-parse", "HEAD"],
+            text=True).strip()
+        report["source_status_before"] = subprocess.check_output(
+            ["git", "--no-replace-objects", "-C", str(ROOT), "status", "--porcelain"],
+            text=True)
         before = source_manifest(ROOT)
         report["source_before"] = before
         report["scan"] = scan(ROOT)
         commands = []
         if args.stage in ("smoke", "coupling", "all"):
+            commands.append(("sqlite-runtime-negative-controls", [
+                str(Path(__file__).resolve()), "--suite", str(ROOT / "tools"),
+                "--top", str(ROOT / "tools"), "--pattern",
+                "test_sqlite_runtime_isolation.py"], ROOT))
             commands.append(("bootstrap-negative-controls", [
                 str(Path(__file__).resolve()), "--suite", str(ROOT / "tools"),
                 "--top", str(ROOT / "tools"), "--pattern", "test_bootstrap.py"], ROOT))
             commands.append(("http-selftest", [str(Path(__file__).resolve()),
-                             "--http-selftest", str(out / "http-selftest-workspace")], ROOT))
+                             "--http-selftest", str(runtime / "http-selftest-workspace")], ROOT))
         if args.stage == "smoke":
             for pattern in ("test_docmodel.py", "test_store.py"):
                 commands.append((pattern, [str(Path(__file__).resolve()), "--suite",
@@ -291,12 +447,14 @@ def main() -> int:
         for label, argv, cwd in commands:
             result = child(argv, cwd, out, label, runtime)
             report["steps"].append(result)
-            if result["rc"] or result.get("marker_error"):
+            if result["rc"] or result.get("marker_error") or result.get("runtime_error"):
+                report["first_cause"] = dict(result)
                 raise RuntimeError(f"failed independent step: {label}")
         report["verdict"] = "PASS"
     except Exception as exc:
         report["error"] = {"type": type(exc).__name__, "detail": str(exc),
                            "traceback": traceback.format_exc()}
+        report.setdefault("first_cause", report["error"])
         print(f"INDEPENDENT_ACCEPTANCE error={type(exc).__name__} detail={exc}", file=sys.stderr)
     finally:
         if before is not None:
@@ -305,13 +463,23 @@ def main() -> int:
                 drift = sorted(name for name in before.keys() | after.keys()
                                if before.get(name) != after.get(name))
                 report["source_drift"] = drift
+                report["source_after"] = after
                 report["source_sha256"] = bootstrap.digest(before)
                 report["source_after_sha256"] = bootstrap.digest(after)
-                if drift:
+                report["source_head_after"] = subprocess.check_output(
+                    ["git", "--no-replace-objects", "-C", str(ROOT), "rev-parse", "HEAD"],
+                    text=True).strip()
+                report["source_status_after"] = subprocess.check_output(
+                    ["git", "--no-replace-objects", "-C", str(ROOT), "status", "--porcelain"],
+                    text=True)
+                if (drift or report["source_head_before"] != report["source_head_after"] or
+                        report["source_status_before"] != report["source_status_after"]):
                     report["verdict"] = "FAIL"
+                    report.setdefault("first_cause", {"detail": "independent source drift"})
             except Exception as exc:
                 report["verdict"] = "FAIL"
                 report["source_recheck_error"] = {"type": type(exc).__name__, "detail": str(exc)}
+                report.setdefault("first_cause", report["source_recheck_error"])
         summaries = [step["counts"] for step in report["steps"] if step.get("counts")]
         report["totals"] = {
             "tests": sum(value["tests"] for value in summaries),
@@ -322,6 +490,7 @@ def main() -> int:
             "http_checks": sum(step.get("http_checks", 0) for step in report["steps"]),
         }
         report["finished_at"] = bootstrap.now()
+        report["actual_rc"] = 0 if report["verdict"] == "PASS" else 1
         bootstrap.exclusive_json(out / "result.json", report)
         line = f"INDEPENDENT_ACCEPTANCE verdict={report['verdict']} stage={args.stage} evidence={out}"
         bootstrap.exclusive_bytes(out / "acceptance.log", (line + "\n").encode())
