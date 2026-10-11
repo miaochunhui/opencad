@@ -605,8 +605,6 @@ def migrate(payload: dict[str, Any], *, target: int = SCHEMA_VERSION) -> dict[st
     if isinstance(existing, list):
         diagnostics.extend(item for item in existing if isinstance(item, Mapping))
     version = data.get("schema_version", 0)
-    if version is None:
-        version = 0
     if isinstance(version, bool) or not isinstance(version, int) or version < 0:
         raise DocumentError("schema_version must be a non-negative int", reason="bad_schema_version",
                             schema_version=repr(data.get("schema_version")))
@@ -759,13 +757,36 @@ def _check_geom(value: Any, path: str, problems: list[str]) -> None:
         problems.append("geom_empty:%s" % path)
     for key, item in value.items():
         child = _path(path, str(key))
+        if key in _GEOM_LENGTH_KEYS:
+            if type(item) is not int:
+                problems.append("geom_length_not_integer:%s value=%r" % (child, item))
+            continue
+        if key in _GEOM_PAIR_KEYS:
+            _check_geom_point(item, child, problems)
+            continue
+        if key in _GEOM_POINT_KEYS or key == "samples":
+            if not isinstance(item, (list, tuple)):
+                problems.append("geom_points_invalid:%s expected point list" % child)
+            else:
+                for index, point in enumerate(item):
+                    _check_geom_point(point, "%s[%d]" % (child, index), problems)
+            continue
+        if key in ("dx", "dy"):
+            if isinstance(item, bool) or not isinstance(item, (int, float)) or (
+                    isinstance(item, float) and not math.isfinite(item)):
+                problems.append("geom_direction_invalid:%s" % child)
+            continue
+        if key == "closed":
+            if type(item) is not bool:
+                problems.append("geom_flag_invalid:%s expected bool" % child)
+            continue
         if str(key).endswith("_deg"):
             if isinstance(item, bool) or not isinstance(item, (int, float)):
                 problems.append("angle_not_a_number:%s type=%s" % (child, type(item).__name__))
             elif isinstance(item, float) and not math.isfinite(item):
                 problems.append("angle_not_finite:%s value=%r" % (child, item))
             continue
-        if key in _GEOM_POINT_KEYS:
+        if str(key).endswith("_nm"):
             _check_nm_value(item, child, str(key), problems)
             continue
         if item is None or isinstance(item, (bool, str)):
@@ -774,6 +795,93 @@ def _check_geom(value: Any, path: str, problems: list[str]) -> None:
             problems.append("geom_length_not_integer:%s value=%r" % (child, item))
         elif not isinstance(item, (int, list, tuple)):
             problems.append("geom_value_unsupported:%s type=%s" % (child, type(item).__name__))
+
+
+def _check_geom_point(value: Any, path: str, problems: list[str]) -> None:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        problems.append("geom_points_invalid:%s expected 2D point" % path)
+        return
+    for index, coordinate in enumerate(value):
+        if type(coordinate) is not int:
+            problems.append("geom_length_not_integer:%s[%d] value=%r" % (path, index, coordinate))
+
+
+def _entity_geometry_problems(entity: Mapping[str, Any], path: str) -> list[str]:
+    """Validate required native/legacy geometry without manufacturing defaults."""
+    problems: list[str] = []
+    geom = entity.get("geom")
+    if not isinstance(geom, Mapping):
+        return ["geom_not_mapping:%s.geom" % path]
+    kind = entity.get("kind")
+    # Aliases are read-only views of the same geometry, not defaults or conversions.
+    canonical = dict(geom)
+    aliases = {
+        "p1": ("start", "start_nm", "p1_nm"),
+        "p2": ("end", "end_nm", "p2_nm"),
+        "center": ("center_nm",),
+        "radius_nm": ("radius", "r"),
+        "start_deg": ("a1_deg",), "end_deg": ("a2_deg",),
+    }
+    for key, names in aliases.items():
+        values = [geom[name] for name in (key, *names) if name in geom]
+        if values:
+            canonical[key] = values[0]
+            if any(value != values[0] for value in values[1:]):
+                problems.append("geom_conflicting_fields:%s.geom.%s" % (path, key))
+    if "cx" in geom and "cy" in geom:
+        center = [geom["cx"], geom["cy"]]
+        if "center" in canonical and canonical["center"] != center:
+            problems.append("geom_conflicting_fields:%s.geom.center" % path)
+    if all(key in geom for key in ("x1", "y1", "x2", "y2")):
+        for key, point in (("p1", [geom["x1"], geom["y1"]]),
+                           ("p2", [geom["x2"], geom["y2"]])):
+            if key in canonical and canonical[key] != point:
+                problems.append("geom_conflicting_fields:%s.geom.%s" % (path, key))
+    required = {
+        "line": (("x1", "y1", "x2", "y2"), ("p1", "p2")),
+        "circle": (("cx", "cy", "radius_nm"), ("center", "radius_nm")),
+        "arc": (("cx", "cy", "radius_nm", "start_deg", "end_deg"),
+                ("center", "radius_nm", "start_deg", "end_deg")),
+        "point": (("x", "y"),),
+        "ellipse": (("cx", "cy", "rx", "ry"),),
+        "polyline": (("points",), ("points_nm",)),
+        "spline": (("points",), ("points_nm",)),
+        "ray": (("px", "py", "dx", "dy"),),
+        "xline": (("px", "py", "dx", "dy"),),
+    }
+    if not isinstance(kind, str) or not kind.strip():
+        return ["geom_missing_field:%s.kind" % path]
+    alternatives = required.get(kind)
+    if alternatives and not any(all(key in canonical for key in fields) for fields in alternatives):
+        problems.append("geom_missing_field:%s.geom kind=%s required=%r" % (path, kind, alternatives))
+    for key in ("r", "radius", "rx", "ry", "radius_nm"):
+        if type(geom.get(key)) is int and geom[key] <= 0:
+            problems.append("geom_degenerate:%s.geom.%s must be positive" % (path, key))
+    if kind == "line":
+        if all(type(geom.get(key)) is int for key in ("x1", "y1", "x2", "y2")):
+            if (geom["x1"], geom["y1"]) == (geom["x2"], geom["y2"]):
+                problems.append("geom_degenerate:%s.geom zero-length line" % path)
+        if "p1" in canonical and "p2" in canonical and canonical["p1"] == canonical["p2"]:
+            problems.append("geom_degenerate:%s.geom zero-length line" % path)
+    if kind in ("ray", "xline") and geom.get("dx") == geom.get("dy") == 0:
+        problems.append("geom_degenerate:%s.geom zero direction" % path)
+    if kind in ("polyline", "spline"):
+        for key in _GEOM_POINT_KEYS:
+            points = geom.get(key)
+            if not isinstance(points, (list, tuple)):
+                continue
+            valid = [point for point in points if isinstance(point, (list, tuple))
+                     and len(point) == 2 and all(type(value) is int for value in point)]
+            minimum = 3 if geom.get("closed") is True else 2
+            if len(points) < minimum or len(valid) != len(points):
+                problems.append("geom_points_invalid:%s.geom.%s" % (path, key))
+            elif len({tuple(point) for point in valid}) < minimum:
+                problems.append("geom_degenerate:%s.geom.%s collapsed points" % (path, key))
+            elif any(first == second for first, second in zip(valid, valid[1:])):
+                problems.append("geom_degenerate:%s.geom.%s repeated segment" % (path, key))
+        if "points" in geom and "points_nm" in geom and geom["points"] != geom["points_nm"]:
+            problems.append("geom_conflicting_fields:%s.geom.points" % path)
+    return problems
 
 
 def _is_single_ref(value: Any) -> bool:
@@ -835,8 +943,7 @@ def check_invariants(doc: Any) -> list[str]:
     3. 禁下标引用：子形状名不得是 `"0"` / `"[0]"` 这类位置引用；
     4. 文本一律存 key：`meta.title_key` / `text_key` / `title_block` 的值必须是 i18n key 形状。
 
-    另外查节点 uuid 合法性与**同类内**唯一性（草图的 dimension uuid 与顶层 annotation uuid
-    在有意的设计里可以同源，所以只做同类唯一性）。
+    另外查文档身份唯一性；仅保留草图尺寸与 dimension 注记的一对一致镜像。
     """
     payload = _as_payload(doc)
     problems: list[str] = []
@@ -876,7 +983,14 @@ def check_invariants(doc: Any) -> list[str]:
 
 
 #: 几何里的**长度**字段（整数纳米）：量程判据用，与 `_check_geom` 的类型判据同一批字段。
-_GEOM_LENGTH_KEYS: frozenset[str] = frozenset({"x1", "y1", "x2", "y2", "cx", "cy", "r"})
+_GEOM_LENGTH_KEYS: frozenset[str] = frozenset({
+    "x1", "y1", "x2", "y2", "cx", "cy", "r", "x", "y", "px", "py", "rx", "ry",
+    "radius", "radius_nm",
+})
+_GEOM_PAIR_KEYS: frozenset[str] = frozenset({
+    "p1", "p2", "center", "start", "end", "p1_nm", "p2_nm",
+    "start_nm", "end_nm", "center_nm", "point_nm", "at_nm",
+})
 
 #: L1 **装载闸**的判据集：命中这些前缀的不变量 = 真源里的**值/类型/引用形状非法**（入参边界），
 #: 装载即拒收。为什么要有这张表、而不直接拿 `check_invariants` 的全部结论拒收：产品自己的写侧会产出
@@ -886,6 +1000,8 @@ LOAD_BLOCKING_PREFIXES: tuple[str, ...] = (
     # 长度/几何：真源是整数纳米，类型错或存不下都不许进
     "nm_is_null", "nm_is_bool", "nm_not_integer", "nm_not_a_number", "nm_out_of_range",
     "geom_not_mapping", "geom_empty", "geom_length_not_integer", "geom_value_unsupported",
+    "geom_missing_field", "geom_degenerate", "geom_points_invalid", "geom_conflicting_fields",
+    "geom_direction_invalid", "geom_flag_invalid",
     # 角度：必须是有限数
     "angle_not_a_number", "angle_not_finite",
     # 引用：必须是 (uuid, sub_shape_name) 二元组、uuid 合法、禁下标引用
@@ -895,7 +1011,7 @@ LOAD_BLOCKING_PREFIXES: tuple[str, ...] = (
     # 文本必须可编码成 UTF-8（孤立代理对会让 state/save/导出当场崩）
     "text_not_utf8",
     # 标识与单位
-    "uuid_bad", "unit_missing", "unit_unknown",
+    "uuid_bad", "uuid_duplicate", "unit_missing", "unit_unknown",
 )
 
 
@@ -932,7 +1048,7 @@ def range_problems(doc: Any) -> list[str]:
                 _check_nm_range(value, child, problems)
             elif key == "geom" and isinstance(value, Mapping):
                 for geom_key, geom_value in value.items():
-                    if geom_key in _GEOM_LENGTH_KEYS or geom_key in _GEOM_POINT_KEYS:
+                    if geom_key in (_GEOM_LENGTH_KEYS | _GEOM_POINT_KEYS | _GEOM_PAIR_KEYS) or geom_key == "samples":
                         _check_nm_range(geom_value, _path(child, str(geom_key)), problems)
     return problems
 
@@ -951,6 +1067,7 @@ def load_blocking_problems(doc: Any) -> list[str]:
                 if str(item).split(":", 1)[0] in LOAD_BLOCKING_PREFIXES]
     problems.extend(range_problems(doc))
     problems.extend(text_encoding_problems(doc))
+    problems.extend(_input_structure_problems(_as_payload(doc)))
     return sorted(set(problems))
 
 
@@ -985,47 +1102,96 @@ def text_encoding_problems(doc: Any) -> list[str]:
     return problems
 
 
+def _identity_nodes(payload: Mapping[str, Any]) -> Iterable[tuple[str, str, Mapping[str, Any]]]:
+    meta = payload.get("meta")
+    if isinstance(meta, Mapping):
+        yield "meta", "document", {"uuid": meta.get("doc_uuid")}
+    def rows(holder, key):
+        value = holder.get(key)
+        return value if isinstance(value, (list, tuple)) else ()
+    for key in ("sketches", "features", "annotations", "sheets"):
+        for index, node in enumerate(rows(payload, key)):
+            if not isinstance(node, Mapping):
+                continue
+            path = "%s[%d]" % (key, index)
+            yield path, key, node
+            children = ("entities", "constraints", "dimensions") if key == "sketches" else (
+                ("views", "dimensions") if key == "sheets" else ())
+            for child in children:
+                for child_index, item in enumerate(rows(node, child)):
+                    if isinstance(item, Mapping):
+                        yield "%s.%s[%d]" % (path, child, child_index), child, item
+
+
+def _dimension_mirror(first: tuple, second: tuple) -> bool:
+    (first_path, first_kind, first_node), (second_path, second_kind, second_node) = first, second
+    if {first_kind, second_kind} != {"dimensions", "annotations"}:
+        return False
+    annotation = first_node if first_kind == "annotations" else second_node
+    dimension = second_node if first_kind == "annotations" else first_node
+    dimension_path = second_path if first_kind == "annotations" else first_path
+    return (dimension_path.startswith("sketches[")
+            and annotation.get("kind") in ("dimension", "dimensional")
+            and type(dimension.get("value_nm")) is int
+            and isinstance(dimension.get("text_key"), str)
+            and all(key in annotation and key in dimension
+                    and type(annotation[key]) is type(dimension[key])
+                    and annotation[key] == dimension[key] for key in ("value_nm", "text_key")))
+
+
 def _duplicate_uuid_problems(payload: Mapping[str, Any]) -> list[str]:
-    """同类容器内 uuid 不得重复（重复 = 引用会指向"哪一个"不确定）。"""
+    """One document identity index; references are not additional identities."""
     problems: list[str] = []
-    groups: list[tuple[str, list[Any]]] = [("features", list(payload.get("features") or [])),
-                                           ("annotations", list(payload.get("annotations") or [])),
-                                           ("sheets", list(payload.get("sheets") or []))]
-    for index, sketch in enumerate(payload.get("sketches") or []):
-        if not isinstance(sketch, Mapping):
+    seen: dict[str, list[tuple]] = {}
+    for path, kind, node in _identity_nodes(payload):
+        value = node.get("uuid")
+        if not _uuid_ok(value):
             continue
-        base = "sketches[%d]" % index
-        for key in ("entities", "constraints", "dimensions"):
-            groups.append((f"{base}.{key}", list(sketch.get(key) or [])))
-        groups.append((f"{base}.solved", []))
-    for name, items in groups:
-        seen: dict[str, int] = {}
-        for index, item in enumerate(items):
-            if not isinstance(item, Mapping):
-                continue
-            value = item.get("uuid")
-            if not isinstance(value, str) or not value:
-                continue
-            if value in seen:
-                problems.append("uuid_duplicate:%s[%d] duplicates index %d value=%r"
-                                % (name, index, seen[value], value))
-            else:
-                seen[value] = index
-    for index, sheet in enumerate(payload.get("sheets") or []):
-        if not isinstance(sheet, Mapping):
+        identity = str(_uuid.UUID(value))
+        previous = seen.setdefault(identity, [])
+        current = (path, kind, node)
+        if previous and not (len(previous) == 1 and _dimension_mirror(previous[0], current)):
+            problems.append("uuid_duplicate:%s duplicates %s value=%r" % (path, previous[0][0], value))
+        previous.append(current)
+    return problems
+
+
+def _input_structure_problems(payload: Mapping[str, Any]) -> list[str]:
+    """Strict load-only structural checks; advisory parsing stays compatible."""
+    problems: list[str] = []
+    if not isinstance(payload.get("meta"), Mapping):
+        problems.append("missing_meta:meta expected object with doc_uuid")
+    for path, _, node in _identity_nodes(payload):
+        value = node.get("uuid")
+        if value is None:
+            problems.append("uuid_missing:%s" % path)
+        elif not _uuid_ok(value):
+            problems.append("uuid_bad:%s.uuid value=%r" % (path, value))
+    for key in _CONTAINER_KEYS:
+        nodes = payload.get(key, [])
+        if not isinstance(nodes, list):
+            problems.append("bad_container:%s expected list" % key)
             continue
-        seen: dict[str, int] = {}
-        for vindex, view in enumerate(sheet.get("views") or []):
-            if not isinstance(view, Mapping):
+        for index, node in enumerate(nodes):
+            path = "%s[%d]" % (key, index)
+            if not isinstance(node, Mapping):
+                problems.append("bad_node:%s expected object" % path)
                 continue
-            value = view.get("uuid")
-            if not isinstance(value, str) or not value:
-                continue
-            if value in seen:
-                problems.append("uuid_duplicate:sheets[%d].views[%d] duplicates index %d value=%r"
-                                % (index, vindex, seen[value], value))
-            else:
-                seen[value] = vindex
+            children = ("entities", "constraints", "dimensions") if key == "sketches" else (
+                ("views", "dimensions") if key == "sheets" else ())
+            for child in children:
+                values = node.get(child, [])
+                if not isinstance(values, list):
+                    problems.append("bad_container:%s.%s expected list" % (path, child))
+                    continue
+                for child_index, item in enumerate(values):
+                    child_path = "%s.%s[%d]" % (path, child, child_index)
+                    if key == "sheets" and child == "dimensions" and isinstance(item, str):
+                        continue  # Legacy sheets reference annotations by UUID.
+                    if not isinstance(item, Mapping):
+                        problems.append("bad_node:%s expected object" % child_path)
+                    elif child == "entities":
+                        problems.extend(_entity_geometry_problems(item, child_path))
     return problems
 
 
