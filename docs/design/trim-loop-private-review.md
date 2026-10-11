@@ -60,6 +60,10 @@ FreeCAD READBACK must reconcile with this declaration before PASS. Counts are
 calculated from actual entries, never used as the completeness specification.
 The offline consumer uses the same declaration, rejects unknown versions, and
 requires unique exact names/order, including all response status contracts.
+Both the embedded declaration and saved `ledger.json` are compared as strict
+canonical JSON. JSON array roundtrips of Python tuple witness pairs are accepted;
+changed keys, order, values and JSON types are not. In particular, `true` is not
+`1`, and integer declaration values are not floating-point substitutions.
 
 The original complete ledger has 191 checks, 46 HTTP requests, seven
 measurements, four named fixtures, eight shapes and 67 readback checks.
@@ -87,6 +91,24 @@ execution records are read, then detached copies are written to fresh
 external child directories. Both copied result and copied `execution.json`
 are co-mutated to empty/missing/extra maps and reread before rejection.
 The twelve copied-file negative controls never edit original evidence or DBs.
+
+The first real versioned producer at
+`opencad-primary-exact-private-20261012-v1/20261011T202653560437Z-0f414dfa`
+finished with 191 checks, 46 HTTP requests and 67 geometry checks, original
+process rc=0 received by the chair. Its first offline readback is preserved as
+FAIL, rc=1, under
+`opencad-primary-exact-private-readback-20261012-v1/20261011T202843173027Z-2c5c3d8b`:
+`Versioned ledger declaration does not match current producer`. Witness pairs
+were tuples in memory and arrays after JSON loading, so direct Python container
+equality incorrectly rejected unchanged serialized content at both declaration
+gates. The added roundtrip control reproduced this first cause with 21 tests,
+one failure, original rc=1, under
+`opencad-trim-ledger-json-roundtrip-20261012-v1/before/20261011T203324837958Z-d17cf17d`.
+The fixed selftest saves a real result to a fresh external copy, rereads it,
+checks typed canonical equality and the complete contract, then runs the same
+1430 mutations, copied worker-map controls and null rejection. Old evidence,
+the legacy producer SHA allowlist and the READBACK script remain unchanged.
+Offline old/new readback is tool verification, not another product execution.
 
 The P1 counterexample is retained under
 `opencad-trim-ledger-completeness-20261012-v1/before/20261011T195512493076Z-5e22b1a4`:

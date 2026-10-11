@@ -511,7 +511,7 @@ def ledger_contract(saved):
             raise AssertionError("Unversioned ledger producer is not a supported immutable legacy tool")
     elif saved["ledger"] is None:
         raise AssertionError("Explicit null ledger is not an absent legacy ledger")
-    elif saved["ledger"] != expected:
+    elif canonical(saved["ledger"]) != canonical(expected):
         raise AssertionError("Versioned ledger declaration does not match current producer")
     exact_names(saved["checks"], expected["checks"], "checks")
     exact_names(saved["http_requests"], [item["name"] for item in expected["http_requests"]], "HTTP")
@@ -799,7 +799,8 @@ def verify_saved(source, evidence, review):
                  terminal_evidence="original measured rc plus completed readback JSON")
     if "ledger" in saved:
         review.check("readback/versioned-producer-plan",
-                     read_json(bound_file(evidence / "ledger.json")) == workflow_ledger())
+                     canonical(read_json(bound_file(evidence / "ledger.json")))
+                     == canonical(workflow_ledger()))
     shape_map = {shape["name"]: shape for shape in saved_readback["shapes"]}
     for fixture in inputs:
         measured_contract(fixture["result"], fixture["signature"],
@@ -849,6 +850,17 @@ def original_ledger_controls(path, review):
     suite_contract(saved)
     inputs = read_json(path.parent / "readback-input.json")
     fixture_contract(inputs, saved)
+    roundtrip_path = review.out / "serialized-original-result.json"
+    write_json(roundtrip_path, saved)
+    reloaded = read_json(roundtrip_path)
+    if canonical(reloaded) != canonical(saved):
+        raise AssertionError("Real ledger JSON save/load changed typed canonical content")
+    suite_contract(reloaded)
+    fixture_contract(inputs, reloaded)
+    review.check("selftest/real-ledger-json-save-load", True,
+                 result=str(roundtrip_path), result_sha256=sha(roundtrip_path.read_bytes()),
+                 versioned="ledger" in reloaded, counts=suite_counts(reloaded))
+    saved = reloaded
     rejected = 0
     for group in ("checks", "http_requests", "measurements", "readback_checks", "shapes"):
         original = (saved["readback"]["checks"] if group == "readback_checks" else
@@ -1385,7 +1397,7 @@ class Controls(unittest.TestCase):
                 suite_contract({**sample, key: value})
 
     def test_every_ledger_item_delete_duplicate_rename_reorder_rejected(self):
-        sample = complete_control_fixture()
+        sample = json.loads(canonical(complete_control_fixture()), parse_constant=reject_constant)
         for group in ("checks", "http_requests", "measurements", "readback_checks", "shapes"):
             for index in range(len(workflow_ledger()[group])):
                 for operation in ("delete", "duplicate", "rename", "reorder"):
@@ -1407,7 +1419,7 @@ class Controls(unittest.TestCase):
                             suite_contract(bad)
 
     def test_every_http_route_method_status_rejected(self):
-        sample = complete_control_fixture()
+        sample = json.loads(canonical(complete_control_fixture()), parse_constant=reject_constant)
         for index in range(len(sample["http_requests"])):
             for key, value in (("route", "/changed"), ("method", "DELETE"), ("status", 202)):
                 with self.subTest(index=index, key=key):
@@ -1466,6 +1478,26 @@ class Controls(unittest.TestCase):
             bad = copy.deepcopy(sample)
             bad["ledger"][key] = "changed"
             with self.assertRaisesRegex(AssertionError, "declaration"):
+                suite_contract(bad)
+
+    def test_versioned_ledger_json_roundtrip_and_strict_types(self):
+        sample = complete_control_fixture()
+        loaded = json.loads(canonical(sample), parse_constant=reject_constant)
+        self.assertIsInstance(sample["ledger"]["fixtures"][0]["witnesses"][0], tuple)
+        self.assertIsInstance(loaded["ledger"]["fixtures"][0]["witnesses"][0], list)
+        self.assertEqual(canonical(sample["ledger"]), canonical(loaded["ledger"]))
+        self.assertEqual(suite_contract(loaded), sample["counts"])
+        for key, value in (("area", True), ("area", 50.0), ("volume", False)):
+            bad = copy.deepcopy(loaded)
+            bad["ledger"]["fixtures"][0][key] = value
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(
+                    AssertionError, "declaration"):
+                suite_contract(bad)
+        for value in (1, 1.0, "true"):
+            bad = copy.deepcopy(loaded)
+            bad["ledger"]["fixtures"][0]["witnesses"][0][1] = value
+            with self.subTest(witness=value), self.assertRaisesRegex(
+                    AssertionError, "declaration"):
                 suite_contract(bad)
 
     def test_explicit_null_ledger_is_never_legacy(self):
