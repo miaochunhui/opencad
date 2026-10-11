@@ -1,0 +1,23 @@
+.parametric-panel {
+  --parametric-ink: #163b36;
+  --parametric-line: #bbcfc7;
+  color: var(--parametric-ink);
+  border-top: 2px solid var(--parametric-line);
+  margin-top: 1.4rem;
+  padding-top: 1rem;
+  min-width: 0;
+  background: transparent;
+}
+.parametric-panel h2 { margin: 0 0 .5rem; font: inherit; font-weight: 700; }
+.parametric-panel form { display: block; }
+.parametric-panel fieldset { border: 0; padding: 0; margin: .9rem 0; min-width: 0; }
+.parametric-panel .parametric-row { display: grid; gap: .25rem; margin: .7rem 0; min-width: 0; }
+.parametric-panel input,
+.parametric-panel select { box-sizing: border-box; width: 100%; min-width: 0; }
+.parametric-panel .parametric-row small { color: #48655c; overflow-wrap: anywhere; }
+.parametric-panel .parametric-notice,
+.parametric-panel .parametric-result { display: block; font-size: .83rem; line-height: 1.6; overflow-wrap: anywhere; }
+.parametric-panel .parametric-result { position: static; inset: auto; margin-top: .5rem; }
+.parametric-panel [aria-busy="true"],
+.parametric-panel[aria-busy="true"] { opacity: .8; }
+.parametric-panel [hidden] { display: none !important; }
