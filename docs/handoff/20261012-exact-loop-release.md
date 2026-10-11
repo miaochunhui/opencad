@@ -1,5 +1,78 @@
 # Exact Loop Release Continuation
 
+## Final Source Accepted And Published
+
+The frozen source `a1927fcc5ed4471ee86a5534ff21b5a355081c69` completed its
+fresh full regression on 2026-10-12 at 05:07:47 Asia/Shanghai. The chair
+received session 15950's original parent rc 0. All five child stages returned
+rc 0; counts reconcile to 2354 tests, 2341 passed, 13 unchanged original
+skips, zero failures/errors and 15 HTTP checks. Five log hashes were reread
+and independently audited. Evidence:
+`/hf3fs-jd/data/tmp/opencad-primary-final-all-20261012-v2/`.
+Its byte/path source SHA256 is
+`c7ecac1ba0eb4327dcbea4d27a87b55263cbfb365efda0065d808592d7cf86ab`;
+before/after are equal with no drift. The separate mode-aware source SHA256
+is `939f69eed5cf4b8d117d4c1926794efc9fd4729721759bc18105b916168765ca`.
+Neither SHA256 is a Git commit ID. The 398-member full/private source
+closures agree. OCP-related and the original fixture skip remain visible;
+they are not passes or a claim of complete kernel coverage.
+
+The final private producer returned original rc 0, 191 workflow checks,
+46 HTTP requests and 67 geometry checks. Evidence:
+`/hf3fs-jd/data/tmp/opencad-primary-final-private-20261012-v2/20261011T205622288551Z-6c294bfd/`.
+Its real `producer_save_load.verified` is true. The saved candidate SHA256
+is `b36f103c152e96f1f6533f380ec46c571f4a9423d1d8433471fb50ecfc3f8e41`;
+removing only the added gate field makes final and saved candidate identical.
+Fresh offline readback returned original rc 0 and 83 unique passing checks:
+`/hf3fs-jd/data/tmp/opencad-primary-final-private-readback-20261012-v2/20261011T205809084362Z-cbb51d95/`.
+Independent review verified the complete ledger, worker sources, producer
+gate and source stability, without another HTTP or geometry execution.
+
+Browser acceptance returned original rc 0 with 30/30 checks across
+1440x900 and 390x844, under
+`/hf3fs-jd/data/tmp/opencad-primary-final-browser-20261012-v1/`.
+Independent screenshot review found Simplified Chinese and real hole-bearing
+3D geometry in the captured views. This is not all-site language scanning,
+browser user-switch isolation, a real disconnected-network/crash test or
+industrial parity. Fifteen browser-bound source hashes match the freeze;
+the browser report itself does not bind whole-tree HEAD.
+
+Actual five-commit synchronization then completed at 05:14:10 with session
+94520's original parent rc 0, `SYNCED/PASS` and 933 reachable objects scanned.
+GitLab pushed and read back first, then Gitee, then GitHub accepted five exact
+existing commits and the non-forced main update. All three refs returned
+a192 at 05:14:08-05:14:09. Evidence:
+`/hf3fs-jd/data/tmp/opencad-primary-final-sync-20261012-v1/`.
+Independent review confirmed the two actual Git rc 0 exits, exact linear
+tail, unchanged source and preserved Gitee master. The result SHA256 is
+`1874838bb92e85b3964c61fe82e15985eaf9585b6ac0b9e70545e812c84ad233`.
+The API payload was not retained; this review does not claim response-byte
+reconstruction or global atomicity. A separate read-only post-sync plan,
+session 82317 rc 0, returned all three a192 refs and empty tail at
+05:15:13-05:15:14:
+`/hf3fs-jd/data/tmp/opencad-primary-final-postsync-readback-20261012-v1/`.
+
+The original `/data/dev/opencad` local main and its nine untracked assets
+remain untouched. Primary/copy roles and credentials are unchanged.
+The following documentation-only commit must be synchronized separately;
+its changed documentation bytes are not covered by a192's whole-source run.
+The legacy fixed-count publication reviewer is not applicable to this
+2354-test snapshot; its old thresholds/results were not changed or bypassed.
+
+The infra edit router rejected the independent OpenCAD document paths with
+outside-root rc 2. That failure is retained, not called PASS. Read-only
+scope review confirmed the separate Git common directory and applicable
+OpenCAD/global rules: the infra-only router has no outside-repository route.
+No router, rule copy, permissions, credential or production resource changed.
+
+The long-term goal remains active. Private-production deployment, automatic
+mirroring, physical HA failover, new-source GPU performance and industrial
+full-function parity are still unaccepted. Official workflow research remains
+PARTIAL. Next work is safe private deployment and independent workflow
+coverage, with GPU measurement admission kept closed until its trust boundary
+is resolved. Do not inherit this release's PASS for later product edits.
+The earlier dated checkpoints below retain their original failures/boundaries.
+
 ## Latest Verified Delivery And Final Candidate
 
 On 2026-10-12 at 04:44:40-04:44:43 Asia/Shanghai, the actual eight-commit

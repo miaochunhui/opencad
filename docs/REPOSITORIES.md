@@ -2,6 +2,34 @@
 
 ## Current Verified State
 
+On 2026-10-12 at 05:14:08-05:14:09 Asia/Shanghai, all three main refs
+returned `a1927fcc5ed4471ee86a5534ff21b5a355081c69`. Actual five-commit
+synchronization completed at 05:14:10 with the chair receiving original
+parent rc 0, `SYNCED/PASS`, 933 scanned objects and unchanged source.
+Independent review verified the two real Git push exits, GitLab-first
+ordering, five exact GitHub commits and the single non-forced main update.
+Evidence: `/hf3fs-jd/data/tmp/opencad-primary-final-sync-20261012-v1/`.
+A separate GET/ref-only plan at 05:15:13-05:15:14 returned the same three
+refs and an empty tail; that readback is not another push.
+Gitee master remains `2918a471b2d9584b7f43dbf0b3e524989f8b728a`.
+
+The accepted source is the clean independent release worktree at a192.
+Its final complete regression ended at 05:07:47 with original parent rc 0:
+2354 tests, 2341 passes, 13 unchanged original skips, zero failures/errors,
+15 HTTP checks and zero source drift. Evidence:
+`/hf3fs-jd/data/tmp/opencad-primary-final-all-20261012-v2/`.
+The final private exact-loop run passed 191 workflow checks and 67 geometry
+checks across 46 HTTP requests; offline readback passed 83 unique checks,
+including the real saved-terminal gate. Desktop/mobile browser acceptance
+passed 30 checks, but does not certify all-site language or user switching.
+The documentation update following a192 is not another whole-source run.
+
+GitLab is primary; Gitee and GitHub remain explicit copies, not installed
+automatic mirrors. Private-production cutover, physical HA failover,
+new-source GPU performance and industrial full-function parity remain
+unaccepted. Current code publication does not deploy the live Web service.
+The earlier dated checkpoints below retain their original evidence.
+
 On 2026-10-12 at 04:44:40-04:44:43 Asia/Shanghai, GitLab, Gitee and
 GitHub independently returned
 `02f9d5cf17471d27663595df01bc4ac0dc7baff8` for main. Actual synchronization
