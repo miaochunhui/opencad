@@ -1,0 +1,91 @@
+.drawing-panel {
+  --drawing-ink: #18333c;
+  --drawing-accent: #9d4b21;
+  --drawing-paper: #fffdf8;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 16px;
+  color: var(--drawing-ink);
+  background: linear-gradient(130deg, #f8f2e4, #fffdf8 48%, #edf4f1);
+  border: 1px solid #c7c8b7;
+  border-radius: 6px;
+  font-family: "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+}
+.drawing-panel * { box-sizing: border-box; }
+.drawing-panel h2 { margin: 0; font-size: clamp(24px, 4vw, 34px); }
+.drawing-panel header p { line-height: 1.65; }
+.drawing-panel .drawing-panel-kicker {
+  margin: 0 0 8px;
+  color: var(--drawing-accent);
+  font-size: 13px;
+  letter-spacing: .08em;
+}
+.drawing-panel label { display: grid; gap: 8px; font-weight: bold; }
+.drawing-panel textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  resize: vertical;
+  color: var(--drawing-ink);
+  background: var(--drawing-paper);
+  border: 1px solid #9ca9a3;
+  border-radius: 6px;
+  font: 14px/1.55 "Noto Sans Mono CJK SC", "Courier New", monospace;
+}
+.drawing-panel .drawing-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 12px 0;
+}
+.drawing-panel button {
+  min-height: 44px;
+  padding: 8px 14px;
+  color: var(--drawing-paper);
+  background: var(--drawing-ink);
+  border: 1px solid var(--drawing-ink);
+  border-radius: 5px;
+  cursor: pointer;
+  font: inherit;
+}
+.drawing-panel button:disabled { opacity: .5; cursor: wait; }
+.drawing-panel button:focus-visible,
+.drawing-panel textarea:focus-visible,
+.drawing-panel-table:focus-visible { outline: 3px solid #c27b38; outline-offset: 3px; }
+.drawing-panel-status { display: block; min-height: 24px; line-height: 1.6; }
+.drawing-panel-binding {
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+  color: #3f5d61;
+  font: 14px/1.6 "Courier New", monospace;
+}
+.drawing-panel-preview {
+  min-width: 0;
+  margin: 16px 0;
+  overflow: hidden;
+  background: white;
+  border: 1px solid #c6cec8;
+}
+.drawing-panel-preview:empty { display: none; }
+.drawing-panel-preview svg { display: block; width: 100%; height: auto; }
+.drawing-panel-table {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 16px 0;
+  border: 1px solid #c6cec8;
+  background: var(--drawing-paper);
+}
+.drawing-panel table { width: 100%; border-collapse: collapse; }
+.drawing-panel th, .drawing-panel td {
+  padding: 10px 12px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid #d7ddd7;
+  font-size: 14px;
+}
+.drawing-panel th { background: #e8eeea; }
+.drawing-panel button { flex: 1 1 auto; }
+@media (min-width: 48rem) {
+  .drawing-panel { padding: clamp(24px, 3vw, 30px); border-radius: 10px; }
+  .drawing-panel button { flex: 0 1 auto; }
+}
