@@ -7,6 +7,9 @@ on local storage outside source/evidence. Each run owns a new evidence directory
 Raw credentials and HTTP request bytes are deliberately never written to logs.
 HTTP cases use the real auth/store/gateway; browser cases use real Chromium and
 its network, with explicit response-loss injection rather than product mocks.
+--stage industrial requires owner routes plus every exported assembly action.
+--stage recovery requires same-identity reauthentication and manual exact replay
+both after real COMMIT/response loss and before a request reaches the service.
 This is not a complete security assessment or production release authorization.
 """
 
@@ -149,8 +152,12 @@ class Service:
                                        kwargs={"poll_interval": 0.01}, daemon=True)
         self.thread.start()
         self.cookies, self.tokens, self.users, self.heads = {}, {}, {}, {}
+        self.passwords = {}
+        self.events = []
         for name in ("alice", "bob"):
             password = uuid.uuid4().hex
+            # UI reauthentication uses these only in memory, never evidence.
+            self.passwords[name] = password
             self.users[name] = self.auth.register(name, password)["user_id"]
             status, headers, value = self.call("POST", "/api/auth/login",
                                               {"username": name, "password": password})
@@ -203,6 +210,9 @@ class Service:
             raw = response.read()
             value = json.loads(raw) if response.getheader(
                 "Content-Type", "").startswith("application/json") else raw
+            self.events.append({"method": method, "route": route,
+                                "status": response.status,
+                                "error": value.get("error") if isinstance(value, dict) else None})
             return response.status, dict(response.getheaders()), value
         finally:
             connection.close()
@@ -446,17 +456,279 @@ class HTTPReviewTests(unittest.TestCase):
             self.assertTrue(attribute in cookie, "Missing cookie attribute: " + attribute)
 
 
+def review_plane(x=0):
+    mm = 1_000_000
+    return {"op": "nurbs", "poles_nm": [
+        [[x * mm, 0, 0], [x * mm, 10 * mm, 0]],
+        [[(x + 10) * mm, 0, 0], [(x + 10) * mm, 10 * mm, 0]]],
+        "u_degree": 1, "v_degree": 1, "u_knots": [0, 1], "v_knots": [0, 1],
+        "u_mults": [2, 2], "v_mults": [2, 2], "weights": None}
+
+
+def review_seam():
+    return {"action": "check_seam", "left": review_plane(), "right": review_plane(10),
+            "seam": {"left_edge": "u_max", "right_edge": "u_min", "reverse": False,
+                     "continuity": "G2", "samples": 17, "position_tolerance_nm": 100,
+                     "angle_tolerance_rad": 1e-6, "curvature_tolerance_per_mm": 1e-6}}
+
+
+class IndustrialReviewTests(unittest.TestCase):
+    service = None
+
+    @classmethod
+    def setUpClass(cls):
+        service = cls.service
+        cls.adapter = importlib.import_module("industrial_assembly")
+        adapters = [cls.adapter] + [importlib.import_module(name) for name in (
+            "industrial_surfaces", "industrial_parametric", "industrial_drawing",
+            "industrial_render")]
+        for module in adapters:
+            expected = service.app_dir / (module.__name__ + ".py")
+            if Path(module.__file__).resolve() != expected:
+                raise AssertionError("Foreign industrial adapter import")
+            service.bindings[module.__name__] = expected.relative_to(
+                service.config.source_root).as_posix()
+        from cadcore import docmodel
+        from cadcore.assembly import Assembly, Component, Mate, PartReference
+        doc = docmodel.new_document(unit="mm", standard_profile="gbt")
+        profile = str(uuid.uuid4())
+        points = ((0, 0), (4_000_000, 0), (4_000_000, 2_000_000), (0, 2_000_000))
+        doc.sketches.append({"uuid": profile, "plane": "XY", "entities": [
+            {"uuid": str(uuid.uuid4()), "kind": "line",
+             "geom": {"p1": list(point), "p2": list(points[(i + 1) % 4])}}
+            for i, point in enumerate(points)], "constraints": [], "dimensions": []})
+        doc.features.append({"uuid": str(uuid.uuid4()), "kind": "extrude",
+                             "inputs": [profile], "params": {
+                                 "distance_nm": 3_000_000, "op": "new"},
+                             "sketch_uuid": profile, "suppressed": False})
+        cls.part = PartReference.from_document("review-box", doc)
+        cls.component = Component("review-box-1", cls.part.part_id, fixed=True)
+        assembly = Assembly((cls.part,), (cls.component,))
+        cls.actions = {
+            "import_part": {"part": cls.part.as_dict(), "component": cls.component.as_dict()},
+            "put_component": {"component": cls.component.as_dict()},
+            "put_mate": {"mate": Mate(
+                "review-mate", "plane", "review-box-1", 0, "review-box-2", 0).as_dict()},
+            "remove_component": {"component_id": cls.component.component_id},
+            "remove_mate": {"mate_id": "review-mate"},
+            "solve": {}, "checkpoint": {}, "reopen": {"assembly_json": assembly.to_json()},
+        }
+        if set(cls.actions) != set(cls.adapter.WRITE_ACTIONS):
+            raise AssertionError("Unreviewed exported assembly write action")
+        if set(cls.adapter.READ_ACTIONS) != {"state", "mesh", "collisions", "bom", "export"}:
+            raise AssertionError("Unreviewed exported assembly read action")
+
+    def envelope(self, user="alice"):
+        head = self.service.store.read_head(self.service.heads[user]["project_id"])
+        return {"expected_revision": head["revision"], "expected_sha": head["sha256"],
+                "request_id": uuid.uuid4().hex}
+
+    def routes(self):
+        reads = [("GET", "/api/assembly?action=" + action, None)
+                 for action in sorted(self.adapter.READ_ACTIONS)]
+        writes = [("POST", "/api/assembly", {
+            **self.envelope(), "action": action, **arguments})
+            for action, arguments in self.actions.items()]
+        head = self.service.store.read_head(self.service.heads["alice"]["project_id"])
+        document_sha = sha(head["snapshot"]["doc"].encode())
+        return reads + writes + [
+            ("GET", "/api/surfaces", None),
+            ("POST", "/api/surfaces", {**self.envelope(), "recipe": review_plane()}),
+            ("POST", "/api/surfaces", review_seam()),
+            ("GET", "/api/parametric", None),
+            ("POST", "/api/parametric", {**self.envelope(), "action": "create_plate",
+                                        "expected_document_sha256": document_sha}),
+            ("POST", "/api/parametric", {**self.envelope(), "action": "rebuild",
+                                        "expected_document_sha256": document_sha}),
+            ("GET", "/api/drawing", None),
+            ("GET", "/api/drawing/svg", None),
+            ("GET", "/api/drawing/pdf", None),
+            ("GET", "/api/drawing/dxf", None),
+            ("POST", "/api/drawing", {**self.envelope(), "definition": {}}),
+            ("POST", "/api/render", {"camera": "front", "width": 64, "height": 64,
+                                    "backend": "cpu"})]
+
+    def assert_denied_matrix(self, *, user=None, headers=None, expected=401):
+        service = self.service
+        before = {name: service.store.read_head(value["project_id"])
+                  for name, value in service.heads.items()}
+        for method, route, body in self.routes():
+            with self.subTest(method=method, route=route,
+                              action=body.get("action") if body else None):
+                status, _, value = service.call(method, route, body, user=user,
+                    project=service.heads["alice"]["project_id"], headers=headers)
+                self.assertEqual(status, expected, {"route": route, "status": status})
+                self.assertIs(value["ok"], False)
+        for name, head in before.items():
+            self.assertEqual(service.store.read_head(head["project_id"]), head, name)
+
+    def test_01_owner_empty_routes_exist_and_are_nonmutating(self):
+        service = self.service
+        project = service.heads["alice"]["project_id"]
+        before = service.store.read_head(project)
+        for route, empty_key in (("/api/assembly?action=state", "present"),
+                                 ("/api/surfaces", "empty"),
+                                 ("/api/parametric", "enabled"),
+                                 ("/api/drawing", "defined")):
+            with self.subTest(route=route):
+                status, _, value = service.call("GET", route, user="alice", project=project)
+                self.assertEqual(status, 200, {"route": route, "status": status})
+                self.assertIs(value["ok"], True)
+                self.assertIs(value[empty_key], empty_key == "empty")
+        self.assertEqual(service.store.read_head(project), before)
+        for route, error in (("/api/drawing/svg", "drawing_not_defined"),
+                             ("/api/drawing/pdf", "drawing_not_defined"),
+                             ("/api/drawing/dxf", "drawing_not_defined")):
+            status, _, value = service.call("GET", route, user="alice", project=project)
+            self.assertEqual(status, 404, route)
+            self.assertEqual(value["error"], error)
+        status, _, value = service.call("POST", "/api/render",
+            {"camera": "front", "width": 64, "height": 64, "backend": "cpu"},
+            user="alice", project=project)
+        self.assertEqual(status, 422)
+        self.assertEqual(value["error"], "no_solid_feature")
+        self.assertEqual(service.store.read_head(project), before)
+
+    def test_02_cross_owner_every_industrial_action_denied(self):
+        self.assert_denied_matrix(user="bob", expected=403)
+
+    def test_03_anonymous_and_private_headers_never_downgrade(self):
+        for headers in ({}, {"X-User": self.service.users["alice"], "X-Admin": "true"}):
+            with self.subTest(kind="private_headers" if headers else "anonymous"):
+                self.assert_denied_matrix(headers=headers)
+
+    def test_04_forged_bearer_does_not_fallback_to_valid_cookie(self):
+        self.assert_denied_matrix(user="alice", headers={"Authorization": "Bearer forged"})
+
+    def test_05_revoked_and_expired_all_industrial_routes_denied(self):
+        service = self.service
+        ticket = service.auth.login("alice", service.passwords["alice"])
+        service.auth.logout(ticket.token)
+        self.assert_denied_matrix(headers={"Authorization": "Bearer " + ticket.token})
+        original = service.clock[0]
+        try:
+            service.clock[0] += 8 * 3600 + 1
+            self.assert_denied_matrix(user="alice")
+        finally:
+            service.clock[0] = original
+
+    def test_06_all_cookie_posts_require_same_origin_and_request_marker(self):
+        service = self.service
+        project = service.heads["alice"]["project_id"]
+        before = service.store.read_head(project)
+        for headers in ({"Origin": "https://foreign.invalid"}, {"X-OpenCAD-Request": "0"}):
+            for method, route, body in self.routes():
+                if method != "POST":
+                    continue
+                with self.subTest(route=route, action=body.get("action"),
+                                  boundary=next(iter(headers))):
+                    status, _, value = service.call(method, route, body,
+                        user="alice", project=project, headers=headers)
+                    self.assertEqual(status, 403)
+                    self.assertIs(value["ok"], False)
+        self.assertEqual(service.store.read_head(project), before)
+
+    def test_07_owner_real_assembly_commit_and_exact_receipt(self):
+        service = self.service
+        project = service.heads["alice"]["project_id"]
+        before = service.store.read_head(project)
+        other = service.store.read_head(service.heads["bob"]["project_id"])
+        body = {**self.envelope(), "action": "import_part", **self.actions["import_part"]}
+        status, _, value = service.call("POST", "/api/assembly", body,
+                                        user="alice", project=project)
+        self.assertEqual(status, 200, {"status": status, "error": value.get("error")})
+        self.assertIs(value["ok"], True)
+        self.assertEqual(value["revision"], before["revision"] + 1)
+        self.assertAlmostEqual(value["evaluation"]["properties"]["volume_nm3"] / 1e18, 24.0)
+        after = service.store.read_head(project)
+        self.assertEqual(after["revision"], before["revision"] + 1)
+        self.assertEqual(len(after["snapshot"]["undo"]), len(before["snapshot"]["undo"]) + 1)
+        status, _, replay = service.call("POST", "/api/assembly", body,
+            project=project, headers={"Authorization": "Bearer " + service.tokens["alice"],
+                                      "Origin": "https://foreign.invalid",
+                                      "X-OpenCAD-Request": "0"})
+        self.assertEqual(status, 200)
+        self.assertEqual(replay, value)
+        self.assertEqual(service.store.read_head(project), after)
+        for action in sorted(self.adapter.READ_ACTIONS):
+            with self.subTest(action=action):
+                status, _, read = service.call("GET", "/api/assembly?action=" + action,
+                                              user="alice", project=project)
+                self.assertEqual(status, 200)
+                self.assertIs(read["present"], True)
+                self.assertEqual(read["assembly_sha256"], value["assembly_sha256"])
+        self.assertEqual(service.store.read_head(project), after)
+        self.assertEqual(service.store.read_head(other["project_id"]), other)
+
+    def test_08_owner_real_surface_commit_seam_is_read_only(self):
+        service = self.service
+        project = service.heads["bob"]["project_id"]
+        before = service.store.read_head(project)
+        body = {**self.envelope("bob"), "recipe": review_plane()}
+        status, _, value = service.call("POST", "/api/surfaces", body, user="bob", project=project)
+        self.assertEqual(status, 200, {"status": status, "error": value.get("error")})
+        self.assertIs(value["ok"], True)
+        self.assertAlmostEqual(value["result"]["properties"]["area_mm2"], 100.0)
+        self.assertTrue(value["result"]["mesh"]["triangles"])
+        after = service.store.read_head(project)
+        self.assertEqual(after["revision"], before["revision"] + 1)
+        status, _, replay = service.call("POST", "/api/surfaces", body, user="bob", project=project)
+        self.assertEqual(status, 200)
+        self.assertEqual(replay, value)
+        status, _, seam = service.call("POST", "/api/surfaces", review_seam(),
+                                       user="bob", project=project)
+        self.assertEqual(status, 200)
+        self.assertIs(seam["read_only"], True)
+        self.assertIs(seam["seam"]["passed"], True)
+        status, _, read = service.call("GET", "/api/surfaces", user="bob", project=project)
+        self.assertEqual(status, 200)
+        self.assertIs(read["empty"], False)
+        self.assertAlmostEqual(read["result"]["properties"]["area_mm2"], 100.0)
+        self.assertEqual(service.store.read_head(project), after)
+        # Public artifacts and mesh may not disclose runtime paths.
+        public = json.dumps({"write": value, "read": read, "seam": seam})
+        self.assertNotIn(str(service.root), public)
+        self.assertNotIn(str(service.config.out), public)
+
+    def test_09_bad_input_and_stale_cas_leave_both_projects_unchanged(self):
+        service = self.service
+        before = {name: service.store.read_head(head["project_id"])
+                  for name, head in service.heads.items()}
+        cases = [
+            ("alice", "/api/assembly", {**self.envelope(), "action": "not-an-action"},
+             422, "bad_assembly_action"),
+            ("bob", "/api/surfaces", {**self.envelope("bob"), "recipe": {"op": "not-an-op"}},
+             400, "bad_surface_arguments"),
+            ("alice", "/api/assembly", {**self.envelope(), "expected_sha": "0" * 64,
+                                       "action": "checkpoint"}, 409, "revision_conflict"),
+            ("bob", "/api/surfaces", {**self.envelope("bob"), "expected_sha": "0" * 64,
+                                     "recipe": review_plane()}, 409, "revision_conflict"),
+        ]
+        for user, route, body, expected, error in cases:
+            with self.subTest(route=route, expected=expected):
+                status, _, value = service.call("POST", route, body, user=user,
+                    project=service.heads[user]["project_id"])
+                self.assertEqual(status, expected)
+                self.assertIs(value["ok"], False)
+                self.assertEqual(value["error"], error)
+        for name, head in before.items():
+            self.assertEqual(service.store.read_head(head["project_id"]), head, name)
+
+
 BROWSER_INSTRUMENTATION = r"""
 (function() {
   const key = "private-security-review-audit";
+  const authKey = "private-security-review-auth";
   const audit = JSON.parse(sessionStorage.getItem(key) || "[]");
-  window.securityReview = {audit: audit, lose: false, csp: []};
+  const auth = JSON.parse(sessionStorage.getItem(authKey) || "[]");
+  window.securityReview = {audit: audit, lose: false, dropBefore: false, csp: [], auth: auth,
+    active:0, changed:performance.now(), reads:[]};
   window.addEventListener("securitypolicyviolation", function(event) {
     securityReview.csp.push({directive:event.effectiveDirective,
                             blocked:event.blockedURI});
   });
   const nativeFetch = window.fetch.bind(window);
-  window.fetch = async function(input, init) {
+  const trackedFetch = async function(input, init) {
     const request = new Request(input, init);
     const url = new URL(request.url);
     if (url.origin !== location.origin) {
@@ -464,17 +736,39 @@ BROWSER_INSTRUMENTATION = r"""
     }
     let record = null;
     if (request.method === "POST" &&
-        ["/api/command", "/api/save"].includes(url.pathname)) {
+        ["/api/command", "/api/save", "/api/assembly", "/api/surfaces"].includes(url.pathname)) {
       const body = JSON.parse(await request.clone().text());
       // Read-only legacy queries share /api/command but carry no transaction ID.
       if (typeof body.request_id === "string") {
         record = {path:url.pathname, request_id:body.request_id,
-          revision:body.expected_revision, sha256:body.expected_sha};
+          revision:body.expected_revision, sha256:body.expected_sha,
+          project:request.headers.get("X-OpenCAD-Project"),
+          body_sha256:Array.from(new Uint8Array(await crypto.subtle.digest(
+            "SHA-256", new TextEncoder().encode(JSON.stringify(body)))))
+            .map(function(b){return b.toString(16).padStart(2,"0");}).join("")};
         audit.push(record);
         sessionStorage.setItem(key, JSON.stringify(audit));
       }
     }
+    if (record && securityReview.dropBefore) {
+      securityReview.dropBefore = false;
+      record.transport = "not_sent";
+      sessionStorage.setItem(key, JSON.stringify(audit));
+      throw new Error("Review injected failure before native network send");
+    }
     const response = await nativeFetch(input, init);
+    // Finish a clone of the real response so the fixture can establish that
+    // initial reads have drained before revoking the cookie.
+    await response.clone().arrayBuffer();
+    if (request.method === "GET" && url.pathname.startsWith("/api/")) {
+      securityReview.reads.push({path:url.pathname,status:response.status});
+    }
+    if (request.method === "POST" && url.pathname === "/api/auth/login") {
+      const value = await response.clone().json();
+      securityReview.auth.push({status:response.status,
+        user_id:value.user ? value.user.user_id : null});
+      sessionStorage.setItem(authKey, JSON.stringify(securityReview.auth));
+    }
     if (record) {
       // Delay a real received response so concurrent callers exercise the queue.
       await response.clone().arrayBuffer();
@@ -488,17 +782,26 @@ BROWSER_INSTRUMENTATION = r"""
     }
     return response;
   };
+  window.fetch = async function(input, init) {
+    securityReview.active++;
+    securityReview.changed=performance.now();
+    try { return await trackedFetch(input,init); }
+    finally {
+      securityReview.active--;
+      securityReview.changed=performance.now();
+    }
+  };
 })();
 """
 
 
 class Browser:
-    def __init__(self, service, executable):
+    def __init__(self, service, executable, *, log_name="chrome.log"):
         self.service = service
         self.executable = executable
         # AF_UNIX has a short path limit; only sockets/profile use local storage.
         self.profile = tempfile.TemporaryDirectory(prefix="s-", dir=service.config.runtime_root)
-        self.log = (service.config.out / "chrome.log").open("xb")
+        self.log = (service.config.out / log_name).open("xb")
         self.process = self.ws = None
 
     def start(self):
@@ -569,6 +872,9 @@ class Browser:
         self.click("打开项目", selector="dialog[open] button")
         self.wait("document.readyState==='complete'&&!document.querySelector('dialog[open]')")
 
+    def drain_reads(self):
+        self.wait("securityReview.active===0&&performance.now()-securityReview.changed>500")
+
     def edit(self, *, x=1000):
         return self.evaluate("""
           fetch('/api/command',{method:'POST',
@@ -603,6 +909,30 @@ class Browser:
         self.call("Input.dispatchMouseEvent", {
             "type": "mouseReleased", "x": target["x"], "y": target["y"],
             "button": "left", "clickCount": 1})
+
+    def login_form(self, name, password):
+        self.wait("Boolean(document.querySelector('dialog[open] input[name=password]'))")
+        for field, value in (("username", name), ("password", password)):
+            selector = "dialog[open] input[name=" + field + "]"
+            focused = self.evaluate("""(function(){
+              const input=document.querySelector(%s);
+              if(!input)return false;
+              input.value='';input.focus();return document.activeElement===input;
+            })()""" % json.dumps(selector))
+            if not focused:
+                raise AssertionError("Reauthentication input unavailable: " + field)
+            self.call("Input.insertText", {"text": value})
+        count = self.evaluate("securityReview.auth.length")
+        text = self.evaluate("""(function(){
+          const button=document.querySelector('dialog[open] button[type=submit]');
+          return button ? button.textContent : null;
+        })()""")
+        if not text:
+            raise AssertionError("Reauthentication submit control unavailable")
+        self.click(text, selector="dialog[open] button[type=submit]")
+        self.wait("securityReview.auth.length>" + str(count))
+        # Allow the real login handler to bind identity/update controls.
+        self.wait("!document.querySelector('dialog[open] button[type=submit]:disabled')")
 
     def close(self):
         if self.ws is not None:
@@ -737,19 +1067,301 @@ class BrowserReviewTests(unittest.TestCase):
                 self.assertTrue(value["clear"], value)
 
 
+class RecoveryReviewTests(unittest.TestCase):
+    service = None
+    records = []
+
+    def setUp(self):
+        service = self.service
+        self.checkpoints = []
+        # Each scenario has a freshly issued real session, not a revived ticket.
+        ticket = service.auth.login("alice", service.passwords["alice"])
+        service.tokens["alice"] = ticket.token
+        service.cookies["alice"] = "opencad_session=" + ticket.token
+        self.browser = Browser(service, service.config.browser,
+                               log_name=self._testMethodName + "-chrome.log")
+        self.addCleanup(self.finish_browser)
+        self.browser.start()
+        self.browser.drain_reads()
+
+    def finish_browser(self):
+        browser = self.browser
+        try:
+            if browser.ws is not None:
+                self.records.append({"test": self._testMethodName,
+                    "audit": browser.audit(), "notice": browser.notice(),
+                    "csp": browser.evaluate("securityReview.csp"),
+                    "auth": browser.evaluate("securityReview.auth"),
+                    "reads": browser.evaluate("securityReview.reads"),
+                    "checkpoints": self.checkpoints})
+        finally:
+            browser.close()
+
+    def checkpoint(self, label):
+        project = self.service.heads["alice"]["project_id"]
+        head = self.service.store.read_head(project)
+        self.checkpoints.append({"label": label, "revision": head["revision"],
+            "sha256": head["sha256"], "requests": len(self.browser.audit()),
+            "notice": self.browser.notice(),
+            "auth": self.browser.evaluate("securityReview.auth")})
+
+    def assert_pending_locked(self, expected_requests, expected_head):
+        browser = self.browser
+        self.assertTrue(browser.edit(x=77_000).get("rejected"))
+        self.assertEqual(len(browser.audit()), expected_requests)
+        self.assertEqual(self.service.store.read_head(expected_head["project_id"]), expected_head)
+        self.assertTrue(browser.evaluate("""Array.from(
+          document.querySelectorAll('.project-status button')).some(function(b){
+            return b.textContent==='确认上一笔编辑'&&!b.hidden;
+          })"""), "Pending confirmation control was lost")
+
+    def assert_no_sensitive_storage(self):
+        browser = self.browser
+        secrets = [*self.service.tokens.values(), *self.service.passwords.values()]
+        storage = browser.evaluate("""(function(){
+          function entries(store){return Object.keys(store).map(function(k){
+            return {key:k,value:store.getItem(k)};});}
+          return {local:entries(localStorage),session:entries(sessionStorage)};
+        })()""")
+        text = json.dumps(storage)
+        for secret in secrets:
+            self.assertTrue(secret not in text, "Credential persisted in browser storage")
+        for item in storage["local"] + storage["session"]:
+            if item["key"] != "private-security-review-audit":
+                self.assertNotRegex(item["value"], r'"(?:p1|p2|expected_revision|request_id)"\s*:')
+        self.assertFalse(browser.evaluate("document.cookie.includes('opencad_session')"))
+
+    def exercise_recovery(self, *, sent, direct_401=False):
+        browser, service = self.browser, self.service
+        project = service.heads["alice"]["project_id"]
+        before = service.store.read_head(project)
+        other = service.store.read_head(service.heads["bob"]["project_id"])
+        if direct_401:
+            self.assertEqual(service.call("POST", "/api/auth/logout", {}, user="alice")[0], 200)
+            self.assertEqual(browser.edit(x=93_000)["status"], 401)
+        else:
+            browser.evaluate("securityReview." + ("lose" if sent else "dropBefore") + "=true")
+            self.assertTrue(browser.edit(x=93_000).get("rejected"))
+        records = browser.audit()
+        self.assertEqual(len(records), 1)
+        pending_head = service.store.read_head(project)
+        self.assertEqual(pending_head["revision"], before["revision"] + int(sent))
+        if direct_401:
+            self.assertEqual(records[0]["status"], 401)
+        elif sent:
+            self.assertEqual(records[0]["status"], 200)
+        else:
+            self.assertEqual(records[0]["transport"], "not_sent")
+            self.assertNotIn("status", records[0])
+        self.assert_pending_locked(1, pending_head)
+        self.checkpoint("pending_after_loss")
+        # Revoke via the real independent HTTP logout, then attempt the pending
+        # receipt using a real pointer. Its 401 must not erase the operation.
+        if not direct_401:
+            self.assertEqual(service.call("POST", "/api/auth/logout", {}, user="alice")[0], 200)
+            browser.click("确认上一笔编辑")
+            browser.wait("securityReview.audit.length===2&&securityReview.audit[1].status===401")
+        count = 1 if direct_401 else 2
+        self.assert_pending_locked(count, pending_head)
+        self.assertIn("登录", browser.notice())
+        self.checkpoint("manual_receipt_401_preserved")
+        browser.click("重新登录")
+        browser.login_form("alice", "intentionally-wrong-password")
+        self.assertEqual(browser.evaluate("securityReview.auth.at(-1).status"), 401)
+        self.assertEqual(len(browser.audit()), count, "Failed login replayed a mutation")
+        self.assertEqual(service.store.read_head(project), pending_head)
+        self.checkpoint("wrong_password_preserved")
+        # Even valid credentials for another account must not unlock/rebind the
+        # original user's pending operation or silently expose another project.
+        browser.login_form("bob", service.passwords["bob"])
+        self.assertEqual(browser.evaluate("securityReview.auth.at(-1).status"), 200)
+        self.assertEqual(browser.evaluate("securityReview.auth.at(-1).user_id"),
+                         service.users["bob"])
+        self.assertEqual(len(browser.audit()), count, "Wrong identity auto-replayed pending")
+        self.assertEqual(browser.evaluate("sessionStorage.getItem('opencad-project-id')"), project)
+        self.assertEqual(service.store.read_head(project), pending_head)
+        self.assertTrue(browser.evaluate(
+            "Boolean(document.querySelector('dialog[open] input[name=password]'))"),
+            "Wrong identity dismissed recovery dialog")
+        self.checkpoint("wrong_identity_preserved")
+        browser.login_form("alice", service.passwords["alice"])
+        self.assertEqual(browser.evaluate("securityReview.auth.at(-1).status"), 200)
+        self.assertEqual(browser.evaluate("securityReview.auth.at(-1).user_id"),
+                         service.users["alice"])
+        browser.wait("!document.querySelector('dialog[open]')")
+        self.assert_pending_locked(count, pending_head)
+        self.assert_no_sensitive_storage()
+        self.checkpoint("same_identity_no_automatic_replay")
+        # A second transport failure must keep exactly the same pending body.
+        browser.evaluate("securityReview.dropBefore=true")
+        browser.click("确认上一笔编辑")
+        browser.wait("securityReview.audit.length===" + str(count + 1) + "&&"
+                     "securityReview.audit.at(-1).transport==='not_sent'")
+        browser.wait("!Array.from(document.querySelectorAll('.project-status button'))"
+                     ".some(b=>b.textContent==='确认上一笔编辑'&&b.disabled)")
+        self.assert_pending_locked(count + 1, pending_head)
+        self.checkpoint("second_transport_failure_preserved")
+        browser.click("确认上一笔编辑")
+        browser.open_project()
+        records = browser.audit()
+        self.assertEqual(len(records), count + 2)
+        self.assertEqual(records[-1]["status"], 200)
+        for record in records[1:]:
+            for key in ("path", "request_id", "revision", "sha256", "body_sha256", "project"):
+                self.assertEqual(record[key], records[0][key], key)
+        after = service.store.read_head(project)
+        self.assertEqual(after["revision"], before["revision"] + 1)
+        self.assertEqual(len(after["snapshot"]["undo"]), len(before["snapshot"]["undo"]) + 1)
+        self.assertEqual(service.store.read_head(other["project_id"]), other)
+        self.assertEqual(browser.evaluate("securityReview.csp"), [])
+        self.assert_no_sensitive_storage()
+        self.checkpoint("manual_exact_replay_one_commit")
+
+    def test_01_committed_lost_response_then_401_same_identity_manual_receipt(self):
+        self.exercise_recovery(sent=True)
+
+    def test_02_unsent_request_then_401_same_identity_manual_commit(self):
+        self.exercise_recovery(sent=False)
+
+    def exercise_read_401(self, *, download):
+        browser, service = self.browser, self.service
+        project = service.heads["alice"]["project_id"]
+        before = service.store.read_head(project)
+        self.assertEqual(service.call("POST", "/api/auth/logout", {}, user="alice")[0], 200)
+        expression = ("""fetch('/api/export/dxf',{method:'POST',
+            headers:{'Content-Type':'application/json'},body:'{}'})"""
+            if download else "fetch('/api/state')")
+        result = browser.evaluate(expression + ".then(function(r){return r.status;})")
+        self.assertEqual(result, 401)
+        self.assertIn("登录", browser.notice())
+        self.assertEqual(browser.audit(), [], "Read/download created pending mutation")
+        self.checkpoint("read_or_download_401")
+        browser.click("重新登录")
+        browser.login_form("alice", service.passwords["alice"])
+        self.assertEqual(browser.evaluate("securityReview.auth.at(-1).status"), 200)
+        self.assertEqual(browser.evaluate("securityReview.auth.at(-1).user_id"),
+                         service.users["alice"])
+        if browser.evaluate("Boolean(document.querySelector('dialog[open] select'))"):
+            browser.open_project()
+        else:
+            browser.wait("!document.querySelector('dialog[open]')")
+        self.assertEqual(service.store.read_head(project), before)
+        self.assertEqual(browser.audit(), [], "Reauthentication unexpectedly edited")
+        result = browser.evaluate(expression + ".then(function(r){return r.status;})")
+        self.assertEqual(result, 200)
+        self.assertEqual(service.store.read_head(project), before)
+        self.assert_no_sensitive_storage()
+        self.assertEqual(browser.evaluate("securityReview.csp"), [])
+        self.checkpoint("read_or_download_recovered_without_edit")
+
+    def test_03_direct_mutation_401_preserves_exact_operation_for_manual_commit(self):
+        self.exercise_recovery(sent=False, direct_401=True)
+
+    def test_04_read_401_same_identity_recovers_without_edit(self):
+        self.exercise_read_401(download=False)
+
+    def test_05_download_401_same_identity_recovers_without_edit(self):
+        self.exercise_read_401(download=True)
+
+    def test_06_escape_cancel_can_reopen_pending_recovery_dialog(self):
+        browser, service = self.browser, self.service
+        browser.evaluate("securityReview.lose=true")
+        self.assertTrue(browser.edit(x=96_000).get("rejected"))
+        project = service.heads["alice"]["project_id"]
+        pending_head = service.store.read_head(project)
+        self.assertEqual(service.call("POST", "/api/auth/logout", {}, user="alice")[0], 200)
+        browser.click("确认上一笔编辑")
+        browser.wait("securityReview.audit.length===2&&securityReview.audit[1].status===401")
+        browser.click("重新登录")
+        browser.wait("Boolean(document.querySelector('dialog[open] input[name=password]'))")
+        browser.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": "Escape",
+            "code": "Escape", "windowsVirtualKeyCode": 27, "nativeVirtualKeyCode": 27})
+        browser.call("Input.dispatchKeyEvent", {"type": "keyUp", "key": "Escape",
+            "code": "Escape", "windowsVirtualKeyCode": 27, "nativeVirtualKeyCode": 27})
+        self.assertEqual(len(browser.audit()), 2, "Cancel caused replay")
+        self.assertEqual(service.store.read_head(project), pending_head)
+        if not browser.evaluate("Boolean(document.querySelector('dialog[open]'))"):
+            self.assert_pending_locked(2, pending_head)
+            browser.click("重新登录")
+        browser.login_form("alice", service.passwords["alice"])
+        browser.wait("!document.querySelector('dialog[open]')")
+        self.assert_pending_locked(2, pending_head)
+        self.checkpoint("escape_cancel_reopened_preserving_pending")
+
+
+class IndustrialBrowserReviewTests(unittest.TestCase):
+    service = None
+    records = []
+    setUp = RecoveryReviewTests.setUp
+    finish_browser = RecoveryReviewTests.finish_browser
+
+    def test_surface_seam_is_read_only_in_real_browser_adapter(self):
+        browser, service = self.browser, self.service
+        project = service.heads["alice"]["project_id"]
+        before = service.store.read_head(project)
+        result = browser.evaluate("""fetch('/api/surfaces',{method:'POST',
+          headers:{'Content-Type':'application/json'},body:JSON.stringify(%s)})
+          .then(async function(r){return {status:r.status,value:await r.json()};})
+        """ % json.dumps(review_seam()))
+        self.assertEqual(result["status"], 200)
+        self.assertIs(result["value"]["read_only"], True)
+        self.assertIs(result["value"]["seam"]["passed"], True)
+        self.assertEqual(browser.audit(), [], "Read-only seam acquired a commit envelope")
+        self.assertEqual(service.store.read_head(project), before)
+        self.assertEqual(browser.edit(x=94_000)["status"], 200)
+        self.assertEqual(len(browser.audit()), 1)
+        self.assertEqual(service.store.read_head(project)["revision"], before["revision"] + 1)
+
+
 def run_tests(suite, log):
     stream = io.StringIO()
     result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
     text = stream.getvalue()
     log.write(text)
     log.flush()
+    failed_ids = {getattr(test, "test_case", test).id()
+                  for test, _ in result.failures + result.errors}
     summary = {"tests": result.testsRun, "failures": len(result.failures),
                "errors": len(result.errors), "skips": len(result.skipped),
-               "passed": result.testsRun - len(result.failures) - len(result.errors)
-               - len(result.skipped)}
+               "passed": max(0, result.testsRun - len(failed_ids) - len(result.skipped))}
     summary["verdict"] = "PASS" if result.testsRun and result.wasSuccessful(
         ) and not result.skipped else "FAIL"
     return summary
+
+
+class ReviewHarnessTests(unittest.TestCase):
+    def test_multiple_failed_subtests_count_one_failed_parent(self):
+        class Negative(unittest.TestCase):
+            def test_case(self):
+                for number in (1, 2):
+                    with self.subTest(number=number):
+                        self.fail("Deliberate selftest negative")
+        result = run_tests(unittest.defaultTestLoader.loadTestsFromTestCase(Negative),
+                           io.StringIO())
+        self.assertEqual(result["tests"], 1)
+        self.assertEqual(result["failures"], 2)
+        self.assertEqual(result["passed"], 0)
+        self.assertEqual(result["verdict"], "FAIL")
+
+    def test_setup_failure_is_not_negative_pass_count_or_green(self):
+        class Negative(unittest.TestCase):
+            @classmethod
+            def setUpClass(cls):
+                raise ValueError("Deliberate selftest setup failure")
+
+            def test_unreachable(self):
+                raise AssertionError("Setup failure was ignored")
+        result = run_tests(unittest.defaultTestLoader.loadTestsFromTestCase(Negative),
+                           io.StringIO())
+        self.assertEqual(result["tests"], 0)
+        self.assertEqual(result["errors"], 1)
+        self.assertEqual(result["passed"], 0)
+        self.assertEqual(result["verdict"], "FAIL")
+
+    def test_empty_suite_is_not_green(self):
+        result = run_tests(unittest.TestSuite(), io.StringIO())
+        self.assertEqual(result["tests"], 0)
+        self.assertEqual(result["verdict"], "FAIL")
 
 
 def main(argv=None):
@@ -759,7 +1371,9 @@ def main(argv=None):
     parser.add_argument("--source-root", type=Path, default=ROOT)
     parser.add_argument("--runtime-root", type=Path, default=os.environ.get(
         "OPENCAD_TEST_RUNTIME_ROOT"))
-    parser.add_argument("--stage", choices=("selftest", "http", "browser"), default="http")
+    parser.add_argument("--stage", choices=(
+        "selftest", "http", "browser", "industrial", "industrial-browser", "recovery"),
+        default="http")
     parser.add_argument("--browser", type=Path, help="Explicit real Chromium executable")
     parser.add_argument("--page", choices=("2d", "3d"), default="2d")
     parser.add_argument("--width", type=int, choices=(390, 1280), default=1280)
@@ -796,13 +1410,18 @@ def main(argv=None):
     with (args.out / "review.log").open("x") as log:
         try:
             if args.stage == "selftest":
-                suite = unittest.defaultTestLoader.loadTestsFromTestCase(ParserTests)
+                suite = unittest.TestSuite(
+                    unittest.defaultTestLoader.loadTestsFromTestCase(case)
+                    for case in (ParserTests, ReviewHarnessTests))
             else:
                 before = manifest(args.source_root)
                 report["source_before"] = before
                 snapshot = args.out / "candidate"
                 snapshot.mkdir()
-                for relative in ("secure_web.py", "project_gateway.py", "web/js/project-session.js"):
+                selected = ["secure_web.py", "project_gateway.py", "web/js/project-session.js"]
+                if args.stage in {"industrial", "industrial-browser"}:
+                    selected.extend(("industrial_assembly.py", "industrial_surfaces.py"))
+                for relative in selected:
                     target = snapshot / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes((args.source_root /
@@ -812,6 +1431,17 @@ def main(argv=None):
                 if args.stage == "http":
                     HTTPReviewTests.service = service
                     suite = unittest.defaultTestLoader.loadTestsFromTestCase(HTTPReviewTests)
+                elif args.stage == "industrial":
+                    IndustrialReviewTests.service = service
+                    suite = unittest.defaultTestLoader.loadTestsFromTestCase(IndustrialReviewTests)
+                elif args.stage in {"recovery", "industrial-browser"}:
+                    if args.browser is None or not args.browser.is_file():
+                        raise ValueError("Real browser executable must be supplied")
+                    case = (RecoveryReviewTests if args.stage == "recovery"
+                            else IndustrialBrowserReviewTests)
+                    case.service = service
+                    case.records = []
+                    suite = unittest.defaultTestLoader.loadTestsFromTestCase(case)
                 else:
                     if args.browser is None or not args.browser.is_file():
                         raise ValueError("Real browser executable must be supplied")
@@ -843,6 +1473,12 @@ def main(argv=None):
                     report["browser_cleanup_error"] = type(exc).__name__
                     report["verdict"] = "FAIL"
             if service is not None:
+                report["http_events"] = service.events
+                report["runtime_bindings"] = service.bindings
+                if args.stage == "recovery":
+                    report["recovery_records"] = RecoveryReviewTests.records
+                elif args.stage == "industrial-browser":
+                    report["industrial_browser_records"] = IndustrialBrowserReviewTests.records
                 try:
                     service.close()
                 except Exception as exc:
