@@ -58,6 +58,15 @@ def quarter_cylinder():
         weights=[[1, 1], [math.sqrt(0.5), math.sqrt(0.5)], [1, 1]])
 
 
+def polygon_plate(surface=None):
+    """Concave outer ring with square and triangular holes: 50 mm2 on plane."""
+    return make_trim(
+        plane() if surface is None else surface,
+        outer=[[.1, .1], [.9, .1], [.9, .5], [.6, .5], [.6, .9], [.1, .9], [.1, .1]],
+        holes=[[[.2, .2], [.2, .3], [.3, .3], [.3, .2], [.2, .2]],
+               [[.4, .2], [.4, .4], [.5, .2], [.4, .2]]])
+
+
 def cube_faces():
     return [
         plane(), plane((0, 0, 10)),
@@ -115,6 +124,58 @@ class SurfaceSchemaTests(unittest.TestCase):
         for bounds in ([], [0, 1, 0], [1, 0, 0, 1], [0, 1, True, 1]):
             with self.subTest(bounds=bounds), self.assertRaises(ValueError):
                 validate_recipe(dict(op="trim", surface=plane(), bounds=bounds))
+
+    def test_trim_loop_schema_detaches_exact_shape_and_legacy_exclusivity(self):
+        recipe = polygon_plate()
+        before = copy.deepcopy(recipe)
+        detached = validate_recipe(recipe)
+        recipe["outer"][0][0] = .2
+        self.assertEqual(detached, before)
+        self.assertEqual(len(detached["holes"]), 2)
+        with self.assertRaisesRegex(ValueError, "mutually exclusive"):
+            make_trim(plane(), outer=before["outer"], holes=[], u_min=0)
+        with self.assertRaisesRegex(ValueError, "unknown"):
+            validate_recipe({**before, "bounds": [0, 1, 0, 1]})
+        with self.assertRaisesRegex(ValueError, "nested polygon"):
+            make_trim(before, u_min=0, u_max=1, v_min=0, v_max=1)
+        rectangular = make_trim(plane(), u_min=.1, u_max=.9, v_min=.1, v_max=.9)
+        self.assertEqual(polygon_plate(rectangular)["surface"], rectangular)
+
+    def test_trim_bad_loops_nonfinite_orientation_selftouch_and_outside(self):
+        valid = polygon_plate()
+        mutations = [
+            {"outer": valid["outer"][:-1]},
+            {"outer": list(reversed(valid["outer"]))},
+            {"outer": [[0, 0], [1, 1], [0, 1], [1, 0], [0, 0]]},
+            {"outer": [[0, 0], [.5, 0], [.25, 0], [0, 1], [0, 0]]},
+            {"outer": [[0, 0], [0, 0], [1, 1], [0, 0]]},
+            {"outer": [[0, 0], [.5, 0], [1, 0], [0, 0]]},
+            {"outer": [[0, 0], [1, 0], [1, True], [0, 0]]},
+            {"outer": [[0, 0], [1, 0], [1, float("inf")], [0, 0]]},
+            {"outer": [[0, 0], [1, 0], [1, float("nan")], [0, 0]]},
+            {"outer": [[-.1, 0], [1, 0], [1, 1], [-.1, 0]]},
+            {"holes": [list(reversed(valid["holes"][0]))]},
+            {"holes": [[[.7, .6], [.7, .7], [.8, .7], [.8, .6], [.7, .6]]]},
+            {"holes": [[[.05, .2], [.05, .3], [.2, .3], [.2, .2], [.05, .2]]]},
+            {"holes": [valid["holes"][0], valid["holes"][0]]},
+            {"holes": [valid["holes"][0],
+                       [[.22, .22], [.22, .25], [.25, .25], [.25, .22], [.22, .22]]]},
+            {"holes": [valid["holes"][0],
+                       [[.3, .2], [.3, .3], [.4, .3], [.4, .2], [.3, .2]]]},
+            {"holes": [valid["holes"][0]] * 17},
+        ]
+        for mutation in mutations:
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                validate_recipe({**valid, **mutation})
+        repeated = [[index / 130, 0] for index in range(130)] + [[0, 1], [0, 0]]
+        with self.assertRaisesRegex(ValueError, "vertices"):
+            make_trim(plane(), outer=repeated)
+
+    def test_trim_diagonal_and_collinear_forward_vertices_are_not_rectangles(self):
+        triangle = make_trim(plane(), outer=[[.1, .1], [.5, .1], [.9, .1],
+                                             [.5, .9], [.1, .1]])
+        self.assertEqual(len(triangle["outer"]), 5)
+        self.assertNotIn("bounds", triangle)
 
     def test_offset_thickness_strict_units_and_boolean(self):
         for value in (True, 0, 0.5, MM * 1.0, -(2 ** 53 + 1)):
@@ -256,6 +317,108 @@ class RealSurfaceTests(unittest.TestCase):
             self.assertAlmostEqual(actual, expected, delta=1e-9)
         self.error(make_trim(recipe, u_min=0.1, u_max=0.8, v_min=0.25, v_max=0.75),
                    "trim bounds exceed")
+
+    def test_polygon_trim_concave_two_holes_exact_area_and_export_topology(self):
+        recipe = polygon_plate()
+        result = self.record(self.kernel.build(recipe))
+        self.assertEqual(result["properties"]["shape_type"], "Face")
+        self.assertEqual(result["properties"]["faces"][0]["type"], "BSplineSurface")
+        self.assertAlmostEqual(result["properties"]["area_mm2"], 50, delta=1e-8)
+        self.assertEqual(result["properties"]["inner_wire_count"], 2)
+        self.assertEqual(result["properties"]["faces"][0]["wire_count"], 3)
+        self.assertTrue(result["properties"]["faces"][0]["wires_closed"])
+        for fmt in ("brep", "step"):
+            self.assertEqual(result["roundtrip"][fmt]["inner_wire_count"], 2)
+            self.assertAlmostEqual(result["roundtrip"][fmt]["area_mm2"], 50, delta=1e-7)
+        # The notch is inside the bounding rectangle but outside the exact face.
+        for uv in ([[.25, .25]], [[.7, .7]]):
+            with self.assertRaisesRegex(SurfaceExecutionError, "actual trimmed UV domain") as caught:
+                self.kernel.evaluate(recipe, uv=uv)
+            self.record(caught.exception.details)
+
+    def test_polygon_trim_thicken_keeps_through_holes_and_analytic_volume(self):
+        for inward in (False, True):
+            with self.subTest(inward=inward):
+                result = self.record(self.kernel.build(make_thicken(
+                    polygon_plate(), thickness_nm=2 * MM, inward=inward)))
+                self.assertEqual(result["properties"]["solid_count"], 1)
+                self.assertTrue(result["properties"]["closed"])
+                self.assertAlmostEqual(result["properties"]["volume_mm3"], 100, delta=1e-7)
+                points = result["mesh"]["vertices_mm"]
+                triangles = result["mesh"]["triangles"]
+                volume, edges = 0, {}
+                for tri in triangles:
+                    a, b, c = [points[i] for i in tri]
+                    volume += (a[0] * (b[1]*c[2] - b[2]*c[1]) +
+                               a[1] * (b[2]*c[0] - b[0]*c[2]) +
+                               a[2] * (b[0]*c[1] - b[1]*c[0])) / 6
+                    for i, j in ((0, 1), (1, 2), (2, 0)):
+                        key = tuple(sorted(tuple(round(x, 8) for x in points[tri[k]])
+                                           for k in (i, j)))
+                        edges[key] = edges.get(key, 0) + 1
+                self.assertAlmostEqual(abs(volume), 100, delta=1e-7)
+                self.assertTrue(all(count == 2 for count in edges.values()))
+                # Two end faces, each with the original two holes.
+                self.assertEqual(result["properties"]["inner_wire_count"], 4)
+                for fmt in ("brep", "step"):
+                    self.assertEqual(result["roundtrip"][fmt]["inner_wire_count"], 4)
+                    self.assertAlmostEqual(result["roundtrip"][fmt]["volume_mm3"], 100, delta=1e-6)
+
+    def test_diagonal_triangle_trim_not_bbox_analytic_area(self):
+        recipe = make_trim(plane(), outer=[[.1, .1], [.9, .1], [.5, .9], [.1, .1]])
+        result = self.record(self.kernel.build(recipe))
+        self.assertAlmostEqual(result["properties"]["area_mm2"], 32, delta=1e-8)
+        self.assertEqual(result["properties"]["inner_wire_count"], 0)
+        thick = self.record(self.kernel.build(make_thicken(recipe, thickness_nm=MM)))
+        self.assertAlmostEqual(thick["properties"]["volume_mm3"], 32, delta=1e-7)
+
+    def test_polygon_cylinder_exact_support_points_pcurves_and_hole_domain(self):
+        recipe = polygon_plate(quarter_cylinder())
+        result = self.record(self.kernel.evaluate(recipe, uv=[[.1, .1], [.5, .6], [.6, .9]]))
+        self.assertTrue(result["properties"]["faces"][0]["rational"])
+        self.assertEqual(result["properties"]["inner_wire_count"], 2)
+        for row in result["evaluations"]:
+            u, v = row["uv"]
+            x, y, z = row["point_mm"]
+            weight = math.sqrt(.5)
+            denominator = (1 - u) ** 2 + 2 * weight * u * (1 - u) + u * u
+            self.assertAlmostEqual(x, 5 * ((1-u)**2 + 2*weight*u*(1-u))/denominator, delta=1e-9)
+            self.assertAlmostEqual(y, 5 * (2*weight*u*(1-u) + u*u)/denominator, delta=1e-9)
+            self.assertAlmostEqual(x*x + y*y, 25, delta=1e-9)
+            self.assertAlmostEqual(z, 10 * v, delta=1e-9)
+        exported = self.record(self.kernel.build(recipe))
+        self.assertEqual(exported["roundtrip"]["step"]["inner_wire_count"], 2)
+        with self.assertRaisesRegex(SurfaceExecutionError, "inside a hole"):
+            self.kernel.evaluate(recipe, uv=[[.25, .25]])
+
+    def test_polygon_sew_preserves_holes_and_no_face_is_discarded(self):
+        left = polygon_plate()
+        right = make_trim(plane((10, 0, 0)),
+                          outer=[[0, .1], [.8, .1], [.8, .9], [0, .9], [0, .1]])
+        # Extend the left outer to the shared edge; keep its notch and both holes.
+        left["outer"] = [[.1, .1], [1, .1], [1, .5], [.6, .5], [.6, .9], [.1, .9], [.1, .1]]
+        # Match only the left boundary's actual v span, not its parameter bbox.
+        right["outer"] = [[0, .1], [.8, .1], [.8, .5], [0, .5], [0, .1]]
+        result = self.record(self.kernel.build(make_sew(surfaces=[left, right])))
+        self.assertEqual(result["properties"]["shell_count"], 1)
+        self.assertEqual(result["properties"]["face_count"], 2)
+        self.assertEqual(result["properties"]["inner_wire_count"], 2)
+        self.assertAlmostEqual(result["properties"]["area_mm2"], 86, delta=1e-7)
+        self.assertEqual(result["roundtrip"]["step"]["inner_wire_count"], 2)
+
+    def test_worker_raw_bad_loops_visible_firstcause_and_no_fallback(self):
+        recipe = polygon_plate()
+        recipe["outer"] = [[0, 0], [1, 1], [0, 1], [1, 0], [0, 0]]
+        with self.assertRaisesRegex(SurfaceExecutionError, "self-intersects") as caught:
+            self.kernel._job(dict(op="build", surface=recipe, deflection_mm=.05))
+        error = caught.exception
+        self.record(error.details)
+        self.assertFalse(error.details["worker_result"]["ok"])
+        self.assertIn("self-intersects", error.details["worker_result"]["traceback"])
+        self.assertNotIn("artifacts", error.details["worker_result"])
+        tiny = make_trim(plane(), outer=[[.1, .1], [.1+1e-12, .1],
+                                         [.1, .1+1e-12], [.1, .1]])
+        self.error(tiny, "wire|BRep|OCCError|null|area")
 
     def test_g2_planes_and_exact_curved_patches_positive(self):
         for left, right in ((plane(), plane((10, 0, 0))),

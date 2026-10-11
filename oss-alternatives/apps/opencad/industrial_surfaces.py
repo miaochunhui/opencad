@@ -5,6 +5,13 @@ read_surfaces(workspace, body) never writes. prepare_surfaces(workspace, body)
 returns SurfaceCandidate(before_document_sha256, doc, response), never publishes.
 The publisher MUST call candidate.verify_integrity() before consuming it.
 No artifact path or backend traceback is exposed to HTTP clients.
+
+Polygon trimming uses the unchanged generic recipe request:
+{recipe: {op:"trim", surface:parent, outer:closed_CCW_UV_ring,
+          holes:[closed_CW_UV_ring,...]}}. Parent is NURBS or rectangular trim;
+outer/holes excludes bounds. Schema 1 persists these exact fields through
+save/history/reopen. BRep/STEP measurements expose per-face closed hole counts.
+Project/revision/request-id admission and durable history remain gateway-owned.
 """
 
 from __future__ import annotations

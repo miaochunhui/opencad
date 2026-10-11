@@ -61,6 +61,14 @@ def cylinder():
         "weights": [[1, 1], [math.sqrt(0.5)] * 2, [1, 1]]}
 
 
+def polygon_plate():
+    return {"op": "trim", "surface": plane(),
+            "outer": [[.1, .1], [.9, .1], [.9, .5], [.6, .5],
+                      [.6, .9], [.1, .9], [.1, .1]],
+            "holes": [[[.2, .2], [.2, .3], [.3, .3], [.3, .2], [.2, .2]],
+                      [[.4, .2], [.4, .4], [.5, .2], [.4, .2]]]}
+
+
 def seam():
     return {"left_edge": "u_max", "right_edge": "u_min", "reverse": False,
             "continuity": "G2", "samples": 17, "position_tolerance_nm": 100,
@@ -384,6 +392,122 @@ class IndustrialSurfaceTests(unittest.TestCase):
                        a[2] * (b[0]*c[1]-b[1]*c[0])) / 6
         self.assertAlmostEqual(abs(volume), 30, delta=1e-7)
         self.assertAlmostEqual(result["roundtrip"]["step"]["volume_mm3"], 30, delta=1e-7)
+
+    def test_polygon_recipe_validation_detached_and_no_geometry_sideeffects(self):
+        recipe = polygon_plate()
+        self.workspace.doc.extra[NAMESPACE] = {"schema": 1, "recipe": recipe}
+        before = snapshot(self.workspace)
+        state = validate_document(self.workspace.doc)
+        self.assertEqual(state["recipe"], recipe)
+        state["recipe"]["holes"][0][0][0] = .7
+        self.assertEqual(snapshot(self.workspace), before)
+        self.assertFalse((self.directory / "surface-jobs").exists())
+
+    def assert_polygon_measurement(self, response, *, solid=False):
+        self.assertEqual(response["document_sha256"], digest(self.workspace.l1_text()))
+        self.assertEqual(response["surface"], self.workspace.doc.extra[NAMESPACE])
+        properties = response["result"]["properties"]
+        self.assertEqual(properties["solid_count"], int(solid))
+        self.assertEqual(properties["inner_wire_count"], 4 if solid else 2)
+        for fmt in ("brep", "step"):
+            loaded = response["result"]["roundtrip"][fmt]
+            self.assertEqual(loaded["inner_wire_count"], properties["inner_wire_count"])
+            self.assertTrue(all(row["wires_closed"] for row in loaded["faces"]))
+            artifact = response["result"]["artifacts"][fmt]
+            self.assertGreater(artifact["bytes"], 100)
+            self.assertEqual(len(artifact["sha256"]), 64)
+            if solid:
+                self.assertAlmostEqual(loaded["volume_mm3"], 100, delta=1e-6)
+            else:
+                self.assertAlmostEqual(loaded["area_mm2"], 50, delta=1e-7)
+        if solid:
+            self.assertAlmostEqual(properties["volume_mm3"], 100, delta=1e-7)
+            self.assertTrue(properties["closed"])
+        else:
+            self.assertAlmostEqual(properties["area_mm2"], 50, delta=1e-8)
+            self.assertIsNone(properties["volume_mm3"])
+        self.assertEqual(response["result"]["mesh"]["source"], "exact BRep tessellation")
+
+    def test_http_polygon_save_history_restart_preserves_recipe_and_measurement(self):
+        recipe = polygon_plate()
+        for solid in (False, True):
+            with self.subTest(solid=solid):
+                operation = ({"op": "thicken", "surface": recipe,
+                              "thickness_nm": 2 * MM, "inward": False} if solid else recipe)
+                before = self.workspace.l1_text()
+                undo_count = len(self.workspace.undo_stack)
+                status, response = self.post(operation)
+                self.assertEqual(status, 200, response)
+                self.assert_polygon_measurement(response, solid=solid)
+                stored = self.workspace.l1_text()
+                self.assertEqual(len(self.workspace.undo_stack), undo_count + 1)
+                name = "polygon-%s.l1" % solid
+                self.assertEqual(self.call("POST", "/api/save", {"path": name})[0], 200)
+                self.assertEqual((self.directory / name).read_text(), stored)
+                self.assertEqual(self.call("POST", "/api/command", {"command": "undo"})[0], 200)
+                self.assertEqual(self.workspace.l1_text(), before)
+                self.assertEqual(self.call("POST", "/api/command", {"command": "redo"})[0], 200)
+                self.assertEqual(self.workspace.l1_text(), stored)
+                captured = snapshot(self.workspace)
+                self.assert_polygon_measurement(read_surfaces(self.workspace), solid=solid)
+                self.assertEqual(snapshot(self.workspace), captured)
+                restarted = Workspace(self.core, locale="en", standard="gbt",
+                                      out_root=str(self.directory))
+                restarted.open_doc(str(self.directory / name))
+                self.assertEqual(restarted.l1_text(), stored)
+                reloaded = read_surfaces(restarted)
+                self.assertEqual(reloaded["document_sha256"], digest(stored))
+                self.assertEqual(reloaded["surface"]["recipe"], operation)
+                for fmt in ("brep", "step"):
+                    loaded = reloaded["result"]["roundtrip"][fmt]
+                    self.assertEqual(loaded["inner_wire_count"], 4 if solid else 2)
+                    if solid:
+                        self.assertAlmostEqual(loaded["volume_mm3"], 100, delta=1e-6)
+                    else:
+                        self.assertAlmostEqual(loaded["area_mm2"], 50, delta=1e-7)
+
+    def test_http_polygon_bad_loops_do_not_publish_or_start_worker(self):
+        self.assertEqual(self.post(polygon_plate())[0], 200)
+        self.workspace.redo_stack = [self.workspace.undo_stack[0]]
+        before = snapshot(self.workspace)
+        jobs = len(list((self.directory / "surface-jobs").glob("surface-*")))
+        recipes = []
+        for outer in (
+                [[0, 0], [1, 1], [0, 1], [1, 0], [0, 0]],
+                [[.1, .1], [.1, .1], [.5, .5], [.1, .1]],
+                [[.1, .1], [.9, .1], [.5, .9]],
+                [[.1, .1], [.9, .1], [.5, 1.1], [.1, .1]]):
+            recipes.append({**polygon_plate(), "outer": outer})
+        recipes.append({**polygon_plate(), "holes": [
+            [[.7, .6], [.7, .8], [.8, .8], [.8, .6], [.7, .6]]]})
+        recipes.append({**polygon_plate(), "holes": [polygon_plate()["holes"][0]] * 2})
+        recipes.append({**polygon_plate(), "holes": [
+            list(reversed(polygon_plate()["holes"][0]))]})
+        for recipe in recipes:
+            with self.subTest(recipe=recipe):
+                status, response = self.post(recipe)
+                self.assertEqual(status, 400, response)
+                self.assertEqual(response["error"], "bad_surface_arguments")
+                self.assertTrue(response["detail"])
+                self.assertEqual(snapshot(self.workspace), before)
+                self.assertEqual(len(list((self.directory / "surface-jobs").glob("surface-*"))), jobs)
+        self.workspace.doc.extra[NAMESPACE]["recipe"] = recipes[0]
+        corrupted = snapshot(self.workspace)
+        self.assertEqual(self.call("GET", "/api/surfaces")[0], 400)
+        self.assertEqual(snapshot(self.workspace), corrupted)
+
+    def test_http_polygon_physical_degeneracy_retains_worker_firstcause(self):
+        self.assertEqual(self.post(polygon_plate())[0], 200)
+        before = snapshot(self.workspace)
+        tiny = {"op": "trim", "surface": plane(), "holes": [],
+                "outer": [[.1, .1], [.1 + 1e-12, .1], [.1, .1 + 1e-12], [.1, .1]]}
+        status, response = self.post(tiny)
+        self.assertEqual(status, 422, response)
+        self.assertEqual(response["reason"], "op_failed")
+        self.assertTrue(response["first_cause"])
+        self.assertEqual(snapshot(self.workspace), before)
+        logs = list((self.directory / "surface-jobs").glob("surface-*/stderr.log"))
+        self.assertTrue(any(response["first_cause"] in path.read_text() for path in logs))
 
     def test_http_sew_g2_positive_and_crease_negative_no_publication(self):
         spec = {**seam(), "left": 1, "right": 2}

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Exact surface recipes and an isolated FreeCAD file-protocol client.
 
-No FreeCAD module is imported into the caller. Rectangular parameter trimming
-is supported, not arbitrary trimming wires. Boundary indices are recipe-local,
+No FreeCAD module is imported into the caller. Exact UV polygon trimming uses
+explicit outer/hole wires, alongside rectangular bounds. Boundary indices are recipe-local,
 not persistent topological names. See docs/design/industrial-surfaces.md.
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from fractions import Fraction
 import os
 from pathlib import Path
 import tempfile
@@ -19,7 +20,7 @@ from typing import Any
 
 __all__ = [
     "SurfaceKernel", "SurfaceExecutionError", "make_nurbs", "make_trim",
-    "make_sew", "make_offset", "make_thicken", "validate_recipe",
+    "make_sew", "make_offset", "make_thicken", "validate_recipe", "validate_trim_loops",
     "validate_seam",
 ]
 
@@ -82,6 +83,105 @@ def _axis(knots, mults, degree, count, label):
         raise ValueError("%s knot multiplicity sum does not match poles and degree" % label)
 
 
+def _orient(a, b, c):
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+
+def _on_segment(a, b, p):
+    return (_orient(a, b, p) == 0
+            and min(a[0], b[0]) <= p[0] <= max(a[0], b[0])
+            and min(a[1], b[1]) <= p[1] <= max(a[1], b[1]))
+
+
+def _segments_meet(a, b, c, d):
+    x, y, z, w = _orient(a, b, c), _orient(a, b, d), _orient(c, d, a), _orient(c, d, b)
+    return ((x * y < 0 and z * w < 0) or _on_segment(a, b, c)
+            or _on_segment(a, b, d) or _on_segment(c, d, a) or _on_segment(c, d, b))
+
+
+def _point_location(p, ring):
+    """Exact binary-input predicates: -1 outside, 0 boundary, 1 interior."""
+    inside = False
+    for a, b in zip(ring, ring[1:]):
+        if _on_segment(a, b, p):
+            return 0
+        if (a[1] > p[1]) != (b[1] > p[1]):
+            x = a[0] + (p[1] - a[1]) * (b[0] - a[0]) / (b[1] - a[1])
+            if x > p[0]:
+                inside = not inside
+    return 1 if inside else -1
+
+
+def validate_trim_loops(outer, holes, bounds):
+    """Finite, simple, oriented closed UV polygons; exact host predicates.
+
+    UV floats are treated as their exact binary rationals, not epsilon-rounded
+    geometry. OCCT subsequently enforces physical BRep tolerances/validity.
+    Holes must be strictly inside, disjoint and unnested; touching is rejected.
+    """
+    if not isinstance(holes, list) or len(holes) > 16:
+        raise ValueError("trim holes require a list of at most 16 rings")
+    if sum(len(ring) if isinstance(ring, list) else 0 for ring in [outer, *holes]) > 512:
+        raise ValueError("trim loops exceed the 512-point budget")
+    u0, u1, v0, v1 = [Fraction(float(x)) for x in bounds]
+    rings = []
+    for index, points in enumerate([outer, *holes]):
+        label = "outer" if index == 0 else "hole %s" % index
+        if not isinstance(points, list) or not 4 <= len(points) <= 129:
+            raise ValueError("trim %s requires 3..128 vertices plus explicit closure" % label)
+        ring = []
+        for point in points:
+            if not isinstance(point, list) or len(point) != 2:
+                raise ValueError("trim %s requires UV pairs" % label)
+            pair = tuple(Fraction(_number(x, "trim UV")) for x in point)
+            if not (u0 <= pair[0] <= u1 and v0 <= pair[1] <= v1):
+                raise ValueError("trim %s exceeds current parameter domain" % label)
+            ring.append(pair)
+        if ring[0] != ring[-1]:
+            raise ValueError("trim %s must be explicitly closed" % label)
+        vertices = ring[:-1]
+        if len(set(vertices)) != len(vertices):
+            raise ValueError("trim %s has duplicate or degenerate vertices" % label)
+        edges = list(zip(ring, ring[1:]))
+        for i, (a, b) in enumerate(edges):
+            previous = vertices[(i - 1) % len(vertices)]
+            if (_orient(previous, a, b) == 0
+                    and (a[0] - previous[0]) * (b[0] - a[0])
+                    + (a[1] - previous[1]) * (b[1] - a[1]) <= 0):
+                raise ValueError("trim %s has backtracking/degenerate consecutive edges" % label)
+            for j in range(i + 1, len(edges)):
+                if j == i + 1 or (i == 0 and j == len(edges) - 1):
+                    continue
+                if _segments_meet(a, b, *edges[j]):
+                    raise ValueError("trim %s self-intersects or touches" % label)
+        area2 = sum(a[0] * b[1] - b[0] * a[1] for a, b in edges)
+        if area2 == 0:
+            raise ValueError("trim %s has zero area" % label)
+        if (index == 0 and area2 < 0) or (index > 0 and area2 > 0):
+            raise ValueError("trim outer must be counterclockwise and holes clockwise in UV")
+        rings.append(ring)
+    for index, hole in enumerate(rings[1:], 1):
+        for other in rings[:index]:
+            if any(_segments_meet(a, b, c, d) for a, b in zip(hole, hole[1:])
+                   for c, d in zip(other, other[1:])):
+                raise ValueError("trim hole touches/crosses another boundary")
+        if _point_location(hole[0], rings[0]) != 1:
+            raise ValueError("trim hole is outside outer ring")
+        for other in rings[1:index]:
+            if _point_location(hole[0], other) >= 0 or _point_location(other[0], hole) >= 0:
+                raise ValueError("trim holes overlap or are nested")
+    return _detach({"outer": outer, "holes": holes})
+
+
+def _parameter_bounds(recipe):
+    if recipe["op"] == "nurbs":
+        return [recipe["u_knots"][0], recipe["u_knots"][-1],
+                recipe["v_knots"][0], recipe["v_knots"][-1]]
+    if recipe["op"] == "trim" and "bounds" in recipe:
+        return recipe["bounds"]
+    raise ValueError("trim parent must be NURBS or rectangular trim; nested polygon trim is unsupported")
+
+
 def validate_recipe(recipe):
     """Strict detached schema; actual topology is always checked by FreeCAD."""
     value = _detach(recipe)
@@ -126,16 +226,22 @@ def validate_recipe(recipe):
                         if not 1e-12 <= _number(weight, "weight", positive=True) <= 1e12:
                             raise ValueError("nurbs weight outside supported range")
         elif op == "trim":
-            _fields(item, ("op", "surface", "bounds"), ("op", "surface", "bounds"), op)
+            polygon = "outer" in item or "holes" in item
+            names = ("op", "surface", "outer", "holes") if polygon else ("op", "surface", "bounds")
+            _fields(item, names, names, op)
             walk(item["surface"], depth + 1)
             if item["surface"]["op"] not in ("nurbs", "trim"):
                 raise ValueError("trim requires a single parameterized NURBS face")
-            bounds = item["bounds"]
-            if not isinstance(bounds, list) or len(bounds) != 4:
-                raise ValueError("trim bounds require [u_min,u_max,v_min,v_max]")
-            a, b, c, d = [_number(x, "trim bound") for x in bounds]
-            if a >= b or c >= d:
-                raise ValueError("trim bounds must be increasing")
+            domain = _parameter_bounds(item["surface"])
+            if polygon:
+                validate_trim_loops(item["outer"], item["holes"], domain)
+            else:
+                bounds = item["bounds"]
+                if not isinstance(bounds, list) or len(bounds) != 4:
+                    raise ValueError("trim bounds require [u_min,u_max,v_min,v_max]")
+                a, b, c, d = [_number(x, "trim bound") for x in bounds]
+                if a >= b or c >= d:
+                    raise ValueError("trim bounds must be increasing")
         elif op == "sew":
             _fields(item, ("op", "surfaces", "solid", "seams"),
                     ("op", "surfaces", "solid", "seams"), op)
@@ -178,9 +284,15 @@ def make_nurbs(*, poles_nm, u_degree, v_degree, u_knots, v_knots,
                                 u_mults=u_mults, v_mults=v_mults, weights=weights))
 
 
-def make_trim(surface, *, u_min, u_max, v_min, v_max):
-    return validate_recipe(dict(op="trim", surface=surface,
-                                bounds=[u_min, u_max, v_min, v_max]))
+def make_trim(surface, *, u_min=None, u_max=None, v_min=None, v_max=None,
+              outer=None, holes=None):
+    bounds = [u_min, u_max, v_min, v_max]
+    if outer is not None or holes is not None:
+        if any(x is not None for x in bounds):
+            raise ValueError("trim bounds and outer/holes are mutually exclusive")
+        return validate_recipe(dict(op="trim", surface=surface, outer=outer,
+                                    holes=[] if holes is None else holes))
+    return validate_recipe(dict(op="trim", surface=surface, bounds=bounds))
 
 
 def make_sew(*, surfaces, solid=False, seams=None):

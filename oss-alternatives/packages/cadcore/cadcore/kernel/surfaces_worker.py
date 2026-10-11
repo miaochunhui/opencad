@@ -12,7 +12,7 @@ import sys
 import traceback
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from surfaces import validate_recipe, validate_seam, _number, _fields
+from surfaces import validate_recipe, validate_seam, validate_trim_loops, _number, _fields
 
 MARKER = "cadcore-surfaces-v1"
 MM = 1_000_000.0
@@ -61,6 +61,33 @@ def build(recipe, reports, offset_checks):
     if op == "trim":
         face = _face(build(recipe["surface"], reports, offset_checks))
         u0, u1, v0, v1 = face.ParameterRange
+        if "outer" in recipe:
+            validate_trim_loops(recipe["outer"], recipe["holes"], [u0, u1, v0, v1])
+            from FreeCAD import Base
+            surface = face.Surface
+            wires = []
+            for ring in [recipe["outer"], *recipe["holes"]]:
+                edges = [
+                    Part.Geom2d.Line2dSegment(Base.Vector2d(*a), Base.Vector2d(*b)).toShape(surface)
+                    for a, b in zip(ring, ring[1:])]
+                wire = Part.Wire(edges)
+                if not wire.isClosed() or not wire.isValid() or len(wire.Edges) != len(edges):
+                    raise ValueError("trim UV ring did not produce a closed valid exact wire")
+                wires.append(wire)
+            # The surface/list overload adds wires to the default rectangle.
+            # The surface/wire overload instead establishes the true outer ring.
+            trimmed = Part.Face(surface, wires[0])
+            for wire in wires[1:]:
+                trimmed = Part.Face(trimmed, wire)
+            _valid(trimmed, "UV polygon trim")
+            if len(trimmed.Wires) != len(wires) or any(not w.isClosed() for w in trimmed.Wires):
+                raise ValueError("trim lost outer or hole wires")
+            if not isinstance(trimmed.Surface, Part.BSplineSurface):
+                raise ValueError("trim lost its exact NURBS support")
+            for edge in trimmed.Edges:
+                if trimmed.curveOnSurface(edge) is None:
+                    raise ValueError("trim edge has no authoritative UV pcurve")
+            return trimmed
         a, b, c, d = recipe["bounds"]
         if not (u0 <= a < b <= u1 and v0 <= c < d <= v1):
             raise ValueError("trim bounds exceed the current face parameter domain")
@@ -125,6 +152,8 @@ def _derivatives(face, u, v):
     u0, u1, v0, v1 = face.ParameterRange
     if not (u0 <= u <= u1 and v0 <= v <= v1):
         raise ValueError("evaluation parameter outside trimmed face")
+    if not face.isPartOfDomain(u, v):
+        raise ValueError("evaluation parameter outside actual trimmed UV domain or inside a hole")
     surface = face.Surface
     p = surface.getD0(u, v)
     du = surface.getDN(u, v, 1, 0)
@@ -167,6 +196,8 @@ def _offset_regularity(shape, distance):
         for ut in sorted(us):
             for vt in sorted(vs):
                 u, v = u0 + (u1 - u0) * ut, v0 + (v1 - v0) * vt
+                if not face.isPartOfDomain(u, v):
+                    continue
                 _p, du, dv, normal = _derivatives(face, u, v)
                 if face.Orientation == "Reversed":
                     normal = -normal
@@ -183,6 +214,8 @@ def _offset_regularity(shape, distance):
                     minimum = min(factors)
                     witness = dict(face_index=index, uv=[u, v],
                                    principal_curvatures_per_mm=curvatures, factors=factors)
+    if count == 0:
+        raise ValueError("offset regularity has no samples in the actual UV domain")
     report = dict(offset_mm=distance, sample_count=count, minimum_regular_factor=minimum,
                   whole_domain_proof=False, witness=witness,
                   method="exact DN; sampled principal-curvature factors 1-offset*curvature")
@@ -273,7 +306,9 @@ def _properties(shape):
     faces = []
     for face in shape.Faces:
         surface = face.Surface
-        row = dict(type=type(surface).__name__, bounds=list(face.ParameterRange))
+        row = dict(type=type(surface).__name__, bounds=list(face.ParameterRange),
+                   wire_count=len(face.Wires), inner_wire_count=len(face.Wires) - 1,
+                   wires_closed=all(w.isClosed() for w in face.Wires))
         if isinstance(surface, Part.BSplineSurface):
             row.update(u_degree=surface.UDegree, v_degree=surface.VDegree,
                        rational=bool(surface.isURational() or surface.isVRational()))
@@ -281,6 +316,7 @@ def _properties(shape):
     return dict(shape_type=shape.ShapeType, valid=shape.isValid(), closed=shape.isClosed(),
                 face_count=len(shape.Faces), shell_count=len(shape.Shells),
                 solid_count=len(shape.Solids), area_mm2=shape.Area,
+                inner_wire_count=sum(row["inner_wire_count"] for row in faces),
                 volume_mm3=shape.Volume if shape.Solids else None,
                 bbox_mm=[bounds.XMin, bounds.YMin, bounds.ZMin,
                          bounds.XMax, bounds.YMax, bounds.ZMax],
@@ -303,9 +339,13 @@ def _export(shape, result_dir):
         if not path.is_file() or path.stat().st_size <= 0:
             raise ValueError("%s export missing or empty" % fmt)
         actual = _properties(loaded)
-        for field in ("face_count", "solid_count"):
+        for field in ("face_count", "solid_count", "inner_wire_count"):
             if actual[field] != expected[field]:
                 raise ValueError("%s roundtrip lost %s" % (fmt, field))
+        if (sorted(row["inner_wire_count"] for row in actual["faces"])
+                != sorted(row["inner_wire_count"] for row in expected["faces"])
+                or not all(row["wires_closed"] for row in actual["faces"])):
+            raise ValueError("%s roundtrip changed per-face closed hole topology" % fmt)
         for field in ("area_mm2", "volume_mm3"):
             a, b = actual[field], expected[field]
             if b is not None and (a is None or abs(a - b) > max(1e-7, abs(b) * 1e-7)):
@@ -345,6 +385,10 @@ def main():
             result["apis"].update({name: callable(getattr(Part.Shape(), name, None)) for name in
                                    ("sewShape", "makeOffsetShape", "cleaned", "optimalBoundingBox",
                                     "tessellate", "exportBrep", "exportStep")})
+            result["apis"].update(
+                uv_segment=callable(getattr(Part.Geom2d, "Line2dSegment", None)),
+                uv_pcurve=callable(getattr(Part.Face(), "curveOnSurface", None)),
+                uv_domain=callable(getattr(Part.Face(), "isPartOfDomain", None)))
             if not all(result["apis"].values()):
                 raise ValueError("required FreeCAD surface API missing")
         elif op in ("build", "evaluate"):
