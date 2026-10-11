@@ -9,6 +9,8 @@
   let conflicted = false;
   let identity = null;
   let needsLogin = false;
+  let epoch = 0, locked = false;
+  const shielded = new Map();
   let viewRecovery = false, checkingView = false;
   let notice;
   let retry;
@@ -18,6 +20,68 @@
   let unlock;
   const ready = new Promise(function (resolve) { unlock = resolve; });
   const storageKey = "opencad-project-id";
+
+  function boundaryError() {
+    return new Error("session_boundary_changed");
+  }
+
+  function current(generation) {
+    if (generation !== epoch) { throw boundaryError(); }
+  }
+
+  function shield() {
+    epoch += 1;
+    locked = true;
+    document.body.dataset.opencadSessionLocked = "true";
+    if (document.activeElement && document.activeElement.blur) {
+      document.activeElement.blur();
+    }
+    shieldWorkspace();
+  }
+
+  function shieldWorkspace() {
+    Array.from(document.body.children).forEach(function (node) {
+      if (node.matches(".project-status,[data-session-entry],[data-session-recovery],script,style,link")) {
+        return;
+      }
+      if (!shielded.has(node)) {
+        shielded.set(node, {visibility: node.style.visibility,
+          priority: node.style.getPropertyPriority("visibility"), inert: node.inert});
+      }
+      node.style.setProperty("visibility", "hidden", "important");
+      node.inert = true;
+    });
+  }
+
+  function unshield() {
+    epoch += 1;
+    shielded.forEach(function (saved, node) {
+      node.style.setProperty("visibility", saved.visibility, saved.priority);
+      node.inert = saved.inert;
+    });
+    shielded.clear();
+    locked = false;
+    delete document.body.dataset.opencadSessionLocked;
+  }
+
+  // Body consumption can finish after a logout even when fetch already returned.
+  function guarded(response, generation) {
+    ["json", "text", "blob", "arrayBuffer", "formData"].forEach(function (method) {
+      const consume = response[method].bind(response);
+      response[method] = async function () {
+        current(generation);
+        const value = await consume();
+        current(generation);
+        return value;
+      };
+    });
+    const clone = response.clone.bind(response);
+    response.clone = function () {
+      current(generation);
+      return guarded(clone(), generation);
+    };
+    return response;
+  }
 
   async function raw(path, body) {
     const options = body === undefined ? {} : {
@@ -49,7 +113,9 @@
     }
     project = identifier;
     base = {revision: value.revision, sha256: value.sha256};
-    sessionStorage.setItem(storageKey, identifier);
+    sessionStorage.setItem(storageKey, JSON.stringify({
+      owner_id: identity, project_id: identifier
+    }));
   }
 
   function remember(value) {
@@ -64,12 +130,13 @@
   function inform(message) {
     if (notice) { notice.textContent = message; }
     if (retry) { retry.hidden = !pending; }
-    if (refresh) { refresh.hidden = !conflicted; }
+    if (refresh) { refresh.hidden = !(conflicted || (locked && !needsLogin)); }
     if (login) { login.hidden = !needsLogin; }
   }
 
   function expired() {
     needsLogin = true;
+    shield();
     inform(pending ? "登录已失效，请以原账号重新登录，再确认上一笔编辑。原请求仍保留在此页面。" :
       "登录已失效，请重新登录。");
   }
@@ -80,13 +147,21 @@
     conflicted = true;
     viewRecovery = true;
     inform("编辑已确认保存，正在核对最新视图。未提交的表单保留在此页。");
+    const generation = epoch;
     try {
+      const session = await raw("/api/auth/me");
+      current(generation);
+      if (!session.user || session.user.user_id !== identity) {
+        expired();
+        throw boundaryError();
+      }
       const known = base;
       const workspace = window.opencad3d || window.OpenCADWorkspace;
       if (!workspace || typeof workspace.refresh !== "function") {
         throw new Error("workspace_refresh_unavailable");
       }
       const state = await workspace.refresh();
+      current(generation);
       if (state.project_id !== project || !Number.isSafeInteger(state.revision) ||
           state.revision < known.revision ||
           !/^[a-f0-9]{64}$/.test(state.sha256 || "") ||
@@ -95,6 +170,7 @@
       }
       const response = await window.fetch("/api/state");
       const latest = await response.json();
+      current(generation);
       if (!response.ok || latest.ok !== true || latest.project_id !== state.project_id ||
           latest.revision !== state.revision || latest.sha256 !== state.sha256) {
         throw new Error("recovered_view_changed");
@@ -105,14 +181,18 @@
       }
       conflicted = false;
       viewRecovery = false;
+      if (locked) { unshield(); }
       inform("编辑已确认保存，最新视图已核对。未提交表单仍保留，请检查后再保存。");
     } catch (error) {
+      if (error.status === 401) { expired(); }
       inform("编辑已确认保存，但视图未验证：" + String(error.message || error) +
         "。请核对最新视图，不会再次提交原请求。");
     } finally { checkingView = false; }
   }
 
-  async function send(url, options, mutation) {
+  async function send(url, options, mutation, generation) {
+    current(generation);
+    if (locked && !checkingView) { throw boundaryError(); }
     if (mutation && needsLogin) {
       throw new Error("请先以原账号重新登录，未确认的编辑不会自动重放。");
     }
@@ -132,11 +212,16 @@
     try {
       response = await rawFetch(url, options);
     } catch (failure) {
+      current(generation);
       if (mutation) {
         inform("连接中断，编辑是否保存尚未确认。请确认上一笔编辑，勿重复操作。");
+      } else if (!options.signal || !options.signal.aborted) {
+        shield();
+        inform("连接中断，旧工作区已屏蔽。请核对最新版本后恢复，未提交表单仍保留。");
       }
       throw failure;
     }
+    current(generation);
     if (response.status === 401) { expired(); }
     let value;
     try {
@@ -145,8 +230,13 @@
       }
     } catch (failure) {
       if (mutation) { inform("响应损坏，保存结果尚未确认，请确认上一笔编辑。"); }
+      else if (response.status !== 401) {
+        shield();
+        inform("响应损坏，旧工作区已屏蔽。请核对最新版本后恢复。");
+      }
       throw failure;
     }
+    if (response.status !== 401) { current(generation); }
     if (response.ok && value && value.ok === true) {
       remember(value);
       if (mutation) {
@@ -156,6 +246,10 @@
           detail: {path: url.split("?")[0], base: submittedBase, receipt: value}
         }));
       }
+    } else if (!mutation && response.status !== 401 && !response.ok) {
+      shield();
+      inform("读取被拒绝，旧工作区已屏蔽。请核对当前账号和项目。");
+      return response;
     } else if (mutation) {
       // A server-side failure may happen after COMMIT. Only the receipt replay
       // can disambiguate it; do not manufacture a fresh request ID.
@@ -171,17 +265,30 @@
           (value.detail || value.error || "编辑被拒绝，图纸未修改。"));
       }
     }
-    return response;
+    // A 401 carries the original server refusal, never the previous document.
+    return guarded(response, response.status === 401 ? epoch : generation);
   }
 
-  async function download(path, extension) {
-    const response = await rawFetch(path, {headers: {"X-OpenCAD-Project": project}});
+  async function download(path, extension, generation) {
+    current(generation);
+    if (locked) { throw boundaryError(); }
+    let response;
+    try {
+      response = await rawFetch(path, {headers: {"X-OpenCAD-Project": project}});
+    } catch (failure) {
+      current(generation);
+      shield();
+      inform("连接中断，旧工作区已屏蔽。请核对最新版本后恢复。");
+      throw failure;
+    }
+    current(generation);
     if (!response.ok) {
       if (response.status === 401) { expired(); }
       else { inform("导出失败，请检查项目状态。"); }
       return response;
     }
     const blob = await response.blob();
+    current(generation);
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -200,6 +307,7 @@
       return rawFetch(input, init);
     }
     await ready;
+    const generation = epoch;
     const original = new Request(input, init);
     const method = original.method.toUpperCase();
     const originalBody = method === "POST" ? await original.text() : "";
@@ -210,6 +318,7 @@
       });
     }
     async function execute() {
+      current(generation);
       const options = {method: method, headers: new Headers(original.headers),
         credentials: "same-origin", signal: original.signal};
       options.headers.set("X-OpenCAD-Project", project);
@@ -217,10 +326,24 @@
       if (method === "POST") {
         options.headers.set("X-OpenCAD-Request", "1");
         const body = JSON.parse(originalBody || "{}");
-        if (url.pathname === "/api/export/dxf") { return download("/api/dxf", "dxf"); }
-        if (url.pathname === "/api/export/step") { return download("/api/step", "step"); }
+        if (url.pathname === "/api/auth/login" || url.pathname === "/api/auth/logout") {
+          if (pending) { throw new Error("请先确认上一笔编辑，再切换登录。"); }
+          shield();
+          options.body = JSON.stringify(body);
+          const response = await rawFetch(url.pathname, options);
+          if (!response.ok && response.status !== 401) {
+            inform("登录切换未完成，旧工作区仍屏蔽。请恢复原账号或重试退出。");
+            return response;
+          }
+          sessionStorage.removeItem(storageKey);
+          // Never return a new identity into the old panels' private closures.
+          setTimeout(function () { location.reload(); }, 0);
+          throw boundaryError();
+        }
+        if (url.pathname === "/api/export/dxf") { return download("/api/dxf", "dxf", generation); }
+        if (url.pathname === "/api/export/step") { return download("/api/step", "step", generation); }
         if (url.pathname === "/api/command" && body.command === "export_pdf") {
-          return download("/api/pdf", "pdf");
+          return download("/api/pdf", "pdf", generation);
         }
         const queries = new Set(["snap_query", "precision_pick", "precision_status",
           "grip_positions", "boundary_probe", "layer_state", "layer_visible_entities",
@@ -238,7 +361,7 @@
         }
         options.body = JSON.stringify(body);
       }
-      return send(url.pathname + url.search, options, mutates);
+      return send(url.pathname + url.search, options, mutates, generation);
     }
     if (method === "POST") {
       const result = queue.then(execute);
@@ -250,6 +373,9 @@
   window.OpenCADProjectSession = Object.freeze({ready: ready});
 
   async function boot() {
+    new MutationObserver(function () {
+      if (locked) { shieldWorkspace(); }
+    }).observe(document.body, {childList: true});
     const bar = document.createElement("section");
     bar.className = "project-status";
     notice = document.createElement("output");
@@ -263,10 +389,12 @@
       if (needsLogin) { recovery(); return; }
       retry.disabled = true;
       const operation = pending;
+      const generation = epoch;
       try {
         const response = await rawFetch(operation.url, Object.assign({}, operation.options,
           {signal: undefined}));
         const value = await response.json();
+        current(generation);
         if (response.ok && value.ok === true) {
           conflicted = true;
           remember(value);
@@ -288,7 +416,7 @@
     refresh.textContent = "刷新最新版本";
     refresh.hidden = true;
     refresh.addEventListener("click", function () {
-      if (viewRecovery) { recoverView(); }
+      if (viewRecovery || locked) { recoverView(); }
       else { location.reload(); }
     });
     login = document.createElement("button");
@@ -344,8 +472,11 @@
           needsLogin = false;
           dialog.close();
           dialog.remove();
-          inform(pending ? "原账号登录已恢复。请手动确认上一笔编辑，尚未自动重放。" :
-            "原账号登录已恢复，可继续访问当前项目。");
+          if (pending) {
+            inform("原账号登录已恢复。请手动确认上一笔编辑，尚未自动重放。");
+          } else {
+            await recoverView();
+          }
         } catch (failure) {
           password.value = "";
           showError(error, failure);
@@ -361,15 +492,28 @@
     exit.textContent = "退出登录";
     exit.addEventListener("click", async function () {
       if (pending) { inform("请先确认上一笔编辑，再退出登录。"); return; }
-      try { await raw("/api/auth/logout", {}); location.reload(); }
-      catch (failure) { inform(failure.message); }
+      shield();
+      try {
+        await raw("/api/auth/logout", {});
+        sessionStorage.removeItem(storageKey);
+        location.reload();
+      } catch (failure) {
+        if (failure.status === 401) {
+          sessionStorage.removeItem(storageKey);
+          location.reload();
+        } else { inform("退出未确认，旧工作区仍屏蔽：" + failure.message); }
+      }
     });
     bar.append(notice, retry, refresh, login, exit);
     document.body.prepend(bar);
     window.addEventListener("beforeunload", function (event) {
       if (pending) { event.preventDefault(); event.returnValue = ""; }
     });
+    window.addEventListener("pageshow", function (event) {
+      if (event.persisted) { shield(); location.reload(); }
+    });
     const overlay = document.createElement("dialog");
+    overlay.dataset.sessionEntry = "true";
     const title = document.createElement("h1");
     title.textContent = "OpenCAD 私有项目";
     const explanation = document.createElement("p");
@@ -410,7 +554,13 @@
         option.textContent = item.title;
         select.append(option);
       });
-      const stored = sessionStorage.getItem(storageKey);
+      let stored = null;
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(storageKey));
+        if (saved && saved.owner_id === identity) { stored = saved.project_id; }
+      } catch (_) {
+        // Legacy unbound selection is not an identity authority.
+      }
       if (value.projects.some(function (item) { return item.project_id === stored; })) {
         select.value = stored;
       }
@@ -455,7 +605,11 @@
       logout.type = "button";
       logout.textContent = "退出登录";
       logout.addEventListener("click", async function () {
-        try { await raw("/api/auth/logout", {}); location.reload(); }
+        try {
+          await raw("/api/auth/logout", {});
+          sessionStorage.removeItem(storageKey);
+          location.reload();
+        }
         catch (failure) { showError(error, failure); }
       });
       form.append(select, open, name, create, logout);
