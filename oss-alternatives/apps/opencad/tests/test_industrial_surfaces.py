@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+from dataclasses import replace
 from datetime import datetime, timezone
 import hashlib
 from http.client import HTTPConnection
@@ -32,7 +33,7 @@ APP = ROOT / "oss-alternatives/apps/opencad"
 PACKAGE = ROOT / "oss-alternatives/packages/cadcore"
 sys.path[:0] = [str(APP), str(PACKAGE)]
 from server import ApiError, Workspace, _load_cadcore
-from industrial_surfaces import NAMESPACE, prepare_surfaces, read_surfaces
+from industrial_surfaces import NAMESPACE, prepare_surfaces, read_surfaces, validate_document
 
 EVIDENCE = Path("/hf3fs-jd/data/tmp/opencad-industrial-surfaces-20261011/seat-surfaces-web")
 RUN_DIR = EVIDENCE / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid.uuid4().hex)
@@ -76,6 +77,7 @@ def snapshot(workspace):
 def publish(workspace, candidate):
     """Reference integration only: the real project gateway also needs DB CAS."""
     with workspace._lock:
+        candidate.verify_integrity()
         if digest(workspace.l1_text()) != candidate.before_document_sha256:
             raise ApiError("revision_conflict", "candidate base changed", status=409)
         if getattr(workspace, "_release_pending", False):
@@ -222,6 +224,131 @@ class IndustrialSurfaceTests(unittest.TestCase):
         self.assertEqual(snapshot(self.workspace), before)
         self.assertAlmostEqual(candidate.response["result"]["properties"]["area_mm2"], 100, delta=1e-8)
         self.assertTrue(candidate.response["result"]["mesh"]["triangles"])
+
+    def assert_candidate_rejected(self, candidate):
+        before = snapshot(self.workspace)
+        with self.assertRaises(ApiError) as caught:
+            publish(self.workspace, candidate)
+        self.assertEqual(caught.exception.status, 422)
+        self.assertEqual(caught.exception.payload()["reason"], "candidate_changed")
+        self.assertTrue(caught.exception.payload()["first_cause"])
+        self.assertEqual(snapshot(self.workspace), before)
+
+    def test_real_prepare_creation_seal_and_unchanged_replace_verify(self):
+        candidate = prepare_surfaces(self.workspace, {"recipe": cylinder()})
+        before = snapshot(self.workspace)
+        raw = self.workspace.docmodel.document_to_l1(candidate.doc).encode("utf-8")
+        self.assertEqual(candidate.document_bytes, raw)
+        self.assertEqual(candidate.response["document_sha256"], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(len(candidate.creation_envelope_sha256), 64)
+        self.assertAlmostEqual(candidate.response["result"]["properties"]["area_mm2"],
+                               25 * math.pi, delta=1e-6)
+        self.assertIsNone(candidate.verify_integrity())
+        unchanged = replace(candidate)
+        self.assertEqual(unchanged.creation_envelope_sha256, candidate.creation_envelope_sha256)
+        self.assertIsNone(unchanged.verify_integrity())
+        self.assertEqual(snapshot(self.workspace), before)
+
+    def test_real_prepare_nested_document_tamper_rejected(self):
+        candidate = prepare_surfaces(self.workspace, {"recipe": plane()})
+        candidate.doc.meta["title_key"] = "changed-after-measurement"
+        self.assert_candidate_rejected(candidate)
+
+    def test_real_prepare_response_document_sha_tamper_rejected(self):
+        candidate = prepare_surfaces(self.workspace, {"recipe": plane()})
+        candidate.response["document_sha256"] = "0" * 64
+        self.assert_candidate_rejected(candidate)
+
+    def test_real_prepare_mesh_and_measurement_tamper_rejected(self):
+        candidate = prepare_surfaces(self.workspace, {"recipe": plane()})
+        for label in ("mesh", "measurement", "artifact", "source", "metadata"):
+            with self.subTest(label=label):
+                changed = copy.deepcopy(candidate)
+                result = changed.response["result"]
+                if label == "mesh":
+                    result["mesh"]["vertices_mm"][0][0] += 100
+                elif label == "measurement":
+                    result["properties"]["area_mm2"] += 100
+                elif label == "artifact":
+                    result["artifacts"]["step"]["sha256"] = "0" * 64
+                elif label == "source":
+                    result["kernel_source_sha256"]["surfaces.py"] = "0" * 64
+                else:
+                    result["backend"] = {"forged": True}
+                self.assertEqual(changed.creation_envelope_sha256,
+                                 candidate.creation_envelope_sha256)
+                self.assert_candidate_rejected(changed)
+
+    def test_real_prepare_dataclass_replace_retains_original_seal(self):
+        candidate = prepare_surfaces(self.workspace, {"recipe": plane()})
+        changed_doc = copy.deepcopy(candidate.doc)
+        changed_doc.meta["title_key"] = "replacement"
+        changed_response = copy.deepcopy(candidate.response)
+        changed_response["result"]["mesh"]["triangles"] = []
+        replacements = ({"doc": changed_doc}, {"response": changed_response},
+                        {"before_document_sha256": "0" * 64},
+                        {"document_bytes": candidate.document_bytes + b" "},
+                        {"creation_envelope_sha256": "0" * 64})
+        for fields in replacements:
+            with self.subTest(fields=list(fields)):
+                changed = replace(candidate, **fields)
+                if "creation_envelope_sha256" not in fields:
+                    self.assertEqual(changed.creation_envelope_sha256,
+                                     candidate.creation_envelope_sha256)
+                self.assert_candidate_rejected(changed)
+
+    def test_real_prepare_coordinated_doc_response_hash_tamper_rejected(self):
+        candidate = prepare_surfaces(self.workspace, {"recipe": plane()})
+        original_seal = candidate.creation_envelope_sha256
+        candidate.doc.extra[NAMESPACE]["recipe"]["poles_nm"][0][0][0] += MM
+        candidate.response["surface"] = copy.deepcopy(candidate.doc.extra[NAMESPACE])
+        raw = self.workspace.docmodel.document_to_l1(candidate.doc).encode("utf-8")
+        candidate.response["document_sha256"] = hashlib.sha256(raw).hexdigest()
+        changed = replace(candidate, document_bytes=raw)
+        self.assertEqual(changed.creation_envelope_sha256, original_seal)
+        self.assert_candidate_rejected(changed)
+
+    def test_real_prepare_nonfinite_response_tamper_retains_firstcause(self):
+        candidate = prepare_surfaces(self.workspace, {"recipe": plane()})
+        candidate.response["result"]["properties"]["area_mm2"] = float("nan")
+        self.assert_candidate_rejected(candidate)
+        with self.assertRaises(ApiError) as caught:
+            candidate.verify_integrity()
+        self.assertIn("JSON", caught.exception.payload()["first_cause"])
+
+    def test_validate_document_absent_present_detached_and_no_kernel_sideeffects(self):
+        before = snapshot(self.workspace)
+        self.assertEqual(validate_document(self.workspace.doc), {"schema": 1, "recipe": None})
+        self.assertEqual(snapshot(self.workspace), before)
+        self.workspace.doc.extra[NAMESPACE] = {"schema": 1, "recipe": plane()}
+        before = snapshot(self.workspace)
+        state = validate_document(self.workspace.doc)
+        self.assertEqual(state, self.workspace.doc.extra[NAMESPACE])
+        state["recipe"]["poles_nm"][0][0][0] += MM
+        self.assertEqual(snapshot(self.workspace), before)
+        self.assertFalse((self.directory / "surface-jobs").exists())
+
+    def test_validate_document_strict_schema_recipe_negative_controls(self):
+        invalid = [None, {"schema": True, "recipe": plane()}, {"schema": 2, "recipe": plane()},
+                   {"schema": 1}, {"schema": 1, "recipe": None},
+                   {"schema": 1, "recipe": plane(), "unknown": True}]
+        for mutation in ({"unknown": 1}, {"u_degree": True},
+                         {"weights": [[float("nan"), 1], [1, 1]]},
+                         {"poles_nm": [[[True, 0, 0]] * 2] * 2}):
+            invalid.append({"schema": 1, "recipe": {**plane(), **mutation}})
+        for state in invalid:
+            with self.subTest(state=state):
+                self.workspace.doc.extra[NAMESPACE] = state
+                before = snapshot(self.workspace) if "nan" not in repr(state) else None
+                original = copy.deepcopy(self.workspace.doc.extra)
+                with self.assertRaises(ApiError) as caught:
+                    validate_document(self.workspace.doc)
+                self.assertEqual(caught.exception.status, 400)
+                if before is not None:
+                    self.assertEqual(snapshot(self.workspace), before)
+                else:
+                    self.assertEqual(repr(self.workspace.doc.extra), repr(original))
+        self.assertFalse((self.directory / "surface-jobs").exists())
 
     def test_http_nurbs_true_kernel_result_and_no_private_paths(self):
         status, response = self.post(cylinder())
