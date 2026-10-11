@@ -410,7 +410,10 @@ def _residuals(assembly, references, local, *, details=False):
         residuals.extend((*angular, *linear))
         records.append({"mate_id": mate.mate_id, "kind": mate.kind,
                         "linear_residual_nm": _norm(linear)*1e6,
-                        "angular_residual_rad": _norm(angular)})
+                        "angular_residual_rad": _norm(angular),
+                        **({"signed_linear_residual_nm": linear[0]*1e6}
+                           if mate.kind == "plane" else
+                           {"transverse_residual_nm": [x*1e6 for x in linear]})})
     return (residuals, records) if details else residuals
 
 
@@ -475,13 +478,41 @@ def _linear_solve(matrix, rhs):
     return [row[-1] for row in rows]
 
 
+def _motion_frames(assembly):
+    """Nearest moving ancestor owns a rigid chain; None is the fixed world frame."""
+    nodes = {c.component_id: c for c in assembly.components}
+    frames = {}
+
+    def visit(identifier):
+        if identifier not in frames:
+            node = nodes[identifier]
+            frames[identifier] = (identifier if not node.fixed else
+                                  visit(node.parent_id) if node.parent_id is not None else None)
+        return frames[identifier]
+
+    for identifier in nodes:
+        visit(identifier)
+    return frames
+
+
+def _mate_signature(mate):
+    left, right = (mate.a, mate.a_face), (mate.b, mate.b_face)
+    offset = mate.offset_nm
+    if left > right:
+        left, right = right, left
+        if mate.kind == "plane" and mate.aligned:
+            offset = -offset
+    return mate.kind, left, right, offset, mate.aligned
+
+
 def solve_mates(assembly: Assembly, kernel, *, tolerance_nm=100, tolerance_rad=1e-7,
                 max_iterations=60):
     """Numerically solve real plane/axis references and report local tangent DoF.
 
     Returns ``(new_assembly, report)``. Fixed means local placement fixed: a fixed
-    child still follows a moving parent. Redundant mates and inconsistent
-    systems raise CadError with measured residual/rank; input stays immutable.
+    child still follows a moving parent. Mates within the same rigid motion
+    frame are checked, not solved. Duplicate declarations, redundant active
+    mates and inconsistent systems raise CadError; input stays immutable.
     """
     if not isinstance(assembly, Assembly):
         raise _fail("bad_assembly_input", "solver requires Assembly")
@@ -508,17 +539,38 @@ def solve_mates(assembly: Assembly, kernel, *, tolerance_nm=100, tolerance_rad=1
                             component_id=identifier, face_index=index, kind=mate.kind)
     local = {c.component_id: (c.transform.rotation,
                              tuple(x/1e6 for x in c.transform.translation_nm)) for c in assembly.components}
+    frames = _motion_frames(assembly)
+    rigid = [m for m in assembly.mates if frames[m.a] == frames[m.b]]
+    active = replace(assembly, mates=tuple(
+        m for m in assembly.mates if frames[m.a] != frames[m.b]))
+    _, initial_records = _residuals(assembly, references, local, details=True)
+    rigid_ids = {m.mate_id for m in rigid}
+    if any(r["mate_id"] in rigid_ids and (
+            r["linear_residual_nm"] > tolerance_nm or r["angular_residual_rad"] > tolerance_rad)
+           for r in initial_records):
+        raise _fail("mate_solve_failed", "rigid internal mate cannot be changed by its common parent",
+                    residuals=initial_records, iterations=0,
+                    jacobian_rank=_rank(_jacobian(active, references, local, movable)),
+                    variables=6*len(movable))
+    signatures = set()
+    for mate in assembly.mates:
+        signature = _mate_signature(mate)
+        if signature in signatures:
+            raise _fail("mate_overconstrained", "duplicate mate declaration",
+                        mate_id=mate.mate_id, residuals=initial_records,
+                        jacobian_rank=_rank(_jacobian(active, references, local, movable)))
+        signatures.add(signature)
     damping = 1e-6
     iterations = 0
     for iterations in range(max_iterations+1):
-        residual, records = _residuals(assembly, references, local, details=True)
+        residual, records = _residuals(active, references, local, details=True)
         if all(r["linear_residual_nm"] <= tolerance_nm and
                r["angular_residual_rad"] <= tolerance_rad for r in records):
             break
         if not movable or iterations == max_iterations:
             raise _fail("mate_solve_failed", "mate residual remains above tolerance",
                         residuals=records, iterations=iterations)
-        jacobian = _jacobian(assembly, references, local, movable)
+        jacobian = _jacobian(active, references, local, movable)
         size = 6*len(movable)
         normal = [[sum(row[i]*row[j] for row in jacobian) + (damping if i == j else 0)
                    for j in range(size)] for i in range(size)]
@@ -529,7 +581,7 @@ def solve_mates(assembly: Assembly, kernel, *, tolerance_nm=100, tolerance_rad=1
         if largest > 0.5:
             delta = [value*0.5/largest for value in delta]
         trial = _perturb(local, movable, delta)
-        if _norm(_residuals(assembly, references, trial)) < _norm(residual):
+        if _norm(_residuals(active, references, trial)) < _norm(residual):
             local, damping = trial, max(1e-10, damping/3)
         else:
             damping = min(1e12, damping*10)
@@ -543,10 +595,10 @@ def solve_mates(assembly: Assembly, kernel, *, tolerance_nm=100, tolerance_rad=1
     if any(r["linear_residual_nm"] > tolerance_nm or r["angular_residual_rad"] > tolerance_rad
            for r in records):
         raise _fail("mate_solve_failed", "integer-nm result does not meet mate tolerance", residuals=records)
-    jacobian = _jacobian(assembly, references, rounded, movable)
+    jacobian = _jacobian(active, references, rounded, movable)
     rank = _rank(jacobian)
     accumulated, previous, cursor = [], 0, 0
-    for mate in assembly.mates:
+    for mate in active.mates:
         count = 4 if mate.kind == "plane" else 6
         accumulated.extend(jacobian[cursor:cursor+count])
         next_rank = _rank(accumulated)
@@ -560,6 +612,9 @@ def solve_mates(assembly: Assembly, kernel, *, tolerance_nm=100, tolerance_rad=1
     final = evaluate_assembly(solved, kernel, mesh=False)
     return solved, {"status": "solved", "iterations": iterations, "residuals": records,
                     "jacobian_rank": rank, "dof": 6*len(movable)-rank,
+                    "rigid_mates": [{"mate_id": m.mate_id, "motion_frame_id": frames[m.a],
+                                     "status": "validated"} for m in rigid],
+                    "active_mate_ids": [m.mate_id for m in active.mates],
                     "variables": 6*len(movable), "evaluation": final,
                     "assembly_sha256": hashlib.sha256(solved.to_json().encode()).hexdigest()}
 

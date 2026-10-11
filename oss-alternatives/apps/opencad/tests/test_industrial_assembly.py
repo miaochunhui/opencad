@@ -500,7 +500,8 @@ class IndustrialAssemblyTests(unittest.TestCase):
 
     def new_store(self):
         # SQLite/socket state must live on a local filesystem, outside sources.
-        runtime = Path("/data/dev/opencad-assembly-fixtures")
+        runtime = Path(os.environ.get("OPENCAD_TEST_RUNTIME_ROOT",
+                                     "/data/dev/opencad-assembly-fixtures"))
         runtime.mkdir(exist_ok=True)
         directory = tempfile.TemporaryDirectory(prefix="web-", dir=runtime)
         self.addCleanup(directory.cleanup)
@@ -509,6 +510,99 @@ class IndustrialAssemblyTests(unittest.TestCase):
         head = store.create_project("fixture-owner", title="Assembly HTTP",
                                     request_id=uuid.uuid4().hex, payload=snapshot(self.ws))
         return store, head, Path(directory.name)
+
+    def rigid_system(self):
+        assembly = fixtures.scale_fixture()
+        measured = fixtures.evaluate_assembly(assembly, self.kernel, mesh=False)
+        internal, external = fixtures.scale_mates(measured)
+        return replace(assembly, mates=internal+external)
+
+    def test_30_rigid_pallet_candidate_durable_configuration_reopen(self):
+        assembly = self.rigid_system()
+        before = snapshot(self.ws)
+        candidate = self.candidate({"action": "reopen", "assembly_json": assembly.to_json()})
+        candidate.verify_integrity()
+        self.assertEqual(snapshot(self.ws), before)
+        report = candidate.response["solver"]
+        self.assertEqual((report["variables"], report["jacobian_rank"], report["dof"]), (6, 5, 1))
+        self.assertEqual(len(report["rigid_mates"]), 8)
+        self.assertEqual(candidate.response["evaluation"]["solid_count"], 11)
+        self.assertEqual(len(candidate.response["evaluation"]["collisions"]), 55)
+        self.assertTrue(all(item["mesh"]["triangles"] for item in candidate.response["evaluation"]["instances"]))
+        store, head, directory = self.new_store()
+        body = {"action": "reopen", "assembly_json": assembly.to_json(),
+                "expected_revision": head["revision"], "expected_sha": head["sha256"]}
+        request_id = uuid.uuid4().hex
+        payload = {**before, "doc": candidate.doc, "undo": [before["doc"]]}
+        receipt = store.commit(head["project_id"], expected_revision=head["revision"],
+            expected_sha=head["sha256"], request_id=request_id, request_payload=body,
+            payload=payload, response=candidate.response)
+        self.assertEqual(store.read_receipt(head["project_id"], request_id,
+                                           request_payload=body), receipt)
+        store.close()
+        reopened_store = self.store_module.ProjectStore(directory / "store")
+        self.addCleanup(reopened_store.close)
+        confirmed = reopened_store.read_head(head["project_id"])
+        self.assertEqual(confirmed["snapshot"], payload)
+        self.assertEqual(confirmed["revision"], head["revision"]+1)
+        loaded = document_from_l1(confirmed["snapshot"]["doc"])
+        state = read_assembly(loaded, {"action": "state"}, kernel=self.kernel)
+        self.assertEqual(state["assembly_json"], candidate.response["assembly_json"])
+        self.assertEqual(state["bom"], candidate.response["bom"])
+        self.assertEqual(state["evaluation"], candidate.response["evaluation"])
+        checkpoint = prepare_assembly(loaded, {"action": "checkpoint"}, kernel=self.kernel)
+        checkpoint.verify_integrity()
+        self.assertEqual(checkpoint.doc, candidate.doc)
+        self.assertEqual(checkpoint.response["solver"]["jacobian_rank"], 5)
+        self.assertEqual(checkpoint.response["solver"]["dof"], 1)
+        self.record("rigid_durable_candidate", {"revision": confirmed["revision"],
+            "snapshot_sha256": confirmed["sha256"], "document_sha256": state["document_sha256"],
+            "assembly_sha256": state["assembly_sha256"], "bom": state["bom"],
+            "solver": report, "pure_before_confirmation": True, "restart_exact": True})
+
+    def test_31_rigid_invalid_candidate_keeps_workspace_head_and_receipt_absent(self):
+        assembly = self.rigid_system()
+        candidate = self.candidate({"action": "reopen", "assembly_json": assembly.to_json()})
+        candidate.verify_integrity()
+        install(self.ws, candidate)
+        store, head, _ = self.new_store()
+        before = snapshot(self.ws)
+        for mates, reason in (
+            ((replace(assembly.mates[1], offset_nm=MM), *assembly.mates[2:]), "mate_solve_failed"),
+            ((*assembly.mates, replace(assembly.mates[-1], mate_id="duplicate")), "mate_overconstrained"),
+        ):
+            request = {"action": "reopen",
+                       "assembly_json": replace(assembly, mates=mates).to_json(),
+                       "expected_revision": head["revision"], "expected_sha": head["sha256"]}
+            request_id = uuid.uuid4().hex
+            with self.assertRaises(CadError) as caught:
+                self.candidate({key: value for key, value in request.items()
+                                if key not in ("expected_revision", "expected_sha")})
+            self.assertEqual(caught.exception.reason, reason)
+            self.assertEqual(snapshot(self.ws), before)
+            self.assertEqual(store.read_head(head["project_id"]), head)
+            self.assertIsNone(store.read_receipt(head["project_id"], request_id,
+                                                request_payload=request))
+            self.record("rigid_rejected_before_confirmation", caught.exception.as_dict())
+
+    def test_32_rigid_candidate_signed_offset_and_report_seal(self):
+        assembly = self.rigid_system()
+        # Positive and negative directed plane offsets both use measured geometry.
+        for offset in (-8*MM, 8*MM):
+            assembly = replace(assembly, mates=(*assembly.mates[:-1],
+                replace(assembly.mates[-1], offset_nm=offset)))
+            before = snapshot(self.ws)
+            candidate = self.candidate({"action": "reopen", "assembly_json": assembly.to_json()})
+            candidate.verify_integrity()
+            self.assertEqual(snapshot(self.ws), before)
+            report = candidate.response["solver"]
+            residual = next(r for r in report["residuals"] if r["mate_id"] == "locate-plane")
+            self.assertLessEqual(abs(residual["signed_linear_residual_nm"]), 100)
+            self.assertEqual((report["jacobian_rank"], report["dof"]), (5, 1))
+            self.record("signed_rigid_location", {"offset_nm": offset, "solver": report})
+            candidate.response["solver"]["rigid_mates"][0]["status"] = "fabricated"
+            self.assert_reason("candidate_changed", candidate.verify_integrity)
+            self.assertEqual(snapshot(self.ws), before)
 
     def test_27_actual_HTTP_seal_rejection_before_DB_commit(self):
         store, head, _ = self.new_store()
@@ -1001,7 +1095,7 @@ def verify_report(path):
     checks = {
         "pass": report["verdict"] == "PASS",
         "counts": (report["tests"], report["failures"], report["errors"], report["skips"]) ==
-                  (29, 0, 0, 0),
+                  (32, 0, 0, 0),
         "source_unchanged": report["source_unchanged"] and
                             report["source_before"] == report["source_after"],
         "current_sources": hashes(Path(p) for p in report["source_after"]) == report["source_after"],
@@ -1075,7 +1169,7 @@ def main():
         artifacts.get("browser/" + name, {}).get("bytes", 0) > 10000
         for name in ("assembly-desktop.png", "assembly-narrow.png")))
     complete = (result.wasSuccessful() and not result.skipped
-                and result.testsRun == (10 if args.integrity_only else 29)
+                and result.testsRun == (13 if args.integrity_only else 32)
                 and before == after and valid_jobs and (args.integrity_only or valid_images))
     report = {"verdict": "PASS" if complete else "FAIL", "tests": result.testsRun,
               "failures": len(result.failures), "errors": len(result.errors), "skips": len(result.skipped),
