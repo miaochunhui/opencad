@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 
 import bootstrap_from_infra as bootstrap
+import acceptance
 
 
 class BootstrapTests(unittest.TestCase):
@@ -74,9 +75,83 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(json.loads((self.root / "evidence/failure.json").read_text())["verdict"], "FAIL")
 
     def test_partial_copy_failure_keeps_first_cause(self):
-        with patch.object(bootstrap, "exclusive_bytes", side_effect=OSError("fixture disk failure")):
-            with self.assertRaises(OSError):
+        real_write = bootstrap.exclusive_bytes
+
+        def fail_copy_only(path, value):
+            if path == self.target / self.name:
+                raise OSError("fixture disk failure")
+            return real_write(path, value)
+
+        with patch.object(bootstrap, "exclusive_bytes", side_effect=fail_copy_only):
+            with self.assertRaisesRegex(OSError, "fixture disk failure"):
                 bootstrap.apply(self.plan, self.target, self.root / "evidence")
+        failure = json.loads((self.root / "evidence/failure.json").read_text())
+        self.assertEqual(failure["detail"], "fixture disk failure")
+        self.assertEqual(failure["copied"], [])
+        self.assertTrue((self.root / "evidence/frozen-plan.json").is_file())
+
+    def test_supplement_preserves_license_and_initial_provenance(self):
+        name = bootstrap.SUPPLEMENT_FILES[0]
+        bootstrap.exclusive_bytes(self.source / name, b'{"id":"fixture"}\n')
+        value = (self.source / name).read_bytes()
+        files = {name: {"sha256": bootstrap.sha_bytes(value), "bytes": len(value)}}
+        plan = dict(self.plan, kind="supplement", files=files,
+                    files_sha256=bootstrap.digest(files))
+        bootstrap.exclusive_bytes(self.target / bootstrap.PROVENANCE, b"initial origin\n")
+        bootstrap.exclusive_bytes(self.target / "LICENSE", b"initial license\n")
+        bootstrap.apply(plan, self.target, self.root / "evidence")
+        self.assertEqual((self.target / bootstrap.PROVENANCE).read_bytes(), b"initial origin\n")
+        self.assertEqual((self.target / "LICENSE").read_bytes(), b"initial license\n")
+        self.assertEqual(bootstrap.verify_files(self.target, files), [])
+        with self.assertRaises(FileExistsError):
+            bootstrap.apply(plan, self.target, self.root / "second-evidence")
+
+    def test_foreign_loaded_cad_import_is_rejected(self):
+        import types
+        fake = types.ModuleType("cadcore.foreign_fixture")
+        fake.__file__ = str(self.root / "foreign.py")
+        with patch.dict("sys.modules", {"cadcore.foreign_fixture": fake}):
+            with self.assertRaisesRegex(ValueError, "foreign CAD runtime"):
+                acceptance.runtime_bindings(acceptance.ROOT)
+
+    def test_http_workspace_inside_source_rejected(self):
+        with self.assertRaisesRegex(ValueError, "outside source"):
+            acceptance.http_selftest(acceptance.ROOT / "not-created")
+
+    def test_legacy_selftest_rejects_source_temp_root_before_http_bind(self):
+        import server
+        with patch.object(server, "build_server") as bind:
+            with self.assertRaisesRegex(ValueError, "outside the application source"):
+                server.selftest(temp_root=str(acceptance.APP))
+        bind.assert_not_called()
+
+    def test_source_fingerprint_sees_generated_file(self):
+        before = acceptance.source_manifest(self.source)
+        bootstrap.exclusive_bytes(self.source / "oss-alternatives/apps/opencad/build/probe.dxf", b"fixture\n")
+        after = acceptance.source_manifest(self.source)
+        self.assertNotEqual(bootstrap.digest(before), bootstrap.digest(after))
+
+    def test_linked_source_directory_rejected(self):
+        (self.source / "linked").symlink_to(self.target, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "linked source directory"):
+            acceptance.source_manifest(self.source)
+
+    def test_unaccounted_delegated_tests_are_not_passed(self):
+        summary = {"tests": 208, "passed": 187, "failures": 0, "errors": 0,
+                   "skipped": [], "expected_failures": [], "unexpected_successes": []}
+        self.assertFalse(acceptance.counts_reconcile(summary))
+        summary["passed"] += 21
+        self.assertTrue(acceptance.counts_reconcile(summary))
+
+    def test_commit_refuses_incomplete_acceptance_before_staging(self):
+        evidence = self.root / "acceptance"
+        evidence.mkdir()
+        bootstrap.exclusive_json(evidence / "result.json", {
+            "verdict": "FAIL", "stage": "all", "source_drift": [], "steps": []})
+        with patch.object(bootstrap.subprocess, "run") as stage:
+            with self.assertRaisesRegex(ValueError, "complete all acceptance"):
+                bootstrap.commit_changes(self.target, self.root / "commit", evidence)
+        stage.assert_not_called()
 
     def test_empty_plan_rejected(self):
         with self.assertRaisesRegex(ValueError, "empty"):

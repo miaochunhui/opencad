@@ -1872,7 +1872,18 @@ def _get(base: str, route: str) -> dict[str, Any]:
         return json.loads(response.read().decode("utf-8"))
 
 
-def selftest() -> int:
+def selftest(*, temp_root: str | None = None) -> int:
+    """Run unchanged HTTP checks in an external, throwaway output workspace."""
+    import tempfile
+
+    root = os.path.realpath(temp_root or os.environ.get("TMPDIR") or "/hf3fs-jd/data/tmp")
+    if os.path.commonpath((root, os.path.realpath(APP_DIR))) == os.path.realpath(APP_DIR):
+        raise ValueError("selftest temporary root must be outside the application source")
+    with tempfile.TemporaryDirectory(prefix="opencad-selftest-", dir=root) as out_root:
+        return _selftest_with_out_root(out_root)
+
+
+def _selftest_with_out_root(out_root: str) -> int:
     """内置最小自检：起服务、真打 API、逐条断言 ok。rc=0 通过 / rc=1 失败。"""
     checks: list[tuple[str, bool, str]] = []
 
@@ -1884,7 +1895,8 @@ def selftest() -> int:
     except BootstrapError as exc:
         print(f"OPENCAD_SERVER selftest verdict=FAIL reason={exc.reason} detail={exc.detail}")
         return 1
-    httpd = build_server(core, host="127.0.0.1", port=0, locale="zh-CN", standard="gbt")
+    httpd = build_server(core, host="127.0.0.1", port=0, locale="zh-CN", standard="gbt",
+                         out_root=out_root)
     port = int(httpd.server_address[1])
     base = f"http://127.0.0.1:{port}"
     thread = threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.1},

@@ -1,0 +1,33 @@
+{
+  "created_at": "2026-10-11T02:22:04.512878+00:00",
+  "excluded": [],
+  "files": {
+    "oss-alternatives/docs/research/cad-parity/features/autocad-output.json": {
+      "bytes": 5681,
+      "sha256": "6f7e7674ea61263afc8d1318d97354a3763af6ead85879e1f500269ed31bf24c"
+    }
+  },
+  "files_sha256": "6baf90ca8a217166a4e98dccc65af9c6d4f71fa10495821e8b84049b65a621b9",
+  "imports": {
+    "dynamic": {},
+    "legacy_debt": [
+      "test_edit_reach_contract and test_partials_batch3_ops read historical cad-parity/status evidence; not migrated.",
+      "test_no_source_tree_pollution/test_b6_round2_secondary_writers read excluded ops/oss-alt-web or desktop build tools.",
+      "Old cad3d acceptance gates/numeric orchestration reference wider infra tools; use tools/acceptance.py.",
+      "Desktop packaging and full historical Web profile are not an independent repository release gate."
+    ],
+    "mathcore": "No CAD runtime import; not migrated.",
+    "static": {},
+    "vault": "cadcore.store -> freechat_vault.store/fcx; three source files only."
+  },
+  "kind": "supplement",
+  "license": {
+    "bytes": 11358,
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "source": "/usr/share/common-licenses/Apache-2.0"
+  },
+  "schema": 1,
+  "source_head": "7d55845618697f752e01512474d3d1490dcf40a5",
+  "source_root": "/data/dev/infra",
+  "source_state": "Current working-tree bytes, not an infra HEAD-only snapshot."
+}

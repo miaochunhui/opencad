@@ -17,6 +17,7 @@ From this repository:
 ```bash
 sudo -n -u infra python3 -B oss-alternatives/apps/opencad/server.py --port 0 --out-root /hf3fs-jd/data/tmp/opencad-dev-workspace
 sudo -n -u infra python3 -B tools/acceptance.py --stage smoke
+sudo -n -u infra python3 -B tools/acceptance.py --stage all
 ```
 
 Read the printed local port and open `/web/3d.html` for 3D or `/` for drafting.
@@ -50,12 +51,34 @@ immutable provenance.
 
 `tools/acceptance.py` is the independent regression entry point.
 Smoke is a bounded, explicit subset, not full regression. Historical tests
-depending on infra `ops/oss-alt-web`, desktop packaging or `cad-parity/status`
-evidence remain migration debt. Full discovery must report those failures;
-do not delete tests or turn missing dependencies into successful skips.
+depending on `cad-parity/status` have independent source-binding and real
+operation-effect contracts instead of reading old "implemented" verdicts.
+The unchanged G17 output tests use the supplementary original output
+specification, not historical acceptance results. Supplement bytes are frozen
+in `tools/bootstrap-supplement-manifest.json`; initial provenance is unchanged.
+`--stage coupling` reproduces these migration boundaries and negative controls.
+`all` discovers every current cadcore, OpenCAD Web and DXF unittest, plus
+bootstrap negative controls and the real 15-check HTTP selftest. No tests are
+excluded and no skips are added. Existing optional-backend and fixture skips
+are reported individually, not counted as passes. Wider infra orchestrators
+and desktop packaging remain unported and are not covered by this entry point.
+The server's selftest creates an external temporary output root and explicitly
+passes it to its builder; the original 15 HTTP checks and CLI test stay intact.
+Do not delete tests or turn missing dependencies into successful skips.
 The old `tools/cad3d/opencad_acceptance.py` is retained only as a browser
 helper dependency; its wider infra/desktop release stages are not this
 repository's release contract.
+
+Evidence, ordinary test temporary files and exported CAD files remain under
+3FS. SQLite WAL tests are the narrow local-storage exception: the runner
+provides `OPENCAD_TEST_RUNTIME_ROOT`, defaulting to a new timestamped directory
+under `/data/tmp/opencad-test-runtime`, outside every source tree. Override
+with `--runtime-root` (a new local directory) or the same environment variable
+(a local parent directory). Its path and filesystem type are recorded in each
+run. Do not pass 3FS `TMPDIR` to ProjectStore or weaken its filesystem checks.
+The runner does not change permissions or automatically remove these roots.
+New gateway tests are included automatically by Web discovery once integrated;
+the bootstrap branch alone does not certify that unmerged security work.
 
 ## License
 

@@ -863,8 +863,12 @@ class DiscoverySuite(unittest.TestSuite):
         before = fingerprints(sources)
         start = (result.testsRun, len(result.failures), len(result.errors), len(result.skipped))
         with (OUT / "tests.log").open("w") as log:
-            inner = unittest.TextTestRunner(stream=log, verbosity=2).run(unittest.TestSuite(self))
+            resultclass = type(result) if hasattr(result, "passed") else unittest.TextTestResult
+            inner = unittest.TextTestRunner(stream=log, verbosity=2, resultclass=resultclass).run(
+                unittest.TestSuite(self))
         result.testsRun += inner.testsRun
+        if hasattr(result, "passed"):
+            result.passed += inner.passed
         result.failures.extend(inner.failures)
         result.errors.extend(inner.errors)
         result.skipped.extend(inner.skipped)

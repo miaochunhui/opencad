@@ -1,0 +1,136 @@
+{
+  "id": "autocad-output",
+  "app": "AutoCAD",
+  "family": "出图与交付（布局/图纸空间/视口/打印样式/PDF 与绘图仪/DXF-DWG 互操作）",
+  "must_have": [
+    {
+      "name": "图纸空间布局（Layout / Paper Space）",
+      "why": "出图的载体：模型空间画图、布局里按图纸尺寸排版输出，是日常出图第一步",
+      "alias": "LAYOUT、布局选项卡、Paper Space、TILEMODE"
+    },
+    {
+      "name": "视口创建与排布（Viewport）",
+      "why": "一张图纸同时放平面/详图/图框，靠视口切分与摆放",
+      "alias": "VPORTS、MVIEW、-VPORTS、视口边框"
+    },
+    {
+      "name": "视口比例设定与锁定（Viewport Scale & Lock）",
+      "why": "1:100 这类比例由视口比例决定；锁定后视口内缩放不会毁掉比例",
+      "alias": "标准比例列表、属性选项板标准比例、视口锁定 Display Locked、注释比例"
+    },
+    {
+      "name": "视口内图层替代（VP Freeze / Layer Override）",
+      "why": "同一图层在不同视口显示不同内容，是一张模型出多张图的最小手段",
+      "alias": "VPLAYER、图层特性管理器视口冻结/视口替代列、LAYERSTATE"
+    },
+    {
+      "name": "页面设置（Page Setup）",
+      "why": "图纸尺寸、打印样式、比例一次配好并随布局保存，重复出图才不用每次重配",
+      "alias": "PAGESETUP、页面设置管理器"
+    },
+    {
+      "name": "打印主命令 PLOT",
+      "why": "一切交付件的唯一出口",
+      "alias": "PLOT、Ctrl+P、打印对话框、-PLOT"
+    },
+    {
+      "name": "打印到 PDF（DWG To PDF.pc3）",
+      "why": "现在多数交付就是 PDF，PDF 路径是默认必需项",
+      "alias": "DWG To PDF.pc3、打印到 PDF、输出为 PDF"
+    },
+    {
+      "name": "绘图仪/打印机配置（.pc3）",
+      "why": "换机器、换图幅、换设备都靠它；没有可用 pc3 就出不了图",
+      "alias": "PLOTTERMANAGER、绘图仪配置编辑器、.pc3、自定义图纸尺寸"
+    },
+    {
+      "name": "打印样式表 CTB/STB",
+      "why": "线宽与灰度的实际控制手段；能否按公司标准出图取决于它",
+      "alias": "STYLESMANAGER、.ctb/.stb、颜色相关/命名打印样式、CONVERTCTB、CONVERTPSTYLES"
+    },
+    {
+      "name": "线宽与打印线宽（LWEIGHT）",
+      "why": "不设打印线宽则全图一种线宽，图纸不可读",
+      "alias": "LWEIGHT、线宽设置、图层线宽、打印样式线宽、打印对象线宽"
+    },
+    {
+      "name": "打印区域选择",
+      "why": "不出白边、不裁图、只打图框内的基础",
+      "alias": "PLOT 打印区域：显示/范围/图形界限/视图/窗口"
+    },
+    {
+      "name": "打印比例与布满图纸",
+      "why": "施工图必须按比例出，示意图才用布满图纸",
+      "alias": "打印比例、1:1、自定义 1:100、布满图纸 Fit to paper"
+    },
+    {
+      "name": "打印预览（PREVIEW）",
+      "why": "出图前唯一低成本的所见即所得检查",
+      "alias": "PREVIEW、打印预览"
+    },
+    {
+      "name": "图层与对象的可打印控制（Plot / No Plot）",
+      "why": "图框辅助线、视口边框、构造线不该打出来",
+      "alias": "图层特性管理器打印列、对象特性打印=否"
+    },
+    {
+      "name": "模型空间直接出图",
+      "why": "老图与简单图就是直接在模型选项卡打印，绕不开",
+      "alias": "PLOT 对话框模型选项卡、打印模型空间"
+    },
+    {
+      "name": "布局管理（新建/复制/重命名/删除）",
+      "why": "一套图多张图纸靠复制布局；出图顺序即布局顺序",
+      "alias": "LAYOUT 的 New/Copy/Rename/Delete、布局选项卡右键菜单"
+    },
+    {
+      "name": "批量发布多布局出图（PUBLISH）",
+      "why": "一次出整套图（多布局到单张/多页 PDF）是工程日常",
+      "alias": "PUBLISH、发布、图纸列表、发布为 PDF"
+    },
+    {
+      "name": "DWG 读写与版本选择",
+      "why": "交付与协作的基本件；对方软件版本决定另存成哪一版",
+      "alias": "OPEN、SAVEAS、DWG 2018/2013/2007/2000 格式"
+    },
+    {
+      "name": "DXF 导入导出与精度（DXFOUT / DXFIN）",
+      "why": "与第三方软件、老系统、机床交换的通用格式",
+      "alias": "DXFOUT、DXFIN、SAVEAS 选 DXF、ASCII/二进制、小数精度"
+    }
+  ],
+  "nice_to_have": [
+    {
+      "name": "电子传递（ETRANSMIT）",
+      "why": "交付整包（含字体、外部参照、打印样式），无它也能手动凑齐"
+    },
+    {
+      "name": "图纸集管理器与图纸集发布（SSM）",
+      "why": "大项目多专业成套装订出图才用，小项目用不到"
+    },
+    {
+      "name": "DWF/DWFx 输出与查看",
+      "why": "审图用途多已被 PDF 取代，仅部分流程仍要求"
+    },
+    {
+      "name": "PDF 底图附着与 PDF 导入（PDFATTACH / PDFIMPORT）",
+      "why": "拆图、描图、复用旧 PDF 时有用，不是日常必经"
+    },
+    {
+      "name": "外部参照附着与绑定（XREF / BIND）",
+      "why": "交付时合并参照、控制图层命名，协作项目才需要"
+    },
+    {
+      "name": "后台发布与后台打印（BACKGROUNDPLOT）",
+      "why": "大图幅出图时省等待，属效率项"
+    },
+    {
+      "name": "字体替换与字体映射表（.fmp）",
+      "why": "换机后避免字体跑版，属保真项"
+    },
+    {
+      "name": "打印到文件（.plt）与打印戳记",
+      "why": "给打印店出图、加出图信息戳记，属特定交付场景"
+    }
+  ]
+}
