@@ -28,7 +28,7 @@ from .sketch.constraints import solve
 
 __all__ = [
     "ParametricError", "Quantity", "ParameterEvaluation", "PreparedRebuild",
-    "document_sha256", "evaluate_parameters", "prepare_rebuild",
+    "document_sha256", "evaluate_parameters", "feature_configuration", "prepare_rebuild",
 ]
 
 MAX_PARAMETERS = 128
@@ -40,6 +40,9 @@ _UNITS = {"nm": 1, "um": 1000, "mm": 1_000_000, "cm": 10_000_000,
           "m": 1_000_000_000, "inch": 25_400_000}
 _ALLOWED = (ast.Expression, ast.BinOp, ast.UnaryOp, ast.Constant, ast.Name,
             ast.Load, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.UAdd, ast.USub)
+_V1_FIELDS = {"version", "parameters", "configurations", "bindings", "checks",
+              "geometry_guards", "active_configuration", "active_overrides"}
+_V2_FIELDS = _V1_FIELDS | {"feature_bindings", "configuration_suppressions"}
 
 
 class ParametricError(CadError):
@@ -216,9 +219,11 @@ def _length(value: Quantity, *, positive: bool = False) -> int:
 def evaluate_parameters(specification: Mapping[str, Any], *, configuration: str | None = None,
                         overrides: Mapping[str, str] | None = None) -> ParameterEvaluation:
     """Evaluate a bounded DAG. Empty configuration selects the base configuration."""
-    spec = _table(specification, "parametric", 8)
-    if type(spec.get("version")) is not int or spec["version"] != 1:
-        raise _fail("bad_parametric_spec", "parametric version must be integer 1")
+    spec = _table(specification, "parametric", 10)
+    if type(spec.get("version")) is not int or spec["version"] not in (1, 2):
+        raise _fail("bad_parametric_spec", "parametric version must be integer 1 or 2")
+    if set(spec) - (_V1_FIELDS if spec["version"] == 1 else _V2_FIELDS):
+        raise _fail("bad_parametric_spec", "unknown parametric specification fields")
     definitions = _table(spec.get("parameters"), "parameters", MAX_PARAMETERS)
     if not definitions:
         raise _fail("bad_parametric_spec", "parameters must not be empty")
@@ -238,6 +243,31 @@ def evaluate_parameters(specification: Mapping[str, Any], *, configuration: str 
             raise _fail("unknown_parameter", "configuration overrides an undeclared parameter")
         for expression in entries.values():
             _dependencies(_parse(expression), names)
+    if spec["version"] == 2:
+        features = _table(spec.get("feature_bindings"), "feature bindings", MAX_BINDINGS)
+        if not features:
+            raise _fail("bad_parametric_spec", "version 2 requires explicit feature bindings")
+        targets = set()
+        for key, row in features.items():
+            _name(key)
+            if (not isinstance(row, Mapping) or set(row) != {"target_uuid", "base_suppressed"}
+                    or not isinstance(row["target_uuid"], str) or not row["target_uuid"]
+                    or type(row["base_suppressed"]) is not bool):
+                raise _fail("bad_feature_configuration", "invalid feature binding", binding=key)
+            if row["target_uuid"] in targets:
+                raise _fail("duplicate_binding", "feature configuration target is duplicated")
+            targets.add(row["target_uuid"])
+        suppressions = _table(spec.get("configuration_suppressions"),
+                              "configuration suppressions", 32)
+        if set(suppressions) != set(configs):
+            raise _fail("unknown_configuration", "suppression tables must match configurations")
+        for name, row in suppressions.items():
+            entries = _table(row, "configuration suppression", MAX_BINDINGS)
+            if set(entries) - set(features):
+                raise _fail("unknown_feature_binding", "configuration targets an undeclared feature")
+            if any(type(value) is not bool for value in entries.values()):
+                raise _fail("bad_feature_configuration", "suppression values must be booleans",
+                            configuration=name)
     active = spec.get("active_configuration") if configuration is None else configuration
     if active == "":
         active = None
@@ -284,6 +314,91 @@ def _find(rows: Any, identifier: Any, label: str) -> dict:
     if len(found) != 1:
         raise _fail("unknown_binding_target", label + " UUID must resolve uniquely", target=identifier)
     return found[0]
+
+
+def feature_configuration(document: Document, evaluation: ParameterEvaluation, *,
+                          require_current: bool = False) -> dict[str, dict[str, Any]]:
+    """Resolve version 2 UUID states; validate all configurations without geometry.
+
+    Only declared flags change. Dependencies are never rebound or cascaded and
+    index-based topology consumers are refused when an earlier feature is absent.
+    """
+    spec = document.extra["parametric"]
+    if spec["version"] == 1:
+        return {}
+    bindings = spec["feature_bindings"]
+    resolved = {key: _find(document.features, row["target_uuid"], "feature")
+                for key, row in bindings.items()}
+    sketch_ids = set()
+    identifiers = set()
+    for label, rows in (("sketch", document.sketches), ("feature", document.features)):
+        for row in rows:
+            if (not isinstance(row, dict) or not isinstance(row.get("uuid"), str)
+                    or not row["uuid"] or row["uuid"] in identifiers):
+                raise _fail("configuration_dependency_invalid", "geometry UUIDs must be unique",
+                            table=label)
+            identifiers.add(row["uuid"])
+            if label == "sketch":
+                sketch_ids.add(row["uuid"])
+            elif type(row.get("suppressed")) is not bool:
+                raise _fail("bad_feature_configuration", "stored suppression must be boolean",
+                            feature=row["uuid"])
+    base = {row["uuid"]: row["suppressed"] for row in document.features}
+    for key, row in bindings.items():
+        base[resolved[key]["uuid"]] = row["base_suppressed"]
+
+    def state(configuration):
+        result = dict(base)
+        for key, suppressed in spec["configuration_suppressions"].get(configuration, {}).items():
+            result[resolved[key]["uuid"]] = suppressed
+        return result
+
+    for configuration in (None, *spec["configurations"]):
+        flags = state(configuration)
+        prior = set()
+        live = set()
+        absent = False
+        for feature in document.features:
+            identifier = feature["uuid"]
+            refs = feature.get("inputs", [])
+            if (not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs)
+                    or any(ref not in sketch_ids | prior for ref in refs)):
+                raise _fail("configuration_dependency_invalid",
+                            "missing, self or forward feature dependency",
+                            feature=identifier, configuration=configuration)
+            if not flags[identifier]:
+                inactive = [ref for ref in refs if ref in prior and ref not in live]
+                if inactive:
+                    raise _fail("configuration_dependency_invalid",
+                                "live feature depends on a suppressed feature", feature=identifier,
+                                dependencies=inactive, configuration=configuration)
+                params = feature.get("params", {})
+                if absent and isinstance(params, Mapping) and (
+                        "edge_indices" in params or "face_indices" in params):
+                    raise _fail("configuration_topology_unsupported",
+                                "suppression invalidates unproven edge/face index identity",
+                                feature=identifier, configuration=configuration)
+                live.add(identifier)
+            else:
+                absent = True
+            prior.add(identifier)
+        if not live:
+            raise _fail("configuration_dependency_invalid", "configuration has no live solid feature",
+                        configuration=configuration)
+    selected = state(evaluation.configuration)
+    if require_current and any(feature["suppressed"] != selected[feature["uuid"]]
+                               for feature in document.features):
+        raise _fail("configuration_state_mismatch",
+                    "stored suppression disagrees with the active configuration")
+    return {key: {"target_uuid": row["target_uuid"],
+                  "base_suppressed": row["base_suppressed"],
+                  "suppressed": selected[row["target_uuid"]]}
+            for key, row in bindings.items()}
+
+
+def _configure_features(candidate: Document, evaluation: ParameterEvaluation) -> None:
+    for row in feature_configuration(candidate, evaluation).values():
+        _find(candidate.features, row["target_uuid"], "feature")["suppressed"] = row["suppressed"]
 
 
 def _bind(candidate: Document, spec: Mapping[str, Any], values: Mapping[str, Quantity]) -> None:
@@ -433,10 +548,10 @@ def prepare_rebuild(document: Document, *, kernel: SubprocessKernel,
     spec = candidate.extra.get("parametric")
     if not isinstance(spec, dict):
         raise _fail("bad_parametric_spec", "Document.extra.parametric must be a mapping")
-    if set(spec) - {"version", "parameters", "configurations", "bindings", "checks",
-                    "geometry_guards", "active_configuration", "active_overrides"}:
-        raise _fail("bad_parametric_spec", "unknown parametric specification fields")
+    persisted = evaluate_parameters(spec)
+    feature_configuration(candidate, persisted, require_current=True)
     evaluation = evaluate_parameters(spec, configuration=configuration, overrides=overrides)
+    _configure_features(candidate, evaluation)
     _checks(spec, evaluation.values)
     _bind(candidate, spec, evaluation.values)
     reports = []

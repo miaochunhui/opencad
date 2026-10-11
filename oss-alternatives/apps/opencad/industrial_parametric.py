@@ -26,7 +26,8 @@ from cadcore.sketch import commands, primitives, session
 from cadcore.sketch.constraints import SketchError
 
 __all__ = ["ParametricCandidate", "read_parametric", "prepare_parametric",
-           "handler", "make_plate_document", "validate_document"]
+           "handler", "make_plate_document", "make_configurable_plate_document",
+           "validate_document"]
 
 _SCOPE = "Measured single-document sketch/solid rebuild; not industrial CAD parity."
 
@@ -57,12 +58,11 @@ def validate_document(document):
         if problems:
             raise parametric.ParametricError("; ".join(problems[:8]), reason="invalid_parametric_document")
         specification = document.extra["parametric"]
-        if not isinstance(specification, dict) or set(specification) - {
-                "version", "parameters", "configurations", "bindings", "checks",
-                "geometry_guards", "active_configuration", "active_overrides"}:
+        if not isinstance(specification, dict):
             raise parametric.ParametricError("Invalid parametric specification fields",
                                              reason="bad_parametric_spec")
         evaluation = parametric.evaluate_parameters(specification)
+        parametric.feature_configuration(document, evaluation, require_current=True)
         parametric._checks(specification, evaluation.values)
         candidate = copy.deepcopy(document)
         # Reuse the core's UUID resolution, driving-dimension and duplicate rules.
@@ -148,8 +148,9 @@ def _fields(workspace, payload):
     if not isinstance(payload, Mapping) or set(payload) - {
             "action", "expected_document_sha256", "configuration", "overrides", "dimensions"}:
         raise _error(workspace, "bad_parametric_arguments", "Unexpected parametric fields", 400)
-    if payload.get("action") not in ("create_plate", "rebuild"):
-        raise _error(workspace, "bad_parametric_arguments", "action must be create_plate or rebuild", 400)
+    if payload.get("action") not in ("create_plate", "create_configurable_plate", "rebuild"):
+        raise _error(workspace, "bad_parametric_arguments",
+                     "action must be create_plate, create_configurable_plate or rebuild", 400)
     digest = payload.get("expected_document_sha256")
     if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
         raise _error(workspace, "bad_parametric_arguments", "Exact expected_document_sha256 is required", 400)
@@ -251,6 +252,22 @@ def make_plate_document(document):
     return candidate
 
 
+def make_configurable_plate_document(document):
+    """Create explicit v2 plate/cut configurations; preserve the legacy v1 factory."""
+    candidate = make_plate_document(document)
+    spec = candidate.extra["parametric"]
+    spec.update(
+        version=2,
+        configurations={"wide": {"width": "60 * mm"}, "solid": {},
+                        "wide_solid": {"width": "60 * mm"}},
+        feature_bindings={
+            "plate_boss": {"target_uuid": candidate.features[0]["uuid"], "base_suppressed": False},
+            "hole_cut": {"target_uuid": candidate.features[1]["uuid"], "base_suppressed": False}},
+        configuration_suppressions={"wide": {}, "solid": {"hole_cut": True},
+                                    "wide_solid": {"hole_cut": True}})
+    return candidate
+
+
 def _overrides(workspace, specification, payload):
     overrides = dict(payload.get("overrides", {}))
     bindings = specification.get("bindings")
@@ -291,6 +308,7 @@ def _read(workspace, document):
                 "can_create_plate": _empty_document(document) and not workspace.undo_stack
                 and not workspace.redo_stack, "scope": _SCOPE}
     evaluation = parametric.evaluate_parameters(specification)
+    feature_states = parametric.feature_configuration(document, evaluation, require_current=True)
     definitions = specification["parameters"]
     parameters = []
     for name in evaluation.order:
@@ -320,6 +338,10 @@ def _read(workspace, document):
     return {"ok": True, "enabled": True, "document_sha256": digest, "parameters": parameters,
             "configuration": evaluation.configuration, "configurations": sorted(
                 specification.get("configurations", {})), "driving_dimensions": dimensions,
+            "parametric_version": specification["version"],
+            "feature_bindings": feature_states,
+            "configuration_suppressions": copy.deepcopy(
+                specification.get("configuration_suppressions", {})),
             "feature_order": [f["uuid"] for f in document.features if not f.get("suppressed")],
             "scope": _SCOPE}
 
@@ -395,12 +417,14 @@ def prepare_parametric(workspace, payload):
         if payload["expected_document_sha256"] != expected:
             raise _error(workspace, "parametric_conflict", "Document changed before rebuild", 409,
                          document_sha256=expected)
-        if payload["action"] == "create_plate":
+        if payload["action"] in ("create_plate", "create_configurable_plate"):
             if workspace.undo_stack or workspace.redo_stack:
                 raise _error(workspace, "parametric_requires_empty",
                              "Plate creation cannot replace an edited project", 409)
             try:
-                document = make_plate_document(document)
+                factory = (make_configurable_plate_document
+                           if payload["action"] == "create_configurable_plate" else make_plate_document)
+                document = factory(document)
             except CadError as exc:
                 raise _error(workspace, exc.reason, str(exc), 409) from exc
         specification = document.extra.get("parametric")

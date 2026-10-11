@@ -12,6 +12,7 @@ import copy
 from datetime import datetime, timezone
 from fractions import Fraction
 import hashlib
+import io
 import json
 import math
 import os
@@ -36,6 +37,25 @@ MM = 1_000_000
 EVIDENCE = Path("/hf3fs-jd/data/tmp/opencad-parametric-20261011/seat-parametric")
 RUN_ROOT = None
 MEASUREMENTS = {}
+
+
+class EvidenceResult(unittest.TextTestResult):
+    first_cause = None
+
+    def addFailure(self, test, error):
+        super().addFailure(test, error)
+        if self.first_cause is None:
+            self.first_cause = {"test": str(test), "traceback": self.failures[-1][1]}
+
+    def addError(self, test, error):
+        super().addError(test, error)
+        if self.first_cause is None:
+            self.first_cause = {"test": str(test), "traceback": self.errors[-1][1]}
+
+    def addSubTest(self, test, subtest, error):
+        super().addSubTest(test, subtest, error)
+        if error is not None and self.first_cause is None:
+            self.first_cause = {"test": str(subtest), "traceback": self._exc_info_to_string(error, test)}
 
 
 class ProjectState:
@@ -125,6 +145,20 @@ def plate_document():
     return doc
 
 
+def configurable_plate_document():
+    doc = plate_document()
+    doc.extra["parametric"].update(
+        version=2,
+        feature_bindings={
+            "boss": {"target_uuid": doc.features[0]["uuid"], "base_suppressed": False},
+            "cut": {"target_uuid": doc.features[1]["uuid"], "base_suppressed": False}},
+        configurations={"wide": {"width": "60 * mm"}, "solid": {},
+                        "wide_solid": {"width": "60 * mm"}},
+        configuration_suppressions={"wide": {}, "solid": {"cut": True},
+                                    "wide_solid": {"cut": True}})
+    return doc
+
+
 def mesh_volume(mesh):
     terms = []
     incidence = {}
@@ -142,6 +176,20 @@ def mesh_volume(mesh):
 
 
 class ParameterGraphTests(unittest.TestCase):
+    def test_evidence_first_subtest_error_precedes_later_failure(self):
+        class OrderedFailure(unittest.TestCase):
+            def runTest(self):
+                with self.subTest(stage="first"):
+                    raise RuntimeError("FIRST_CAUSE_SENTINEL")
+                with self.subTest(stage="later"):
+                    self.fail("LATER_FAILURE_SENTINEL")
+
+        result = unittest.TextTestRunner(stream=io.StringIO(), resultclass=EvidenceResult).run(
+            unittest.TestSuite([OrderedFailure()]))
+        self.assertEqual((len(result.errors), len(result.failures)), (1, 1))
+        self.assertIn("FIRST_CAUSE_SENTINEL", result.first_cause["traceback"])
+        self.assertNotIn("LATER_FAILURE_SENTINEL", result.first_cause["traceback"])
+
     def reject(self, spec, reason):
         with self.assertRaises(parametric.ParametricError) as caught:
             parametric.evaluate_parameters(spec)
@@ -244,6 +292,88 @@ class ParameterGraphTests(unittest.TestCase):
     def test_runtime_import_bound_to_this_checkout(self):
         self.assertEqual(Path(parametric.__file__).resolve(), CORE / "cadcore/parametric.py")
         self.assertEqual(Path(subproc.__file__).resolve(), CORE / "cadcore/kernel/subproc.py")
+
+    def test_v1_remains_dimension_only_and_v2_is_explicit(self):
+        self.assertEqual(parametric.evaluate_parameters(parameters()).configuration, None)
+        doc = configurable_plate_document()
+        result = parametric.evaluate_parameters(doc.extra["parametric"], configuration="solid")
+        states = parametric.feature_configuration(doc, result)
+        self.assertTrue(states["cut"]["suppressed"])
+        self.assertFalse(states["boss"]["suppressed"])
+        self.assertFalse(doc.features[1]["suppressed"])
+        spec = parameters()
+        spec["configuration_suppressions"] = {}
+        self.reject(spec, "bad_parametric_spec")
+
+    def test_v2_unknown_null_nonbool_and_duplicate_feature_maps(self):
+        for mode, reason in (
+                ("missing", "bad_parametric_spec"), ("null", "bad_parametric_spec"),
+                ("nonbool", "bad_feature_configuration"), ("unknown", "unknown_feature_binding"),
+                ("duplicate", "duplicate_binding"), ("configuration", "unknown_configuration"),
+                ("baseline", "bad_feature_configuration")):
+            spec = configurable_plate_document().extra["parametric"]
+            if mode == "missing":
+                del spec["feature_bindings"]
+            elif mode == "null":
+                spec["configuration_suppressions"] = None
+            elif mode == "nonbool":
+                spec["configuration_suppressions"]["solid"]["cut"] = 1
+            elif mode == "unknown":
+                spec["configuration_suppressions"]["solid"]["unknown"] = True
+            elif mode == "duplicate":
+                spec["feature_bindings"]["duplicate"] = dict(spec["feature_bindings"]["cut"])
+            elif mode == "configuration":
+                spec["configuration_suppressions"]["unknown"] = {}
+            else:
+                spec["feature_bindings"]["cut"]["base_suppressed"] = None
+            with self.subTest(mode=mode):
+                self.reject(spec, reason)
+
+    def test_v2_suppressed_dependency_and_missing_uuid_are_loud(self):
+        for mode in ("dependency", "missing", "forward", "stored_nonbool", "all_suppressed"):
+            doc = configurable_plate_document()
+            spec = doc.extra["parametric"]
+            if mode == "dependency":
+                spec["configuration_suppressions"]["solid"] = {"boss": True}
+            elif mode == "missing":
+                spec["feature_bindings"]["cut"]["target_uuid"] = str(uuid4())
+            elif mode == "forward":
+                doc.features[0]["inputs"].append(doc.features[1]["uuid"])
+            elif mode == "stored_nonbool":
+                doc.features[0]["suppressed"] = 0
+            else:
+                spec["configuration_suppressions"]["solid"] = {"boss": True, "cut": True}
+            evaluation = parametric.evaluate_parameters(spec)
+            before = docmodel.document_to_l1(doc)
+            with self.subTest(mode=mode), self.assertRaises(parametric.ParametricError):
+                parametric.feature_configuration(doc, evaluation)
+            self.assertEqual(docmodel.document_to_l1(doc), before)
+
+    def test_v2_does_not_guess_index_topology_after_suppression(self):
+        doc = configurable_plate_document()
+        doc.features.append({"uuid": str(uuid4()), "kind": "fillet",
+                             "inputs": [doc.features[0]["uuid"]], "suppressed": False,
+                             "params": {"size_nm": MM, "edge_indices": [1]}})
+        evaluation = parametric.evaluate_parameters(doc.extra["parametric"])
+        with self.assertRaises(parametric.ParametricError) as caught:
+            parametric.feature_configuration(doc, evaluation)
+        self.assertEqual(caught.exception.reason, "configuration_topology_unsupported")
+
+    def test_v2_saved_state_mismatch_rejected_and_baseline_true_restored(self):
+        doc = configurable_plate_document()
+        doc.extra["parametric"]["active_configuration"] = "solid"
+        evaluation = parametric.evaluate_parameters(doc.extra["parametric"])
+        with self.assertRaises(parametric.ParametricError) as caught:
+            parametric.feature_configuration(doc, evaluation, require_current=True)
+        self.assertEqual(caught.exception.reason, "configuration_state_mismatch")
+        doc.features[1]["suppressed"] = True
+        spec = doc.extra["parametric"]
+        spec["active_configuration"] = None
+        spec["feature_bindings"]["cut"]["base_suppressed"] = True
+        spec["configuration_suppressions"]["wide"] = {"cut": False}
+        state = parametric.feature_configuration(doc, parametric.evaluate_parameters(spec),
+                                                require_current=True)
+        self.assertTrue(state["cut"]["suppressed"])
 
 
 class RealParametricTests(unittest.TestCase):
@@ -462,6 +592,161 @@ class RealParametricTests(unittest.TestCase):
             with self.subTest(document=type(document).__name__), self.assertRaises(parametric.ParametricError):
                 parametric.prepare_rebuild(document, kernel=kernel)
 
+    def test_real_suppression_switch_mesh_step_reopen_and_base_restore(self):
+        doc = configurable_plate_document()
+        original = docmodel.document_to_l1(doc)
+        pierced = self.prepare(doc)
+        self.verify_plate(pierced, 40, 20, 4, 8)
+        records = []
+        current = pierced
+        for configuration, width, depth, has_hole in (
+                ("solid", 40, 8, False), ("wide_solid", 60, 12, False),
+                ("wide", 60, 12, True), ("", 40, 8, True)):
+            result = self.prepare(current.document, configuration=configuration)
+            expected = (width * 20 - (math.pi * (width / 10)**2 if has_hole else 0)) * depth
+            props = self.kernel.mass_properties(result.shape)
+            self.assertAlmostEqual(props.volume_nm3 / 1e18, expected, delta=1e-5)
+            integrated, incidence = mesh_volume(result.mesh)
+            self.assertAlmostEqual(integrated, expected, delta=expected * .005)
+            self.assertTrue(incidence and all(count == 2 for count in incidence.values()))
+            self.assertEqual([f["uuid"] for f in result.document.features],
+                             [f["uuid"] for f in doc.features])
+            self.assertEqual(result.feature_order, tuple(f["uuid"] for f in doc.features
+                                                        if has_hole or f is doc.features[0]))
+            self.assertEqual([f["params"]["distance_nm"] for f in result.document.features],
+                             [depth * MM, depth * MM])
+            self.assertTrue(all(r["converged"] and r["dof"] == 0 and r["residual_nm"] <= 1
+                                for r in result.sketch_reports))
+            path = self.work / ("configuration-" + (configuration or "base") + ".step")
+            self.kernel.export(result.shape, fmt="step", path=str(path))
+            imported = docmodel.new_document()
+            imported.features.append({"uuid": str(uuid4()), "kind": "import_step",
+                                      "params": {"step_text": path.read_text(encoding="ascii")},
+                                      "suppressed": False})
+            shape = self.kernel.shape_from_document(json.loads(docmodel.document_to_l1(imported)))
+            roundtrip = self.kernel.mass_properties(shape).volume_nm3 / 1e18
+            self.assertAlmostEqual(roundtrip, expected, delta=1e-5)
+            saved = self.work / ("configuration-" + (configuration or "base") + ".l1")
+            docmodel.save_l1(result.document, str(saved))
+            reopened = self.prepare(docmodel.load_l1(str(saved)))
+            self.assertEqual(reopened.l1, result.l1)
+            self.assertEqual(reopened.document_sha256, result.document_sha256)
+            records.append({"configuration": configuration, "analytic_volume_mm3": expected,
+                            "brep_volume_mm3": props.volume_nm3 / 1e18,
+                            "mesh_volume_mm3": integrated, "step_volume_mm3": roundtrip,
+                            "step_path": str(path), "step_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                            "document_sha256": result.document_sha256,
+                            "recipe_sha256": result.mesh["recipe_sha256"],
+                            "mesh_sha256": result.mesh["mesh_sha256"],
+                            "feature_order": result.feature_order, "sketch_reports": result.sketch_reports})
+            current = result
+        self.assertEqual(current.l1, pierced.l1)
+        self.assertEqual(docmodel.document_to_l1(doc), original)
+        MEASUREMENTS["configurations"] = records
+
+    def test_real_configuration_failure_and_cas_preserve_state(self):
+        doc = configurable_plate_document()
+        doc.extra["parametric"]["configuration_suppressions"]["solid"] = {"boss": True}
+        self.assert_atomic_failure(doc, "configuration_dependency_invalid", configuration="solid")
+        state = ProjectState(configurable_plate_document())
+        candidate = self.prepare(state.document, configuration="solid")
+        state.document.meta["x_late_edit"] = "retained"
+        before = docmodel.document_to_l1(state.document)
+        with self.assertRaises(parametric.ParametricError):
+            state.commit(candidate)
+        self.assertEqual(docmodel.document_to_l1(state.document), before)
+        self.assertEqual(state.cache, {"old_mesh": [1, 2, 3]})
+        self.assertEqual(state.history, [])
+
+    def test_real_true_baseline_is_restored_after_enabled_configuration(self):
+        doc = configurable_plate_document()
+        spec = doc.extra["parametric"]
+        spec["feature_bindings"]["cut"]["base_suppressed"] = True
+        spec["configuration_suppressions"]["wide"] = {"cut": False}
+        doc.features[1]["suppressed"] = True
+        base = self.prepare(doc)
+        self.assertAlmostEqual(base.mesh["properties"]["volume_nm3"] / 1e18, 6400, delta=1e-5)
+        enabled = self.prepare(base.document, configuration="wide")
+        self.verify_plate(enabled, 60, 20, 6, 12)
+        restored = self.prepare(enabled.document, configuration="")
+        self.assertEqual(restored.l1, base.l1)
+        self.assertTrue(restored.document.features[1]["suppressed"])
+        self.assertAlmostEqual(restored.mesh["properties"]["volume_nm3"] / 1e18, 6400, delta=1e-5)
+
+    def test_real_live_downstream_mirror_rebuilds_after_suppression(self):
+        doc = configurable_plate_document()
+        mirror = str(uuid4())
+        doc.features.append({
+            "uuid": mirror, "kind": "mirror", "inputs": [doc.features[0]["uuid"]],
+            "suppressed": False,
+            "params": {"normal_axis": "x", "offset_nm": 80 * MM, "keep_original": False}})
+        doc.extra["parametric"]["bindings"]["mirror_offset"] = {
+            "kind": "feature", "target_uuid": mirror, "field": "offset_nm",
+            "expression": "width * 2"}
+        current = self.prepare(doc)
+        records = []
+        for configuration, width, depth, has_hole in (
+                ("wide_solid", 60, 12, False), ("wide", 60, 12, True),
+                ("", 40, 8, True)):
+            result = self.prepare(current.document, configuration=configuration)
+            expected = (width * 20 - (math.pi * (width / 10)**2 if has_hole else 0)) * depth
+            properties = self.kernel.mass_properties(result.shape)
+            self.assertAlmostEqual(properties.volume_nm3 / 1e18, expected, delta=1e-5)
+            self.assertEqual(properties.bbox_nm,
+                             (3 * width * MM, 0, 0, 4 * width * MM, 20 * MM, depth * MM))
+            self.assertEqual(result.document.features[-1]["params"]["offset_nm"], 2 * width * MM)
+            self.assertEqual(result.feature_order[-1], mirror)
+            self.assertEqual(result.recipe["recipe"][-1]["op"], "mirror")
+            volume, incidence = mesh_volume(result.mesh)
+            self.assertAlmostEqual(volume, expected, delta=expected * .005)
+            self.assertTrue(incidence and all(count == 2 for count in incidence.values()))
+            path = self.work / ("downstream-" + (configuration or "base") + ".step")
+            self.kernel.export(result.shape, fmt="step", path=str(path))
+            imported = docmodel.new_document()
+            imported.features.append({
+                "uuid": str(uuid4()), "kind": "import_step", "suppressed": False,
+                "params": {"step_text": path.read_text(encoding="ascii")}})
+            shape = self.kernel.shape_from_document(json.loads(docmodel.document_to_l1(imported)))
+            readback = self.kernel.mass_properties(shape)
+            self.assertAlmostEqual(readback.volume_nm3 / 1e18, expected, delta=1e-5)
+            self.assertEqual(readback.bbox_nm, properties.bbox_nm)
+            records.append({"configuration": configuration, "document_sha256": result.document_sha256,
+                            "brep_volume_mm3": properties.volume_nm3 / 1e18,
+                            "step_volume_mm3": readback.volume_nm3 / 1e18,
+                            "bbox_nm": properties.bbox_nm, "feature_order": result.feature_order,
+                            "step_path": str(path),
+                            "step_sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+            current = result
+        MEASUREMENTS["downstream_mirror"] = records
+
+
+def source_snapshot(repository):
+    """Bind full source bytes/modes and Git metadata, not just the edited module."""
+    tools = repository / "tools"
+    if str(tools) not in sys.path:
+        sys.path.insert(0, str(tools))
+    import acceptance
+    manifest = acceptance.source_manifest(repository)
+    owned = (
+        "oss-alternatives/packages/cadcore/cadcore/parametric.py",
+        "oss-alternatives/packages/cadcore/tests/test_parametric.py",
+        "oss-alternatives/apps/opencad/industrial_parametric.py",
+        "oss-alternatives/apps/opencad/tests/test_industrial_parametric.py",
+        "docs/design/parametric-configurations.md")
+    return {"root": str(repository), "manifest": manifest,
+            "owned_sources": {name: manifest[name] for name in owned},
+            "modes": {name: (repository / name).stat().st_mode & 0o777 for name in manifest},
+            "head": subprocess.check_output(["git", "--no-replace-objects", "-C", str(repository),
+                                            "rev-parse", "HEAD"],
+                                            text=True).strip(),
+            "branch": subprocess.check_output(
+                ["git", "--no-replace-objects", "-C", str(repository), "branch", "--show-current"],
+                text=True).strip(),
+            "status": subprocess.check_output(
+                ["git", "--no-replace-objects", "-C", str(repository), "status", "--porcelain=v1"],
+                text=True),
+            "sha256": acceptance.bootstrap.digest(manifest)}
+
 
 def main():
     global RUN_ROOT
@@ -478,15 +763,18 @@ def main():
     repository = CORE.parents[2]
 
     def sources_now():
-        paths = list(CORE.rglob("*.py")) + [repository / "docs/design/parametric-rebuild.md"]
+        paths = list(CORE.rglob("*.py")) + [repository / "docs/design/parametric-rebuild.md",
+                                          repository / "docs/design/parametric-configurations.md"]
         return {str(path.relative_to(repository)): hashlib.sha256(path.read_bytes()).hexdigest()
                 for path in paths if "__pycache__" not in path.parts and path.is_file()}
 
     sources = sources_now()
+    frozen = source_snapshot(repository)
+    started_at = datetime.now(timezone.utc).isoformat()
     classes = (ParameterGraphTests,) if args.unit_only else (ParameterGraphTests, RealParametricTests)
     suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(cls) for cls in classes)
     with (RUN_ROOT / "tests.log").open("x", encoding="utf-8") as log:
-        result = unittest.TextTestRunner(stream=log, verbosity=2).run(suite)
+        result = unittest.TextTestRunner(stream=log, verbosity=2, resultclass=EvidenceResult).run(suite)
     acceptance = None
     if args.acceptance_smoke and result.wasSuccessful() and not result.skipped:
         with (RUN_ROOT / "acceptance-console.log").open("x", encoding="utf-8") as log:
@@ -497,20 +785,33 @@ def main():
         acceptance = {"rc": child.returncode, "verdict": report["verdict"],
                       "source_drift": report.get("source_drift"), "path": str(RUN_ROOT / "acceptance-smoke")}
     after = sources_now()
-    parametric_verdict = "PASS" if result.wasSuccessful() and sources == after and not result.skipped else "FAIL"
+    final_source = source_snapshot(repository)
+    parametric_verdict = ("PASS" if result.wasSuccessful() and sources == after
+                         and frozen == final_source and result.testsRun and not result.skipped else "FAIL")
+    first_cause = result.first_cause
+    if first_cause is None and parametric_verdict != "PASS":
+        first_cause = {"reason": "source_drift" if frozen != final_source or sources != after
+                       else "empty_or_skipped_suite"}
     summary = {"verdict": parametric_verdict, "parametric_verdict": parametric_verdict,
                "tests": result.testsRun, "failures": len(result.failures), "errors": len(result.errors),
                "passed": result.testsRun - len(result.failures) - len(result.errors) - len(result.skipped),
                "skipped": len(result.skipped), "source_drift": sources != after,
+               "source_before": frozen, "source_after": final_source,
+               "source_snapshot_drift": frozen != final_source,
+               "started_at": started_at, "first_cause": first_cause,
+               "finished_at": datetime.now(timezone.utc).isoformat(),
                "source_root": str(CORE), "sources": sources, "measurements": MEASUREMENTS,
                "unit_only": args.unit_only, "acceptance_smoke": acceptance}
     if acceptance is not None and (acceptance["rc"] or acceptance["verdict"] != "PASS"
                                    or acceptance["source_drift"] != []):
         summary["verdict"] = "FAIL"
+        if summary["first_cause"] is None:
+            summary["first_cause"] = {"reason": "acceptance_smoke_failed", **acceptance}
+    summary["actual_rc"] = 0 if summary["verdict"] == "PASS" else 1
     (RUN_ROOT / "result.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"PARAMETRIC_REBUILD verdict={summary['verdict']} tests={result.testsRun} "
           f"failures={summary['failures']} errors={summary['errors']} evidence={RUN_ROOT}")
-    return 0 if summary["verdict"] == "PASS" else 1
+    return summary["actual_rc"]
 
 
 if __name__ == "__main__":
