@@ -65,6 +65,24 @@ canonical JSON. JSON array roundtrips of Python tuple witness pairs are accepted
 changed keys, order, values and JSON types are not. In particular, `true` is not
 `1`, and integer declaration values are not floating-point substitutions.
 
+Real producer terminal publication has a separate
+`trim-producer-save-load-v1` gate, without changing the workflow labels/counts.
+After source, CLI, geometry and credential checks finish, the main output path
+writes a fresh `producer-terminal-candidate.json` with exclusive creation,
+rereads it, checks typed canonical equality and the complete terminal
+`suite_contract`, then adds `producer_save_load` with its path/SHA to the final
+result. The final `result.json` is created exclusively once, never reopened or
+overwritten. Candidate failure produces FAIL/rc=1 with the first cause and
+`publication-failure.json`; the failed candidate remains intact.
+Offline readback verifies the candidate hash, final content equivalence and
+complete suite again. Only the explicitly recorded pre-gate tool SHAs may lack
+this field; their old positive results do not certify the new publication gate.
+The original 21 controls remain. Two new controls exercise this shared output
+path using fresh files, including disk missing-item/type corruption, an
+incomplete suite with recomputed counts, first-cause retention and no overwrite.
+This is output-path selftest evidence; a newly frozen real mainline producer
+still needs its own actual run before claiming that integration gate passed.
+
 The original complete ledger has 191 checks, 46 HTTP requests, seven
 measurements, four named fixtures, eight shapes and 67 readback checks.
 These numbers describe the preserved execution, not bare frozen thresholds.

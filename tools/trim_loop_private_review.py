@@ -32,6 +32,7 @@ import time
 import traceback
 from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_REL = "oss-alternatives/apps/opencad"
@@ -46,6 +47,10 @@ LEDGER_VERSION = "trim-private-ledger-v1"
 LEGACY_TOOLS = frozenset((
     "ec1de01c2c087ca58f0cca28dc3a7312f378347ab99132bc33cfd6cf0f0ffe3b",
     "9ceb18cf82c05b31d008dbb4a05f91c4a4c1d1296ad84beee7e9158d4b50f166"))
+PRE_SAVE_LOAD_TOOLS = LEGACY_TOOLS | frozenset((
+    "c20c9c476af4c324974843d7eab74382e67010b691507068936923c0c3039c0c",
+    "0301ae9ee25ced8aadcb3797a42580c2108f7eedbacbdde2b7a8602aa4650bf8"))
+SAVE_LOAD_VERSION = "trim-producer-save-load-v1"
 LEGACY_READBACK_SHA = "272029064f92263aeb282de0eab04892ce44a5fcc9c0d2af578cf72eb8ba1f01"
 DENIALS = (
     ("anonymous", None, {}, 401, "missing_token"),
@@ -671,6 +676,46 @@ def worker_execution_contract(source, binding, execution, recorded):
         raise AssertionError("Worker execution exact two-source path/SHA binding mismatch")
 
 
+def publish_terminal(out, report, review):
+    """Validate a fresh serialized real-suite candidate before immutable publication."""
+    try:
+        if report["verdict"] == "PASS" and report["acceptance"] == "REAL_HTTP_DB_BREP_STEP":
+            if "producer_save_load" in report:
+                raise AssertionError("Producer save/load gate was prepopulated")
+            path = out / "producer-terminal-candidate.json"
+            candidate = json.loads(review.redact(canonical(report)), parse_constant=reject_constant)
+            write_json(path, candidate)
+            loaded = read_json(path)
+            if canonical(loaded) != canonical(candidate):
+                raise AssertionError("Producer serialized candidate changed typed canonical content")
+            suite_contract(loaded)
+            report["producer_save_load"] = {
+                "schema": SAVE_LOAD_VERSION, "verified": True,
+                "candidate": str(path), "sha256": sha(path.read_bytes())}
+    except Exception as exc:
+        report["verdict"], report["rc"] = "FAIL", 1
+        report.setdefault("first_cause", review.redact(traceback.format_exc()))
+        report.setdefault("failure_type", type(exc).__name__)
+        write_json(out / "publication-failure.json", {
+            "first_cause": report["first_cause"], "failure_type": report["failure_type"], "rc": 1})
+        print(report["first_cause"], file=sys.stderr)
+    write_json(out / "result.json",
+               json.loads(review.redact(canonical(report)), parse_constant=reject_constant))
+
+
+def producer_save_load_contract(saved, path):
+    gate = saved["producer_save_load"]
+    if canonical(gate) != canonical({
+            "schema": SAVE_LOAD_VERSION, "verified": True,
+            "candidate": gate["candidate"], "sha256": sha(path.read_bytes())}):
+        raise AssertionError("Producer save/load gate metadata mismatch")
+    candidate = read_json(path)
+    final_content = {key: value for key, value in saved.items() if key != "producer_save_load"}
+    if canonical(candidate) != canonical(final_content):
+        raise AssertionError("Producer saved candidate/final typed canonical mismatch")
+    suite_contract(candidate)
+
+
 def verify_saved(source, evidence, review):
     """Read existing logs, HTTP receipts, local DB and artifacts; never rerun them."""
     evidence = external(evidence, source).resolve(strict=True)
@@ -718,6 +763,13 @@ def verify_saved(source, evidence, review):
         if not resolved.is_file():
             raise AssertionError("Nonregular evidence artifact: " + str(path))
         return resolved
+
+    if "producer_save_load" in saved:
+        candidate = bound_file(saved["producer_save_load"]["candidate"])
+        producer_save_load_contract(saved, candidate)
+        review.check("readback/producer-terminal-save-load", True)
+    elif saved.get("tool_sha256") not in PRE_SAVE_LOAD_TOOLS:
+        raise AssertionError("Producer terminal save/load evidence is missing")
 
     for process in saved["cli_processes"]:
         log = bound_file(process["log"])
@@ -1300,6 +1352,59 @@ def workflow(source, runtime, review):
 
 
 class Controls(unittest.TestCase):
+    evidence_root = None
+
+    def test_terminal_publication_save_load_real_files(self):
+        out = self.evidence_root / "publication-controls" / "positive"
+        out.mkdir(parents=True, exist_ok=False)
+        sample = complete_control_fixture()
+        publish_terminal(out, sample, Review(out, sample))
+        final = read_json(out / "result.json")
+        self.assertEqual(final["verdict"], "PASS")
+        self.assertEqual(final["counts"], sample["counts"])
+        producer_save_load_contract(final, out / "producer-terminal-candidate.json")
+        invalid = copy.deepcopy(final)
+        invalid["producer_save_load"]["verified"] = 1
+        with self.assertRaisesRegex(AssertionError, "metadata"):
+            producer_save_load_contract(invalid, out / "producer-terminal-candidate.json")
+        original = (out / "result.json").read_bytes()
+        with self.assertRaises(FileExistsError):
+            write_json(out / "result.json", {"verdict": "FAIL"})
+        self.assertEqual((out / "result.json").read_bytes(), original)
+
+    def test_terminal_publication_serialized_corruption_and_incomplete_suite(self):
+        original_writer = write_json
+        for operation in ("missing", "boolean", "incomplete-suite"):
+            with self.subTest(operation=operation):
+                out = self.evidence_root / "publication-controls" / operation
+                out.mkdir(parents=True, exist_ok=False)
+                sample = complete_control_fixture()
+                if operation == "incomplete-suite":
+                    sample["checks"].pop()
+                    sample["counts"] = suite_counts(sample)
+
+                def corrupt_writer(path, value):
+                    changed = copy.deepcopy(value)
+                    if path.name == "producer-terminal-candidate.json":
+                        if operation == "missing":
+                            changed["checks"].pop()
+                        elif operation == "boolean":
+                            changed["ledger"]["fixtures"][0]["witnesses"][0][1] = 1
+                    original_writer(path, changed)
+
+                with mock.patch.object(sys.modules[__name__], "write_json", corrupt_writer):
+                    publish_terminal(out, sample, Review(out, sample))
+                final = read_json(out / "result.json")
+                self.assertEqual((final["verdict"], final["rc"]), ("FAIL", 1))
+                cause = ("Incomplete/duplicate/renamed/out-of-order ledger checks"
+                         if operation == "incomplete-suite"
+                         else "Producer serialized candidate changed typed canonical content")
+                self.assertIn(cause, final["first_cause"])
+                self.assertEqual(read_json(out / "publication-failure.json")["first_cause"],
+                                 final["first_cause"])
+                self.assertNotIn("producer_save_load", final)
+                self.assertTrue((out / "producer-terminal-candidate.json").is_file())
+
     def test_incomplete_one_one_ledger_must_be_refused(self):
         sample = {"verdict": "PASS", "rc": 0, "acceptance": "REAL_HTTP_DB_BREP_STEP",
                   "finished_at": stamp(), "source_drift": False,
@@ -1618,6 +1723,7 @@ def main():
         before = source_binding(source)
         report["source_before"] = before
         if args.selftest:
+            Controls.evidence_root = out
             with (out / "selftest.log").open("x") as log:
                 result = unittest.TextTestRunner(stream=log, verbosity=2).run(
                     unittest.defaultTestLoader.loadTestsFromTestCase(Controls))
@@ -1676,7 +1782,7 @@ def main():
                 report.setdefault("secondary_failures", []).append(str(secondary))
         print(report["first_cause"], file=sys.stderr)
     report.update(finished_at=stamp(), elapsed_s=time.monotonic() - started, counts=suite_counts(report))
-    write_json(out / "result.json", json.loads(review.redact(json.dumps(report, allow_nan=False))))
+    publish_terminal(out, report, review)
     print("TRIM_LOOP_PRIVATE_REVIEW verdict=%s acceptance=%s rc=%s counts=%s source_sha256=%s evidence=%s" %
           (report["verdict"], report["acceptance"], report["rc"], canonical(report["counts"]),
            before["sha256"] if before else "UNBOUND", out), flush=True)
