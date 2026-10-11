@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Independent HTTP/SQLite review of durable project integration.
 
-Run only an isolated loopback fixture. Explicit --source-root and --auth-root
-bind all runtime dependencies; mixed roots are reported, never called same-source.
+Run only an isolated loopback fixture. Explicit --source-root, --auth-root and
+--store-source-root bind dependencies; mixed roots are never called same-source.
 Only --out (3FS evidence) and --runtime-root (private local fixtures) are written.
 This is not a production client, general security audit or CAD regression.
 """
@@ -31,7 +31,7 @@ from unittest.mock import patch
 import uuid
 
 HERE = Path(__file__).resolve()
-SOURCE = AUTH = RUNTIME = None
+SOURCE = AUTH = STORE_SOURCE = RUNTIME = None
 CORE = STORE = GATEWAY = HTTP = ACCOUNTS = SERVER = None
 OBSERVATIONS = []
 
@@ -94,6 +94,8 @@ def manifest():
         AUTH / "oss-alternatives/apps/opencad/access_control.py",
         AUTH / "oss-alternatives/packages/cadcore/cadcore/i18n/catalog.py",
         SOURCE / "oss-alternatives/docs/design/project-store.md",
+        STORE_SOURCE / "oss-alternatives/apps/opencad/project_store.py",
+        STORE_SOURCE / "oss-alternatives/docs/design/project-store.md",
     ):
         result[str(path)] = sha(regular(path))
     return dict(sorted(result.items()))
@@ -118,13 +120,14 @@ def load_runtime():
     catalog_path = AUTH / "oss-alternatives/packages/cadcore/cadcore/i18n/catalog.py"
     package.catalog = explicit_load("cadcore.i18n.catalog", catalog_path)
     ACCOUNTS = explicit_load("access_control", AUTH / "oss-alternatives/apps/opencad/access_control.py")
-    STORE = importlib.import_module("project_store")
+    STORE = explicit_load(
+        "project_store", STORE_SOURCE / "oss-alternatives/apps/opencad/project_store.py")
     GATEWAY = importlib.import_module("project_gateway")
     HTTP = importlib.import_module("secure_web")
     SERVER = importlib.import_module("server")
     CORE = SERVER._load_cadcore()
     expected = {
-        "project_store": app / "project_store.py",
+        "project_store": STORE_SOURCE / "oss-alternatives/apps/opencad/project_store.py",
         "project_gateway": app / "project_gateway.py",
         "secure_web": app / "secure_web.py",
         "server": app / "server.py",
@@ -141,10 +144,10 @@ def runtime_origins(bound):
     result = {}
     for name, module in tuple(sys.modules.items()):
         path = getattr(module, "__file__", None)
-        if not path or not (name.startswith(("cadcore.", "dxf.", "freechat_vault."))
+        if not path or not (name.startswith(("cadcore.", "dxf.", "freechat_vault.", "industrial_"))
                             or name in {"server", "secure_web", "project_gateway",
                                         "project_store", "access_control", "release_state",
-                                        "solid_commands", "viewer3d_page"}):
+                                        "solid_commands", "viewer3d_page", "render_service"}):
             continue
         actual = str(Path(path).resolve())
         if actual not in bound:
@@ -239,7 +242,7 @@ class IndependentTests(unittest.TestCase):
 
     def test_fixture_actual_source_and_sqlite(self):
         self.assertEqual(Path(STORE.__file__).resolve(),
-                         SOURCE / "oss-alternatives/apps/opencad/project_store.py")
+                         STORE_SOURCE / "oss-alternatives/apps/opencad/project_store.py")
         self.assertEqual(self.store.db_path.read_bytes()[:16], b"SQLite format 3\x00")
         self.assertEqual(self.httpd.server_address[0], "127.0.0.1")
         self.assertEqual(set(self.full_head()["snapshot"]), {"doc", "undo", "redo", "standard"})
@@ -573,19 +576,22 @@ def write(path, value):
 
 
 def main():
-    global SOURCE, AUTH, RUNTIME
+    global SOURCE, AUTH, STORE_SOURCE, RUNTIME
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--auth-root", type=Path,
                         help="Explicit provisional auth/catalog source; defaults to source-root")
+    parser.add_argument("--store-source-root", type=Path,
+                        help="Explicit candidate store source; defaults to source-root")
     parser.add_argument("--runtime-root", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     SOURCE = args.source_root.resolve()
     AUTH = (args.auth_root or args.source_root).resolve()
+    STORE_SOURCE = (args.store_source_root or args.source_root).resolve()
     RUNTIME = args.runtime_root.absolute()
     out = args.out.resolve()
-    for root in (SOURCE, AUTH, HERE.parents[1]):
+    for root in (SOURCE, AUTH, STORE_SOURCE, HERE.parents[1]):
         if RUNTIME.resolve().is_relative_to(root) or out.is_relative_to(root):
             parser.error("fixture/evidence must be outside source repositories")
     if not out.is_relative_to(Path("/3fs/research3fs/data/tmp")):
@@ -594,7 +600,8 @@ def main():
         parser.error("--runtime-root must be a new isolated local directory")
     out.mkdir(parents=True, exist_ok=False)
     report = {"verdict": "FAIL", "started_at": now(), "source_root": str(SOURCE),
-              "auth_root": str(AUTH), "same_source": SOURCE == AUTH,
+              "auth_root": str(AUTH), "store_source_root": str(STORE_SOURCE),
+              "same_source": SOURCE == AUTH == STORE_SOURCE,
               "runtime_root": str(RUNTIME), "production": "NOT_TOUCHED",
               "security_suite": "NOT_ASSESSED", "power_loss": "NOT_ASSESSED"}
     start = time.monotonic()
