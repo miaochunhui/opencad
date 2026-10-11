@@ -1,118 +1,101 @@
 # Official CAD Competitive Matrix
 
-Status: **PARTIAL, industrial parity NOT_ASSESSED**. Research date: 2026-10-11.
-Only facts with a readable official body in `official-sources.json` are included.
-The JSON is a source ledger, not a test result. Bodies and fetch logs are outside
-Git under `/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/`.
-Continuation readback: 2026-10-12 00:12:56 +08:00. New bodies/logs are under
-`/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/`; this follows the
-2026-10-11 task across local midnight, not a recapture time inferred from mtime.
+研究快照：2026-10-12；状态 **PARTIAL**，industrial parity **NOT_ASSESSED**。
+基线 `941005d7c45a35f8cbbe8d2dc65c68093a790a3b`。
+本轮逐项事实见 `official-sources.json.research_completion`；每条均有官方
+canonical URL、主体 anchor、范围及描述/操作证据级别。独立验证结果提供
+实际字节、SHA256、原采集时间及解码后的 block 索引。历史采集没有改成今天重抓。
 
-## Runtime Categories
+本页不把无证据称为“缺失”，也不把产品系列覆盖称为一个席位全部包含。
+`NOT_VERIFIED` 是证据不足；`NOT_EXECUTED` 是本席没有实际运行厂商软件。
+详细输入、步骤、产物、正负控及购买先决条件见 `industrial-workflows.md`。
 
-- Native/browser-based application: official body explicitly identifies browser
-  execution; this does not locate geometry computation or viewport rasterization.
-- Connected desktop: an installed client using cloud services; networking alone
-  does not make an application native Web.
-- Remote rendered: server-generated frames delivered to a client; cloud/SaaS
-  branding, remote access and a separate photorealistic renderer are insufficient.
-- SDK/kernel: components used to build applications, not a complete CAD product.
-- NOT_VERIFIED: missing or insufficient source, not a claim that capability is absent.
+## 运行与购买边界
 
-## Product and Role Separation
+“浏览器原生”仅表示主体明确 browser/web-based；不定位几何计算或交互光栅化。
+“连接桌面”是安装客户端加平台服务；SaaS、云部署、网页启动器并不自动等于
+浏览器 CAD。“可选串流”是官方部署描述，不是服务器逐帧路径的实测。
+以下全部产品的 interactive server-frame topology 都为 **NOT_VERIFIED**。
 
-| Product / Specific Offering | Captured Official Evidence | Browser / Desktop Classification | Server Frame Topology | Boundary / Remaining Evidence |
-| --- | --- | --- | --- | --- |
-| CATIA family / V5 boundary | `catia-experience-continuation` role/discipline catalogue; family root capture not started due to budget lock | Family is not one runtime; V5 deployment NOT_VERIFIED | NOT_VERIFIED | R2026x is advertised in the captured 3DEXPERIENCE body, not independently release-tested. Original failed family capture remains unchanged. |
-| 3DEXPERIENCE CATIA mechanical offering | `catia-experience-continuation`, `catia-mechanical-continuation` | Cloud-platform offering; mechanical client runtime NOT_VERIFIED | NOT_VERIFIED | Assembly/kinematics, surfacing, sheet-metal unfolding and 3D tolerances/annotations are official descriptions, not industrial workload or all-role entitlement evidence. |
-| CATIA 3D Shape Designer role | `catia-experience-continuation` visible role card | Explicit browser applications for 3D design, freeform shaping and pattern design | NOT_VERIFIED | Role-specific statement only; do not classify all CATIA roles as browser-based. |
-| SOLIDWORKS Design | `solidworks-computers-continuation`, `solidworks-individual-continuation`, xDesign store FAQ | Installed client; 2026 Help describes Installation Manager and Windows prerequisites; FAQ says cloud-deployed | NOT_VERIFIED | Internet entitlement and embedded Chromium/platform content do not turn installed CAD into native browser CAD. Modules depend on purchased products. |
-| SOLIDWORKS Design with Cloud Services | `solidworks-xdesign-store-continuation` visible FAQ/comparison | License-key desktop CAD, locally installed | NOT_VERIFIED | Separate from xDesign; exact included services and subscription tiers not certified. |
-| SOLIDWORKS Connected | Connected-specific store candidate refused before HTTP; family/browser references do not resolve role mapping | NOT_VERIFIED for this named offering | NOT_VERIFIED | Do not assume legacy Connected name equals the currently described Design offer. Requires named installation/role source. |
-| SOLIDWORKS xDesign | `solidworks-xdesign-store-continuation` introduction, feature lists and FAQ | Explicit browser execution/no installation | NOT_VERIFIED | Parametric/freeform, part/assembly and sheet-metal/structure descriptions accepted. Separate xStudio photorealistic jobs/credits do not establish interactive server frames. Original product-page timeouts retained. |
-| SOLIDWORKS family | `solidworks-family-continuation` | Mix of offerings; not one runtime | NOT_VERIFIED | Design, manufacturing, simulation and data management descriptions do not establish every module in a seat. |
-| NX/UG / current Designcenter family | `nx-cad-family`, `nx-current-tiers` | Product family spans on-premises and cloud-SaaS; not one runtime | NOT_VERIFIED | Official page says NX naming retired in June 2026; preserve old naming only as historical identifier. |
-| Designcenter X Essentials | `nx-current-tiers` explicitly browser-based | Browser application, essential CAD/CAM/CAE | NOT_VERIFIED | Entry tier; not full Standard/Advanced/Premium industrial scope. |
-| Designcenter X Standard/Advanced/Premium | `nx-current-tiers` SaaS family and tier descriptions | Cloud-connected product family; installed-client details not captured | NOT_VERIFIED | Token modules require an eligible core seat; don't imply every add-on is included. |
-| Designcenter on-premises Standard/Advanced/Premium | `nx-current-tiers` on-premises descriptions | On-premises offering; precise client install requirements not captured | NOT_VERIFIED | Different deployment from X Essentials. |
-| AutoCAD Web | `autocad-web-guide` explicitly web-based 2D commands | Browser-based 2D guide | NOT_VERIFIED | Lines/circles, modify, precision, layers, annotate/dimension, layout/PDF. Not full desktop AutoCAD or 3D industrial parity. |
-| Onshape | `onshape-root`, `onshape-platform` cloud-native/no-install CAD and built-in PDM | Cloud-native/no-install; explicit browser topology NOT_VERIFIED in captured bodies | NOT_VERIFIED | Render Studio listing is not interactive server rasterization proof; candidate help/graphics pages resolved to generic Help home. |
-| FreeCAD | `freecad-features`, `freecad-downloads` | Desktop distributions: Windows/Mac/Linux | NOT_VERIFIED | Parametric OCCT-based modeling and constraints sketching; upstream capability is not OpenCAD Web coverage. |
-| Open CASCADE Technology | `occt-overview` | C++ SDK/kernel, not an end-user CAD app | NOT_VERIFIED | Surface/solid modeling, exchange and OpenGL/OpenGL ES graphics; no claim of hosted browser CAD. |
-
-## Industrial Gap Register
-
-The renderer adds bounded mesh-to-PNG output, not any new industrial CAD module.
-Existing bootstrap or upstream features are not an acceptance substitute.
-
-| Capability Family | Research / OpenCAD Acceptance Status | Evidence Required to Close |
+| 产品 / 角色 | 真实主体支持的运行方式 | 购买边界与未核范围 |
 | --- | --- | --- |
-| Product roles, editions, licensing | PARTIAL; selected CATIA roles and Design/xDesign deployment captured; Connected mapping/full entitlement NOT_VERIFIED | Official body per product/role; separate entitlement from family marketing. |
-| Solid/parametric modeling | Upstream FreeCAD/OCCT descriptions captured; this seat's renderer is not a modeling kernel | Exact OpenCAD workflow/numeric regression and feature scope owned by modeling seats. |
-| Advanced surfaces / continuity | NOT_ASSESSED | Industrial surfaces, continuity/tolerance and round-trip cases. |
-| Assemblies / mate solver / large-model behavior | NOT_ASSESSED | Multi-part numeric solve, conflicts, saved revision and representative scale. |
-| Drawings / PMI / GD&T | AutoCAD Web 2D guide only; industrial parity NOT_ASSESSED | Standard-specific downstream drawings and semantics, not just visible labels. |
-| Sheet metal / weldments / tooling / CAM | NOT_ASSESSED | Representative feature chains, manufacturing outputs and validated postprocessor. |
-| CAE / simulation | NOT_ASSESSED | Validated physical case, solver provenance and units; cloud tier name insufficient. |
-| Enterprise PDM/PLM / multi-tenancy | Onshape platform claims captured; OpenCAD production NOT_ASSESSED here | Auth/project tests, immutable DB snapshots, concurrent edits and recovery. |
-| Server GPU / rendering speed | Independent EGL component tested separately; competitor topology NOT_VERIFIED | Hardware frame proof and controlled representative HTTP A/B; no browser WebGL proxy. |
+| CATIA V5 | 本轮页面没有明确安装/浏览器运行说明，NOT_VERIFIED；Connected Engineering 与转用 3DEXPERIENCE CATIA 分开介绍。[fact:v5-connect] | 模块化 Part/Assembly/Drafting/Surfacing，配置清单与实际许可未核。V5 Web-based Learning 是学习，不是 CAD 浏览器执行。[fact:v5-modules] |
+| 3DEXPERIENCE CATIA Mechanical Design & Engineering | 云平台机械组合的客户端方式 NOT_VERIFIED，不用 cloud URL 推断。[fact:c-dfm-addons] | 专用应用和 add-on 分开，不能全装进一个 role。[fact:c-role-packaging] |
+| CATIA 3D Innovator | 明确 web-based 设计/协作。[fact:c-innovator-web] | 独立 role，具体 app/SKU/报价未核。[fact:c-role-packaging] |
+| CATIA 3D Shape Designer | 明确 Web browser Applications，设计/自由形状/图案。[fact:c-shape-web] | 只适用于这张 role 卡，不推及全 CATIA。 |
+| CATIA 3D Tolerancing & Annotation Designer | NOT_VERIFIED | 独立 MBD/公差 role；标准修订、语义交换与许可未核。[fact:c-tolerance-role] |
+| CATIA Airframe Composites Designer / Manufacturing Engineer | 各自 NOT_VERIFIED | 设计与可制造性分别是不同角色，不合并许可。[fact:c-composite-design] [fact:c-composite-manufacture] |
+| CATIA Airframe Fastener Engineer / Body Structure Designer | 各自 NOT_VERIFIED | 紧固装配与白车身结构分别有角色描述，不等同泛用 frame 工具。[fact:c-fastener-role] [fact:c-body-role] |
+| CATIA Building and Civil 3D Electrical Engineer / Fluid Engineer | 各自 NOT_VERIFIED | 建筑土木电气与流体各有角色；不是全行业电气/流体全集。[fact:c-electrical-role] [fact:c-fluid-role] |
+| SOLIDWORKS Design Standard | 安装客户端；2026 Installation Manager 及 Windows 先决条件。[fact:s-install] | 本次 named-user store offer：零件/装配/图纸和焊件/模具/钣金表格；NC 编程描述不证明具体 CAM 模块、轴数或 post。[fact:s-standard] [fact:s-nc] |
+| SOLIDWORKS Design Professional | 同上安装客户端 | Standard 加智能库、渲染/动画、成本和 CAD 标准检查；不是所有仿真模块。[fact:s-professional] |
+| SOLIDWORKS Design Premium | 同上安装客户端 | Professional 加电气/管线、线性静力、时间运动、曲面展平；非线性/CFD/full Simulation inclusion 未核。[fact:s-premium] |
+| SOLIDWORKS Design with Cloud Services | 本地安装、license-key desktop，与 xDesign 分离。[fact:x-desktop-separation] | 不把 named-user store 的所有条目套到这个 machine-license 产品；安装以已购产品为准。[fact:s-purchased] |
+| SOLIDWORKS Connected | 2025 精确安装主题明确 native app、Launcher background service、Windows System Tray。[fact:sc-installed] | 管理员赋 role 后获得 named-user 许可，角色决定应用访问。旧 Connected 与当前 Design SKU 商业映射仍未核，不直接画等号。[fact:sc-roles] |
+| SOLIDWORKS xDesign | 明确全浏览器、无需安装。[fact:x-browser] | 季/年单用户同特征 offer；本机原生 SW 文件是 multi-CAD 协作与有限特征编辑，不是完整原生 feature tree 等价。[fact:x-purchase] [fact:x-native-files] |
+| xDesign 内的 3D Render / xStudio | 云计算照片级 job 描述，不用于判定交互 viewport | FAQ 有包含的 role、135 credits 及额外购买；不将 job 计费推成服务器帧架构。[fact:x-render] |
+| Designcenter X Essentials | 明确轻量浏览器 CAD/CAM/CAE。[fact:n-essentials] | essential tier，不推成 Standard/Advanced/Premium；该描述没有证明完整工业工作流。 |
+| Designcenter X Standard | X MCAD 正文明确仍是 desktop application，可选 streaming。[fact:n-desktop] | 典型零件/装配；额外模块与 VBL 核心席先决条件分开。[fact:n-standard] [fact:n-tokens] |
+| Designcenter X Advanced | 同上，不把 X 品牌整体扁平化为 Essentials Web | 卡片列模板/验证/渲染/3D annotation；具体附加模块仍需许可核验。[fact:n-advanced] |
+| Designcenter X Premium | 同上 | 卡片包括 Standard/Advanced 与 flexible PCB 集成；不是全部 add-on 自动包含。[fact:n-premium] |
+| Designcenter on-premise Standard/Advanced/Premium | 部署页分 on-premise、AWS/Azure streamed service、X SaaS；精确安装先决条件未核。[fact:n-deployment] | perpetual/subscription/rental 是选择，不是每档全部模块的报价。[fact:n-purchase] |
+| Designcenter X VBL | 附加许可机制，不是另一种 Web runtime | Standard/Advanced/Premium core 加共享 token 预算，使用不得超过总量，退出释放。[fact:n-tokens] [fact:n-token-concurrency] |
 
-## Capture and Re-run
+CATIA 页面宣传 173 results，但本轮只读静态主体中的 20 张可见卡。
+上述角色仅为被检查的子集，不能声称已研究“每个 role”。未逐页、未购许可、
+未读所有应用手册。页面标题中的版本广告与历史 NX 更名文本均没有被用于
+推测具体发布日、服务可用性或服务器架构。
 
-`web.run` was called for current official pages and searches, but returned empty
-without source IDs in this seat. A previously reported chair search capture was
-withdrawn. These failures do not predict future availability. Only the subsequent
-Astrill body readbacks are accepted, with byte counts, SHA256, started capture time
-and logs in the JSON. File mtime may be the remote Last-Modified time and is not
-used as capture time.
+## 工业域矩阵
 
-Re-run the JSON `fetch_recipe.argv_template` with one candidate URL and a new
-3FS output name. At most three requests at 1500k each give this seat a configured
-aggregate 4,608,000 B/s, below 8 MB/s. Existing node/git must pass read-only
-preflight; no dependency installation is authorized. Preserve failures/caches.
-Small buffered transfers cannot establish peak rate compliance; the ledger
-records that measurement limitation instead of treating `0.000` as real zero.
+这里的“能力”仅指官方主体描述；表格不声称 OpenCAD 已具备或厂商案例已执行。
+每个单元使用特定产品/组合，不能拼出一个虚构的全包商业席位。
 
-The earlier capture tool reported a zero-length HEAD as intermediate
-"already complete"; missing body and failed final pull stay NOT_CAPTURED.
-Onshape guessed help paths returning a generic page stay CAPTURED_OTHER_PAGE
-with no facts for the requested subject. URLs, redirects and rc=0 alone never
-populate the matrix.
+| 工业域 | CATIA V5 / 3DEXPERIENCE CATIA | SOLIDWORKS Design / xDesign | NX / Designcenter | 可验证收口 |
+| --- | --- | --- | --- | --- |
+| 实体/参数 | V5 solid/hybrid；机械知识模板。[fact:v5-mechanical] [fact:c-knowledge] | xDesign 参数零件/装配；Design 模型表格。[fact:x-parametric] [fact:s-standard] | Standard 典型零件/装配。[fact:n-standard] | `w-solid`，参数变更、体积与重开；模板只是描述示例。 |
+| 曲面/造型 | V5 shape 与 advanced surfaces；Shape Designer Web role。[fact:v5-shape] [fact:c-surface] [fact:c-shape-web] | xDesign subdivision 与 Premium flattening 是不同范围。[fact:x-freeform] [fact:s-premium] | 本轮详细曲面工具主体未取证，NOT_VERIFIED | `w-surface`，位置/切线/曲率数值，不以渲染平滑冒充连续性。 |
+| 装配/运动/干涉 | 机械运动与紧固角色描述。[fact:c-motion] [fact:c-fastener-role] | 安装版干涉检查操作原文，xDesign 仅参数装配描述。[fact:s-interference-procedure] [fact:x-parametric] | Standard 装配描述。[fact:n-standard] | `w-interference`，交叠体积/组件名/导出；DoF、残差、大装配另需证据。 |
+| 图纸/PMI/GD&T/BOM | 关联多视图/尺寸/BOM、3D annotations 与独立公差角色。[fact:c-drawing-bom] [fact:c-pmi] [fact:c-tolerance-role] | xDesign drawings/MBD 描述，Design 图纸；BOM 猜测 Help 不收。[fact:x-drawing] [fact:s-standard] | GDT 与 Convert to PMI/报告。[fact:n-gdt] [fact:n-pmi-convert] | `w-pmi`，语义对象/转换范围/报告；未核标准一致性。 |
+| 钣金 | 专用 app 的展开和折弯顺序。[fact:c-unfold] [fact:c-dfm-addons] | xDesign included 与 Design all-tier 描述。[fact:x-sheet] [fact:s-standard] | 本轮钣金具体特征/档位未核，NOT_VERIFIED | `w-sheet`，明确厚度/半径/展平约定，坏折弯负控。 |
+| 结构/焊件/复材 | 白车身、复材设计/制造角色分开。[fact:c-body-role] [fact:c-composite-design] [fact:c-composite-manufacture] | xDesign frame/weldment 与 Design 焊件。[fact:x-structure] [fact:s-standard] | 本轮详细结构工具未核，NOT_VERIFIED | `w-structure`，成员/裁切/ID/BOM；复材不能被泛用焊件替代。 |
+| 工装/模具/CAM | 模块化 V5 CNC；DFM wall/draft 不等于已认证 NC。[fact:v5-cam] [fact:c-wall-draft] | xDesign mold geometry；Design NC 简介不证明 post。[fact:x-mold] [fact:s-nc] | Essentials “essential CAM”不证明机器/post 全范围。[fact:n-essentials] | `w-tooling`，几何/刀具/stock/post 独立购买与离线核验。 |
+| CAE | add-on 分析/专用仿真，不是一个机械角色全包。[fact:c-dfm-addons] | Premium 线性静力/时间运动，不外推 CFD/非线性。[fact:s-premium] | CAD-integrated simulation 与 Essentials CAE 简介。[fact:n-cae] [fact:n-essentials] | `w-cae`，单位、解析解、反力、网格收敛、刚体负控。 |
+| 电气/流体/机电 | V5 systems；建筑电气/流体是特定角色。[fact:v5-system] [fact:c-electrical-role] [fact:c-fluid-role] | Premium 电缆/管道；不是全电磁/水力仿真。[fact:s-premium] | routing 信息链及 Premium flexible PCB。[fact:n-routing] [fact:n-premium] | `w-routing`，连接性/半径/障碍物；具体模块许可先核。 |
+| PDM/PLM/协作 | 部件级读写描述，不是生产权限验收。[fact:c-access] | xDesign revision 与 Connected role access。[fact:x-revise] [fact:sc-roles] | X 由 Siemens 管理 backups/updates，企业事务未测。[fact:n-desktop] | `w-revision`，版本绑定/并发/权限/恢复，必须另获测试账号授权。 |
 
-## Continuation Evidence
+## 证据归位与复验
 
-Six new readable bodies were accepted after local SHA256/size checks and exact
-fetch-log readback, each with original caller rc=0 and wget rc=0. The ledger
-records body-level anchors and their semantic locations. SOLIDWORKS Help topics
-are JSON-encoded under `__NEXT_DATA__.props.pageProps.helpContentData.helpText`;
-the decoded inner article, not its generic outer title or navigation, supports
-installation facts. `jq` readback confirmed both exact topic titles and no
-`errorDetails`. No browser interaction was tested.
+本轮证据根：
+`/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1`。
+`official/` 是新公开 HTML；`inspect-*/article.json` 为解析主体；`fetch-logs/`
+保留原传输终态。旧两轮源与失败仍留原目录，JSON 原字段语义不变。
 
-Five rejected attempts remain separate: two product-page timeouts (caller rc=1,
-wget rc=124, zero bytes), one HTTP-success Help error body (caller rc=0 but the
-requested topic did not exist), and two shared-budget refusals (caller rc=2,
-no HTTP/wget launched). The error body's bytes/SHA and all logs are retained.
-Accurate Help links were discovered in captured navigation; xDesign's 3ds.com
-store was a new candidate, not a claimed search result. Both continuation
-`web.run` searches were empty; interim claims of returned search evidence were
-withdrawn and do not populate the ledger.
+旧 CATIA family 与 Design store 的 budget lock 是 **历史拒绝记录**，不再
+作为本轮有效资源事实。本轮 01:41:43 +08:00 现读未见持锁者，之后本席新
+部署/V5取件实际完成；这不授权抢锁或清理其他资源。原拒绝 rc=2 保留。
+首次空账本验证 `ledger-empty-v1/result.json` 原 rc=1 也保留。
 
-Continuation transfers were serial at 1500k, tries=1, with unique capture
-queries isolating old URL caches. The current read-only fetch dependency uses
-actual GET byte evidence rather than the old zero-length HEAD gate; this does
-not retroactively certify old failures. Measured accepted-body byte windows
-were below 8 MB/s, not proof of packet-level peak compliance. No installation,
-credential/configuration change, lock theft, retry or remote cleanup occurred.
+本轮所有 `web.run` 搜索/open 的可见工具返回均为空，没有可引用 source IDs。
+包括本席两次错误“恢复”汇报，已撤回，不入 facts。fallback 现读 download
+规则后才使用现有 approved recipe，单次串行、1500k、tries=1，不安装、
+不改凭据/权限/生产、不清理远端。Hash 是真实捕获的完整正文及传输绑定，
+不是厂商签名的校验源；源由官方 HTTPS URL、原日志与语义主体共同核验。
 
-The two research documents passed executed credential-shape scans before
-staging. The first PCRE2 scan could not execute in this environment and is not
-a clean result. Seven raw public HTML captures contain an API_key-shaped
-attribute; only coordinates are noted in the JSON, never its values. External
-raw evidence is not certified secret-free and must not be imported into Git.
-The source-verification stage uses `--inventory-only --verify-official`; its
-source verdict does not certify GPU, browser, product or industrial behavior.
+三个 HTTP 成功的 Help 非主体/错误主体单独保留：Connected 猜测 2026
+路径缺 article，两个 BOM 猜测主题不存在。`rc=0` 没有升格为有效事实。
+旧 Onshape/AutoCAD Web/FreeCAD/OCCT 源仍可在原 ledger 查到，本轮未重新
+核其运行边界，也没有用重复市场介绍计为新增 workflow。
 
-Still unclosed: V5/full CATIA deployment, Connected-specific role/install
-mapping, complete license inclusion, competitor server-frame topology and
-industrial comparison. These are evidence gaps, not assertions of absence.
+独立复验（`--out` 每次使用新目录）：
+
+```bash
+sudo -n -u infra python3 -B tools/official_research_verify.py --selftest --out /hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/selftest-next
+sudo -n -u infra python3 -B tools/official_research_verify.py --out /hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/ledger-next
+```
+
+工具核正文/anchor、捕获时刻、日志/bytes/SHA、引用闭包、十域、正负控、
+历史账本不变、独占写集与全工作树前后指纹。不执行网络、购买或厂商 CAD。
+校验 PASS 只等于账本一致；研究仍 PARTIAL，所有工业 workflows
+NOT_EXECUTED，OpenCAD full parity NOT_ASSESSED。该工具未接常驻发布门，
+不能声称已有全流程结构性保证。

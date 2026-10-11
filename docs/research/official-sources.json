@@ -486,6 +486,423 @@
       "reason": "Another transfer held shared budget; no HTTP was launched. xDesign FAQ establishes Design install distinction, not Connected-specific role mapping."
     }
   ],
+  "research_completion": {
+    "owner": "research-complete-20261012",
+    "base_commit": "941005d7c45a35f8cbbe8d2dc65c68093a790a3b",
+    "artifact_root": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1",
+    "status": "PARTIAL",
+    "industrial_parity": "NOT_ASSESSED",
+    "recorded_at": "2026-10-12T01:56:52+08:00",
+    "verification_scope": "Offline primary-body, exact-byte/hash/log and fact-reference reconciliation. Official descriptions and documented procedures, not purchased entitlement, vendor execution, publisher-signed checksums or OpenCAD parity. Original top-level fields and failures are preserved.",
+    "remaining": [
+      "CATIA V5 named configuration/license and explicit installed/browser runtime documentation",
+      "All 173 CATIA catalogue roles: only 20 visible role cards read, no exhaustive pagination or role-level licenses",
+      "Exact commercial crosswalk between legacy SOLIDWORKS Connected and current Design packages",
+      "Complete module/role entitlement and contract/region-specific conditions",
+      "Per-domain command manuals beyond interference and PMI conversion; BOM guessed topics rejected",
+      "Interactive server-frame topology for every offering",
+      "Vendor workflow execution, representative industrial scale and OpenCAD parity"
+    ],
+    "web_attempts": [
+      {
+        "observed_at": "2026-10-12T01:32:00+08:00",
+        "commands": [
+          "official-domain search for CATIA V5 configurations, SOLIDWORKS Connected installation and Designcenter X runtime",
+          "open candidate https://help.solidworks.com/2026/English/SWConnected/CWorks/c_swcon_installation.htm"
+        ],
+        "observation": "search and open returned empty tool messages, no source IDs or readable body. A preceding progress claim of successful source retrieval was withdrawn. No returned lines or references can be verified.",
+        "source_ids": [],
+        "accepted_facts": [],
+        "status": "NOT_CAPTURED"
+      },
+      {
+        "observed_at": "2026-10-12T01:41:43+08:00",
+        "commands": ["web.run official searches for V5, Connected installation and Designcenter deployment"],
+        "observation": "Empty tool message, no body or source IDs.",
+        "source_ids": [], "accepted_facts": [], "status": "NOT_CAPTURED"
+      },
+      {
+        "observed_at": "2026-10-12T01:49:30+08:00",
+        "commands": [
+          "web.run official searches for Connected, BOM and V5 Windows",
+          "web.run open candidate 2025 Installation/install_guide/c_install_SW_Connected.htm"
+        ],
+        "observation": "Empty messages without source IDs. The interim claim of web recovery, source IDs and V5 rich-client evidence was incorrect and withdrawn. The subsequently fetched Connected body is independently accepted below, not evidence of web success.",
+        "source_ids": [], "accepted_facts": [], "status": "NOT_CAPTURED"
+      }
+    ],
+    "fallback": {
+      "authorization": "Current user permits the already approved fetch recipe after recording the web failure and reading current download rules.",
+      "rule_read": "2026-10-12; download routing PASS, content_sha256=f36df4080c9cfbc594e6d367ef08b2eec15e819de49cbcc80be8e447f107cd8d",
+      "entry": "/data/dev/infra/ops/astrill-jumphost/astrill-fetch.py url",
+      "rate": "1500k",
+      "tries": 1,
+      "max_concurrent_this_seat": 1,
+      "boundary": "No install, status mode, configuration change, cleanup or blind retry. Raw public bodies remain external and are not certified secret-free.",
+      "current_rule_read": "2026-10-12T01:41:43+08:00 inspect/test/commit/data/download PASS content_sha256=1de6acf410eede6736613935e0f081bf95f23cc3ce08bff66d68f3ca425a302d",
+      "edit_routing": "Cross-repository absolute target rejected rc=2. Re-declared equivalent docs/research and tools path categories in infra rule registry: PASS content_sha256=e9c46a489cfdf08528cfb8beb324a6dc9638d01ba3286c4d09cb64d563bf47fc; registry does not bind or authorize the external worktree.",
+      "resource_readback": "2026-10-12T01:41:43+08:00 fuser returned rc=1 with no holders. Later deployment and V5 fetch acquired the tool lease and completed; old budget refusals remain historical failures, not current resource state.",
+      "rate_measurement": "New accepted captures at 1500k, serial, tries=1. Highest sampled remote/local byte windows 0.710/0.964 MiB/s. Wget buffered tails exceed configured rate; no packet-level peak certification or publisher-signed checksum."
+    },
+    "rejected_attempts": [
+      {
+        "id": "v5-original-lock-refusal",
+        "url": "https://www.3ds.com/products/catia/catia-v5?capture=opencad-research-complete-20261012-v1-v5",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-013415-3381824-44c1d342.log",
+        "actual_rc": 2, "status": "NOT_STARTED_BUDGET_LOCK", "http_requested": false,
+        "reason": "Another transfer held shared budget. Later no holders were observed and a new capture namespace was used; this refusal remains unchanged."
+      },
+      {
+        "id": "connected-missing-help-body",
+        "url": "https://help.solidworks.com/2026/English/SWConnected/CWorks/c_swcon_installation.htm?capture=opencad-research-complete-20261012-v1-connected",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-014623-3886414-91f95177.log",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/official/solidworks-connected.html",
+        "bytes": 946984, "sha256": "dc62558d2a18274a67edef3491d429cf870f7d01354a57a2eb34e803120fcacb",
+        "actual_rc": 0, "semantic_rc": 1, "semantic_error": "official Help article missing",
+        "status": "CAPTURED_NONARTICLE", "reason": "HTTP/transfer succeeded; decoded Help has no article. No facts accepted."
+      },
+      {
+        "id": "bom-insert-wrong-topic",
+        "url": "https://help.solidworks.com/2025/english/SolidWorks/sldworks/t_Inserting_a_Bill_of_Materials.htm?capture=opencad-research-complete-20261012-v1-bom",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-015014-4092465-1e395e90.log",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/official/solidworks-bom.html",
+        "bytes": 964437, "sha256": "650a57ffaf3f6a3173dda57b62a9758d20e606c275ba55e8ac47a04144c436b7",
+        "actual_rc": 0, "semantic_rc": 1, "semantic_error": "File does not exist",
+        "status": "CAPTURED_ERROR_BODY", "reason": "Guessed topic does not exist in decoded Help. BOM commands NOT_VERIFIED."
+      },
+      {
+        "id": "bom-overview-wrong-topic",
+        "url": "https://help.solidworks.com/2025/english/SolidWorks/sldworks/c_bill_of_materials_overview.htm?capture=opencad-research-complete-20261012-v1-bom-overview",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-015425-155509-03d85a30.log",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/official/solidworks-bom-overview.html",
+        "bytes": 963599, "sha256": "9c6bd6f492d6ebb57b4d22ab8d5cd0c52a439b7ba737c1f4f5e0b693e95a11c5",
+        "actual_rc": 0, "semantic_rc": 1, "semantic_error": "File does not exist",
+        "status": "CAPTURED_ERROR_BODY", "reason": "Distinct guessed topic also missing; no more guessed BOM fetches."
+      }
+    ],
+    "retained_validation_failures": [
+      {
+        "result": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/ledger-empty-v1/result.json",
+        "actual_rc": 1, "finished_at": "2026-10-11T17:46:23.719021+00:00",
+        "first_cause": "Missing industrial-workflows.md read raised FileNotFoundError at verifier then-line 254, before counts could be returned. Empty-completion and other collected errors were not reported; verifier amended to report missing document with counts."
+      }
+    ],
+    "sources": [
+      {
+        "id": "catia-roles-readback", "historical_source_id": "catia-experience-continuation",
+        "subject_anchor": "A Comprehensive Set of Engineering Roles",
+        "semantic_method": "main/article excluding navigation",
+        "facts": [
+          {"id": "c-role-packaging", "kind": "entitlement", "anchor": "Select a package that corresponds to your role", "statement": "CATIA catalogue is role/package-based; filters and family names do not prove each role is licensed or browser-based.", "scope": "Role catalogue only; 20 visible cards, not all 173 advertised results.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-innovator-web", "kind": "runtime", "anchor": "powerful web-based 3D design", "statement": "3D Innovator card explicitly describes web-based design and collaboration applications.", "scope": "3D Innovator card only.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-shape-web", "kind": "runtime", "anchor": "Web browser Applications", "statement": "3D Shape Designer explicitly describes browser applications for design, freeform sculpting and patterns.", "scope": "3D Shape Designer card only.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-tolerance-role", "kind": "capability", "anchor": "fast 3D Tolerancing adoption", "statement": "3D Tolerancing & Annotation Designer is a separate MBD role.", "scope": "Role card; GD&T standard conformance, runtime and inclusion NOT_VERIFIED.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-composite-design", "kind": "capability", "anchor": "design cycle times of airframe composites structures", "statement": "Airframe Composites Designer addresses composite design in manufacturing-aware collaborative loops.", "scope": "Separate design role card; detailed commands/entitlement NOT_VERIFIED.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-composite-manufacture", "kind": "capability", "anchor": "Ensure producibility of aerospace mechanical parts", "statement": "Airframe Composites Manufacturing Engineer separately addresses composite producibility.", "scope": "Separate manufacturing role card.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-fastener-role", "kind": "capability", "anchor": "the fastening assembly definition", "statement": "Airframe Fastener Engineer defines fastened airframe assemblies for simulation/manufacturing.", "scope": "Separate role; solver and industrial-scale numerical behavior untested.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-body-role", "kind": "capability", "anchor": "detailed design of complex body-in-white structures", "statement": "Body Structure Designer addresses manufacturing-rule-aware body structures and fasteners.", "scope": "Separate role; not xDesign frame tools.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-electrical-role", "kind": "capability", "anchor": "physical design of complex electrical networks", "statement": "Building and Civil 3D Electrical Engineer addresses physical electrical networks in a project.", "scope": "Building/civil role, not proof of all CATIA electrical functions.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-fluid-role", "kind": "capability", "anchor": "physical design of complex fluid systems", "statement": "Building and Civil 3D Fluid Engineer addresses construction fluid-system physical design.", "scope": "Building/civil role only.", "evidence_level": "OFFICIAL_DESCRIPTION"}
+        ]
+      },
+      {
+        "id": "catia-mechanical-readback", "historical_source_id": "catia-mechanical-continuation",
+        "subject_anchor": "Mechanical Design & Engineering",
+        "semantic_method": "main/article excluding navigation",
+        "facts": [
+          {"id": "c-drawing-bom", "kind": "capability", "anchor": "multi-views, dimensions, and an associated bill of materials", "statement": "Associative Drawings describes multiview layouts, dimensions and associated BOM.", "scope": "Mechanical portfolio description; exact drawing role/license NOT_VERIFIED.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-knowledge", "kind": "workflow", "anchor": "create a template for the whole gearbox", "statement": "Official example reuses a parameterized gearbox template with dimensions/ratios and compliance checks.", "scope": "Illustrative knowledgeware example, not command manual or executed benchmark.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-motion", "kind": "capability", "anchor": "Design and animate complex kinematic mechanisms.", "statement": "Mechanical portfolio describes mechanism design and animation.", "scope": "Mate solver, residuals and scale untested.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-surface", "kind": "capability", "anchor": "Advanced Surface Design", "statement": "Mechanical portfolio separately describes advanced surface design.", "scope": "No measured continuity/accuracy or role inclusion.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-dfm-addons", "kind": "entitlement", "anchor": "add-on analysis tools", "statement": "Manufacturability checks use add-on analysis and specialized part-type applications.", "scope": "Do not bundle all described tools into one role.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-unfold", "kind": "capability", "anchor": "create the bend order process", "statement": "Sheet-metal description includes unfolded views and bend order.", "scope": "Specialized sheet-metal applications; numeric bend allowance untested.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-wall-draft", "kind": "capability", "anchor": "draft analysis and wall thickness analysis", "statement": "Cast/forged manufacturability description includes draft and wall-thickness analysis.", "scope": "DFM analysis, not validated CAM toolpath/postprocessor.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-pmi", "kind": "capability", "anchor": "3D tolerances and annotations in the same model", "statement": "Portfolio describes model-based manufacturing tolerances and annotations.", "scope": "No standard-specific semantic interchange tested.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-access", "kind": "capability", "anchor": "some read rights on some parts", "statement": "Collaboration text describes part-specific read/modify access for different stakeholders.", "scope": "Description, not security acceptance or purchased PLM entitlement.", "evidence_level": "OFFICIAL_DESCRIPTION"}
+        ]
+      },
+      {
+        "id": "xdesign-readback", "historical_source_id": "solidworks-xdesign-store-continuation",
+        "subject_anchor": "SOLIDWORKS xDesign", "semantic_method": "main/article excluding navigation",
+        "facts": [
+          {"id": "x-browser", "kind": "runtime", "anchor": "runs entirely in your browser", "statement": "xDesign is explicitly browser-based with no installation.", "scope": "xDesign offer, not installed Design or rendering topology.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-purchase", "kind": "entitlement", "anchor": "Same features on both plans", "statement": "Quarterly and yearly store plans have same features and single-user licenses.", "scope": "Captured offer only, no current price/region legal advice.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-parametric", "kind": "capability", "anchor": "3D parametric design for individual part creation and mechanical assemblies", "statement": "Included parametric design covers individual parts and mechanical assemblies.", "scope": "Description, not mate/large-assembly execution.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-freeform", "kind": "capability", "anchor": "Freeform, subdivision surface modeling", "statement": "Included freeform design uses subdivision surface modeling.", "scope": "Not evidence of CATIA-class surface continuity.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-sheet", "kind": "capability", "anchor": "Specialized production-ready sheet metal design tools", "statement": "Captured included features name specialized sheet-metal design.", "scope": "Command sequence/flat-pattern tolerance NOT_VERIFIED.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-structure", "kind": "capability", "anchor": "structure, weldment, and frame designs", "statement": "Included structure tools address structures, weldments and frames.", "scope": "Not all CATIA composite/body-structure roles.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-drawing", "kind": "capability", "anchor": "quickly generate the corresponding 2D drawings", "statement": "Included drawings/MBD description covers corresponding 2D drawings.", "scope": "GD&T semantics and standards untested.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-mold", "kind": "capability", "anchor": "workflows for creating mold geometry", "statement": "Included feature list describes simplified mold geometry workflows.", "scope": "Not CNC postprocessing or machine acceptance.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-revise", "kind": "capability", "anchor": "CAD-aware online storage and revision management", "statement": "Included collaboration has CAD-aware storage and revisions.", "scope": "Not measured enterprise PLM security/recovery.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-desktop-separation", "kind": "runtime", "anchor": "professional desktop CAD, locally installed and deployed from the cloud", "statement": "FAQ separates locally installed Design and license-key Design with Cloud Services from browser xDesign.", "scope": "No automatic Connected/current Design commercial crosswalk.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-native-files", "kind": "boundary", "anchor": "limited feature level edits", "statement": "Comparison table gives xDesign multi-CAD native SOLIDWORKS interoperability with associative updates and limited feature edits.", "scope": "xDesign column in native compatibility row; not full feature-tree equivalence.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-render", "kind": "entitlement", "anchor": "3D Render role (xStudio)", "statement": "xDesign rendering FAQ includes xStudio; jobs use credits, with 135 provided and more purchasable.", "scope": "Photorealistic jobs, not proof of interactive frame architecture.", "evidence_level": "OFFICIAL_DESCRIPTION"}
+        ]
+      },
+      {
+        "id": "design-install-readback", "historical_source_id": "solidworks-computers-continuation",
+        "subject_anchor": "Installation on Individual Computers",
+        "semantic_method": "__NEXT_DATA__.props.pageProps.helpContentData.helpText",
+        "facts": [
+          {"id": "s-install", "kind": "runtime", "anchor": "You can install SOLIDWORKS Design on an individual computer", "statement": "Design installation topic describes a locally installed client with Windows prerequisites.", "scope": "2026 Design Installation Manager, not Connected-specific installation.", "evidence_level": "OFFICIAL_PROCEDURE"},
+          {"id": "s-purchased", "kind": "entitlement", "anchor": "tailoring the installation to the products you have purchased", "statement": "Installation is scoped to purchased products; My Products lists activation/network entitlement.", "scope": "No all-module inclusion claim.", "evidence_level": "OFFICIAL_PROCEDURE"}
+        ]
+      },
+      {
+        "id": "designcenter-tiers-readback", "historical_source_id": "nx-current-tiers",
+        "actual_rc": 0, "wget_rc": 0,
+        "subject_anchor": "NX CAD software", "semantic_method": "main/article excluding navigation",
+        "facts": [
+          {"id": "n-essentials", "kind": "runtime", "anchor": "Browser-based essential CAD, CAM and CAE tools.", "statement": "X Essentials specifically describes lightweight browser CAD/CAM/CAE, distinct from other X tiers.", "scope": "Essentials card only; no full industrial coverage claim.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "n-standard", "kind": "capability", "anchor": "typical 3D parts and assemblies", "statement": "X Standard card describes typical 3D part/assembly design.", "scope": "Tier card; individual modules not fully enumerated.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "n-advanced", "kind": "capability", "anchor": "user defined templates, automated validation", "statement": "X Advanced card adds templates, validation, rendering and 3D annotation.", "scope": "Tier card; not numerical/standard acceptance.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "n-premium", "kind": "capability", "anchor": "electro-mechanical integration for flexible PCB", "statement": "X Premium card includes Standard/Advanced and flexible-PCB integration.", "scope": "Card only; not complete entitlement catalogue.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "n-tokens", "kind": "entitlement", "anchor": "A core seat license of Designcenter X Standard, Advanced or Premium is a prerequisite", "statement": "X Value Based Licensing requires an eligible Standard/Advanced/Premium core seat.", "scope": "Essentials alone is not documented as eligible for this pool.", "evidence_level": "OFFICIAL_DESCRIPTION"}
+        ]
+      },
+      {
+        "id": "catia-v5-new",
+        "canonical_url": "https://www.3ds.com/products/catia/catia-v5",
+        "capture_method": "existing_astrill_url_fetch",
+        "capture_started_at": "2026-10-12T01:44:08+08:00", "captured_at": "2026-10-12T01:44:08+08:00",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/official/catia-v5.html",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-014408-3796916-64dcd215.log",
+        "bytes": 535415, "sha256": "d36701dd40a5752c45ade7678163b635b17fa68a08cfd16ce24c189394c9f7d6",
+        "actual_rc": 0, "wget_rc": 0, "subject_anchor": "CATIA V5 domains",
+        "semantic_method": "main/article excluding navigation",
+        "facts": [
+          {"id": "v5-modules", "kind": "entitlement", "anchor": "various modules, each tailored for specific design and engineering tasks", "statement": "V5 is modular; Part/Assembly/Drafting/Surfacing are portfolio descriptions, not proof of one configuration's purchased contents.", "scope": "Key Benefits; configuration/license/runtime still NOT_VERIFIED.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "v5-mechanical", "kind": "capability", "anchor": "Solid, Hybrid and Sheetmetal Part design", "statement": "V5 Mechanical domain describes solid/hybrid/sheet-metal, assembly and integrated drafting products.", "scope": "Domain table; no included configuration or scale acceptance.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "v5-shape", "kind": "capability", "anchor": "from freeform surfaces to mechanical shapes", "statement": "V5 Shape domain describes create/validate/modify surface tools.", "scope": "Domain table; continuity untested.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "v5-system", "kind": "capability", "anchor": "electrical product, systems and structural design information", "statement": "V5 Equipment/Systems domain describes integration/exchange of electrical, systems and structural information.", "scope": "Domain table; no routing-command proof.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "v5-cam", "kind": "capability", "anchor": "generation of toolpaths for CNC machining", "statement": "V5 portfolio describes CNC toolpath generation.", "scope": "Key Benefits, not a verified postprocessor or machine workflow.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "v5-connect", "kind": "boundary", "anchor": "CATIA V5 Connected Engineering", "statement": "V5 cloud-connected engineering is presented separately from the 3DEXPERIENCE CATIA next-step offer.", "scope": "Cloud collaboration does not prove V5 is browser-native; WLS is learning, not CAD runtime.", "evidence_level": "OFFICIAL_DESCRIPTION"}
+        ]
+      },
+      {
+        "id": "design-store-new",
+        "canonical_url": "https://www.3ds.com/store/solidworks-design",
+        "capture_method": "existing_astrill_url_fetch",
+        "capture_started_at": "2026-10-12T01:45:16+08:00", "captured_at": "2026-10-12T01:45:16+08:00",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/official/solidworks-design.html",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-014516-3847891-9810a800.log",
+        "bytes": 511849, "sha256": "6adb5dd9209e6c729d8d068623af825e404758fe70198f6f208e9f0e7fe10f5b",
+        "actual_rc": 0, "wget_rc": 0, "subject_anchor": "Compare Features Across Plans",
+        "semantic_method": "main/article excluding navigation",
+        "facts": [
+          {"id": "s-standard", "kind": "entitlement", "anchor": "Specialized design tools for weldments, molds, and sheet metal", "statement": "Design store Standard/Professional/Premium comparison marks parts/assemblies/drawings and weldment/mold/sheet-metal design in all three columns.", "scope": "Captured named-user offer/table; no perpetual or regional bundle inference.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "s-professional", "kind": "entitlement", "anchor": "Everything included in Standard", "statement": "Professional card adds intelligent libraries, rendering/animation, costing and CAD standard checks.", "scope": "Professional card, not xDesign or all simulation modules.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "s-premium", "kind": "entitlement", "anchor": "Everything included in Professional plus", "statement": "Premium card adds electrical/pipe routing, linear static analysis, time-based motion and surface flattening.", "scope": "Premium card; nonlinear/CFD/full Simulation portfolio inclusion NOT_VERIFIED.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "s-nc", "kind": "capability", "anchor": "Additive manufacturing and NC programming", "statement": "Standard store card mentions additive manufacturing and NC programming.", "scope": "No named CAM module, axis count or certified postprocessor established.", "evidence_level": "OFFICIAL_DESCRIPTION"}
+        ]
+      },
+      {
+        "id": "connected-install-new",
+        "canonical_url": "https://help.solidworks.com/2025/English/Installation/install_guide/c_install_SW_Connected.htm",
+        "capture_method": "existing_astrill_url_fetch",
+        "capture_started_at": "2026-10-12T01:49:30+08:00", "captured_at": "2026-10-12T01:49:30+08:00",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/official/connected-install-candidate.html",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-014930-4063498-106f6d8c.log",
+        "bytes": 992147, "sha256": "8e2cdf3854703a8f2d3d425f5f26f6bdb7a03ad7674580b654d0833f89a4c052",
+        "actual_rc": 0, "wget_rc": 0, "subject_anchor": "SOLIDWORKS Connected provides access",
+        "semantic_method": "__NEXT_DATA__.props.pageProps.helpContentData.helpText",
+        "facts": [
+          {"id": "sc-installed", "kind": "runtime", "anchor": "native apps, such as SOLIDWORKS Connected", "statement": "Connected is explicitly a native installed app using Launcher background service; topic names Windows System Tray.", "scope": "2025 Installation topic; not browser-native CAD.", "evidence_level": "OFFICIAL_PROCEDURE"},
+          {"id": "sc-roles", "kind": "entitlement", "anchor": "A license is assigned when an administrator grants a role", "statement": "Connected platform access is named-user and determined by assigned role, not tied to one machine.", "scope": "Exact current Design commercial role-name mapping NOT_VERIFIED.", "evidence_level": "OFFICIAL_PROCEDURE"}
+        ]
+      },
+      {
+        "id": "designcenter-deployment-new",
+        "canonical_url": "https://www.siemens.com/en-us/products/designcenter/cad-software/offerings/deployment-licensing-types/",
+        "capture_method": "existing_astrill_url_fetch",
+        "capture_started_at": "2026-10-12T01:43:25+08:00", "captured_at": "2026-10-12T01:43:25+08:00",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/official/designcenter-deployment.html",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-014325-3771915-a50cc3cc.log",
+        "bytes": 84071, "sha256": "32f08302de818011a78b01f6d23228a7e28f2e965b3a68e64b276f72b6ab2f2a",
+        "actual_rc": 0, "wget_rc": 0, "subject_anchor": "Designcenter deployment and bundle options",
+        "semantic_method": "main/article excluding navigation",
+        "facts": [
+          {"id": "n-deployment", "kind": "runtime", "anchor": "streamed service from AWS or Microsoft Azure", "statement": "Deployment page distinguishes traditional on-premise, public-cloud streamed service and X SaaS.", "scope": "Available deployment choices; not a measured interactive frame pipeline.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "n-purchase", "kind": "entitlement", "anchor": "perpetual licensing, subscription and rental options", "statement": "Designcenter deployment page describes perpetual/subscription/rental licensing.", "scope": "Not each tier's final quotation or contract.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "n-token-concurrency", "kind": "entitlement", "anchor": "don\u2019t exceed the combined token count purchased", "statement": "Token pool permits concurrent use only within purchased count and releases tokens on exit.", "scope": "Token-enabled add-ons, not every feature in every seat.", "evidence_level": "OFFICIAL_DESCRIPTION"}
+        ]
+      },
+      {
+        "id": "designcenter-mcad-new",
+        "canonical_url": "https://www.siemens.com/en-us/products/designcenter/cad-software/mcad/",
+        "capture_method": "existing_astrill_url_fetch",
+        "capture_started_at": "2026-10-12T01:47:46+08:00", "captured_at": "2026-10-12T01:47:46+08:00",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/official/designcenter-mcad.html",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-014746-3955593-8e838d36.log",
+        "bytes": 111762, "sha256": "9a5596cbc60c0e9595649dac64544a597c5de3f8cd65ee8dd44f8066f057eedb",
+        "actual_rc": 0, "wget_rc": 0, "subject_anchor": "CAD software for mechanical design",
+        "semantic_method": "main/article excluding navigation",
+        "facts": [
+          {"id": "n-desktop", "kind": "runtime", "anchor": "is still a desktop application (with options for streaming)", "statement": "MCAD cloud section explicitly describes X as desktop with optional streaming and Siemens-managed licensing/deployment/backups/updates.", "scope": "Full X MCAD context; Essentials has a separate browser description.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "n-cae", "kind": "capability", "anchor": "tie together CAD and CAE with integrated simulation tools", "statement": "MCAD portfolio describes CAD-integrated simulation.", "scope": "Individual solver/module, units and physics validation NOT_VERIFIED.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "n-routing", "kind": "capability", "anchor": "logical design, physical design, analysis, manufacturing and service", "statement": "Mechanical routing description connects logical/physical/analysis/manufacturing/service information.", "scope": "Family description; routed-systems module purchase NOT_VERIFIED.", "evidence_level": "OFFICIAL_DESCRIPTION"}
+        ]
+      },
+      {
+        "id": "interference-procedure-new",
+        "canonical_url": "https://help.solidworks.com/2025/english/SolidWorks/sldworks/t_Detecting_Interferences.htm",
+        "capture_method": "existing_astrill_url_fetch",
+        "capture_started_at": "2026-10-12T01:51:54+08:00", "captured_at": "2026-10-12T01:51:54+08:00",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/official/solidworks-interference.html",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-015154-4175728-a0023fbf.log",
+        "bytes": 1015616, "sha256": "40a695ebd8ff71e9c282da93fd2726b841d15cd2fef98aa2c20ef498ba396726",
+        "actual_rc": 0, "wget_rc": 0, "subject_anchor": "Detecting Interferences Between Assembly Components",
+        "semantic_method": "__NEXT_DATA__.props.pageProps.helpContentData.helpText",
+        "facts": [
+          {"id": "s-interference-procedure", "kind": "workflow", "anchor": "To check for interferences in an assembly:", "statement": "Documented sequence: Interference Detection via assembly toolbar or Tools/Evaluate; select components/options; Calculate; inspect Results.", "scope": "2025 installed SOLIDWORKS Help procedure, not xDesign commands.", "evidence_level": "OFFICIAL_PROCEDURE"},
+          {"id": "s-interference-volume", "kind": "workflow", "anchor": "The volume of each interference appears", "statement": "Results list interference volume and component names; user can highlight, ignore/un-ignore and save to an Excel spreadsheet.", "scope": "Documented outputs; not executed in this seat or numerical guarantee.", "evidence_level": "OFFICIAL_PROCEDURE"}
+        ]
+      },
+      {
+        "id": "designcenter-mbd-new",
+        "canonical_url": "https://www.siemens.com/en-us/products/designcenter/cad-software/mcad/model-based-definition-mbd/",
+        "capture_method": "existing_astrill_url_fetch",
+        "capture_started_at": "2026-10-12T01:52:58+08:00", "captured_at": "2026-10-12T01:52:58+08:00",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/official/designcenter-mbd.html",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-015258-51009-fe7a0fc0.log",
+        "bytes": 52891, "sha256": "de1bcd0af03b130622cd7bd13466cbfe8b20d746f38d5eb9663cf062338b423d",
+        "actual_rc": 0, "wget_rc": 0, "subject_anchor": "Model-based definition",
+        "semantic_method": "main/article excluding navigation",
+        "facts": [
+          {"id": "n-pmi-convert", "kind": "workflow", "anchor": "Convert to PMI", "statement": "MBD page describes converting drawing views/objects to model views/PMI; entire drawings or selected sheets/views/annotations can be converted with a summary report.", "scope": "Official functional workflow, not detailed command manual or tested conversion.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "n-gdt", "kind": "capability", "anchor": "apply GDT symbols to 2D part views and 3D models", "statement": "MBD page describes GDT symbols in 2D and 3D.", "scope": "No specific standard revision, semantic interoperability or compliance certified.", "evidence_level": "OFFICIAL_DESCRIPTION"}
+        ]
+      }
+    ],
+    "offerings": [
+      {"id": "catia-v5", "name": "CATIA V5 / Connected Engineering", "runtime": "NOT_VERIFIED", "purchase_boundary": "Modular V5 portfolio; exact configurations and license allocation NOT_VERIFIED. Cloud connectivity and web learning are not browser CAD.", "fact_ids": ["v5-modules", "v5-connect"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "catia-mechanical", "name": "3DEXPERIENCE CATIA Mechanical Design & Engineering portfolio", "runtime": "NOT_VERIFIED", "purchase_boundary": "Multiple specialized applications and add-on analyses; not one all-inclusive role.", "fact_ids": ["c-role-packaging", "c-dfm-addons"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "3d-innovator", "name": "CATIA 3D Innovator", "runtime": "EXPLICIT_BROWSER", "purchase_boundary": "Separately packaged role; exact SKU/price/included apps NOT_VERIFIED.", "fact_ids": ["c-role-packaging", "c-innovator-web"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "3d-shape", "name": "CATIA 3D Shape Designer", "runtime": "EXPLICIT_BROWSER", "purchase_boundary": "Role-specific browser scope; not every CATIA role.", "fact_ids": ["c-role-packaging", "c-shape-web"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "catia-tolerance", "name": "CATIA 3D Tolerancing & Annotation Designer", "runtime": "NOT_VERIFIED", "purchase_boundary": "Separate role, not assumed in mechanical base.", "fact_ids": ["c-role-packaging", "c-tolerance-role"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "catia-composite", "name": "CATIA Airframe Composites Designer", "runtime": "NOT_VERIFIED", "purchase_boundary": "Design role separate from manufacturing role.", "fact_ids": ["c-composite-design", "c-role-packaging"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "catia-composite-mfg", "name": "CATIA Airframe Composites Manufacturing Engineer", "runtime": "NOT_VERIFIED", "purchase_boundary": "Separate manufacturing role.", "fact_ids": ["c-composite-manufacture", "c-role-packaging"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "catia-fastener", "name": "CATIA Airframe Fastener Engineer", "runtime": "NOT_VERIFIED", "purchase_boundary": "Separate role; exact apps/licenses NOT_VERIFIED.", "fact_ids": ["c-fastener-role", "c-role-packaging"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "catia-body", "name": "CATIA Body Structure Designer", "runtime": "NOT_VERIFIED", "purchase_boundary": "Separate body-in-white role, not generic weldment bundle.", "fact_ids": ["c-body-role", "c-role-packaging"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "catia-building-electric", "name": "CATIA Building and Civil 3D Electrical Engineer", "runtime": "NOT_VERIFIED", "purchase_boundary": "Building/civil role-specific scope; full electrical portfolio NOT_VERIFIED.", "fact_ids": ["c-electrical-role", "c-role-packaging"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "catia-building-fluid", "name": "CATIA Building and Civil 3D Fluid Engineer", "runtime": "NOT_VERIFIED", "purchase_boundary": "Separate building/civil fluid role.", "fact_ids": ["c-fluid-role", "c-role-packaging"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "design-standard", "name": "SOLIDWORKS Design Standard", "runtime": "INSTALLED_CLIENT", "purchase_boundary": "Captured named-user store Standard offer; not all Simulation/CAM products.", "fact_ids": ["s-install", "s-standard", "s-nc"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "design-professional", "name": "SOLIDWORKS Design Professional", "runtime": "INSTALLED_CLIENT", "purchase_boundary": "Store card adds listed features to Standard only.", "fact_ids": ["s-install", "s-professional"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "design-premium", "name": "SOLIDWORKS Design Premium", "runtime": "INSTALLED_CLIENT", "purchase_boundary": "Routing/static/time-motion additions; nonlinear/CFD/full portfolio NOT_VERIFIED.", "fact_ids": ["s-install", "s-premium"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "design-cloud-services", "name": "SOLIDWORKS Design with Cloud Services", "runtime": "INSTALLED_LICENSE_KEY_CLIENT", "purchase_boundary": "Separate desktop license-key offer; do not map all named-user store contents into this edition.", "fact_ids": ["x-desktop-separation", "s-purchased"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "connected", "name": "SOLIDWORKS Connected", "runtime": "INSTALLED_NATIVE_CLIENT_WITH_PLATFORM", "purchase_boundary": "Administrator-assigned named role determines access. Current Design package commercial crosswalk NOT_VERIFIED.", "fact_ids": ["sc-installed", "sc-roles"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "xdesign", "name": "SOLIDWORKS xDesign", "runtime": "EXPLICIT_BROWSER", "purchase_boundary": "Same-feature single-user quarterly/yearly offer. Native SW feature editing limited; not all SW desktop modules.", "fact_ids": ["x-browser", "x-purchase", "x-native-files"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "xstudio", "name": "3D Render / xStudio in xDesign offer", "runtime": "PHOTOREALISTIC_CLOUD_JOB_DESCRIPTION", "purchase_boundary": "Included role with job credits; extra credits purchasable; not interactive server frames.", "fact_ids": ["x-render"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "nx-essentials", "name": "Designcenter X Essentials", "runtime": "EXPLICIT_BROWSER", "purchase_boundary": "Essential/lightweight tier; no Standard/Advanced/Premium or VBL eligibility inference.", "fact_ids": ["n-essentials", "n-tokens"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "nx-standard", "name": "Designcenter X Standard", "runtime": "CONNECTED_DESKTOP_OPTIONAL_STREAMING", "purchase_boundary": "Typical parts/assemblies; eligible core for separately budgeted tokens.", "fact_ids": ["n-desktop", "n-standard", "n-tokens"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "nx-advanced", "name": "Designcenter X Advanced", "runtime": "CONNECTED_DESKTOP_OPTIONAL_STREAMING", "purchase_boundary": "Listed templates/validation/annotation; specialized modules need separate entitlement.", "fact_ids": ["n-desktop", "n-advanced", "n-tokens"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "nx-premium", "name": "Designcenter X Premium", "runtime": "CONNECTED_DESKTOP_OPTIONAL_STREAMING", "purchase_boundary": "Standard/Advanced plus described flexible-PCB integration; full add-on inclusion not established.", "fact_ids": ["n-desktop", "n-premium", "n-tokens"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "nx-onprem", "name": "Designcenter on-premise Standard/Advanced/Premium", "runtime": "ON_PREMISE_OR_PUBLIC_CLOUD_STREAMING_OFFER", "purchase_boundary": "Deployment/licensing choices separate from X Essentials; exact per-tier module list NOT_VERIFIED.", "fact_ids": ["n-deployment", "n-purchase"], "server_frame_topology": "NOT_VERIFIED"},
+      {"id": "nx-vbl", "name": "Designcenter X Value Based Licensing", "runtime": "ADDON_ENTITLEMENT_NOT_CLIENT_RUNTIME", "purchase_boundary": "Eligible core seat plus shared purchased token count; release on exit.", "fact_ids": ["n-tokens", "n-token-concurrency"], "server_frame_topology": "NOT_VERIFIED"}
+    ],
+    "workflows": [
+      {
+        "id": "w-solid", "domain": "solid", "basis": "RESEARCHER_PROTOCOL",
+        "inputs": ["80x40x10 mm block", "four diameter-6 through holes", "revision A/B fixture"],
+        "steps": ["Create constrained profile, extrude, hole pattern", "Change length 80 to 100 mm and regenerate", "Save/reopen both revisions; compare feature dependencies"],
+        "outputs": ["Bound solid and feature tree", "Volume: 32000-360*pi mm3 before length change", "Revision-specific parameter record"],
+        "positive_controls": ["All four holes survive regeneration; volume within chosen 0.01 mm3 tolerance"],
+        "negative_controls": ["Self-intersecting profile and diameter wider than stock must not silently produce a valid solid"],
+        "purchase_boundary": "V5 Part Design configuration NOT_VERIFIED; xDesign included parametric description; Design store modeling tiers; Designcenter Standard core. Equivalent command compatibility not assumed.",
+        "fact_ids": ["v5-mechanical", "x-parametric", "s-standard", "n-standard"], "execution_status": "NOT_EXECUTED"
+      },
+      {
+        "id": "w-surface", "domain": "surface", "basis": "RESEARCHER_PROTOCOL",
+        "inputs": ["Two adjacent surface patches", "Reference boundary curves and selected 0.01 mm positional tolerance"],
+        "steps": ["Create/freeform edit surfaces in the licensed surface tool", "Measure positional/tangent/curvature continuity independently", "Modify one boundary and round-trip/reopen"],
+        "outputs": ["Surface geometry", "G0/G1/G2 measurement record with sample locations", "Round-trip maximum deviation"],
+        "positive_controls": ["Meeting fixture continuity retained after reopen"],
+        "negative_controls": ["Introduce 0.1 mm gap and tangent break; report failure rather than smooth appearance"],
+        "purchase_boundary": "V5 shape and CATIA advanced surfaces need exact licenses; xDesign subdivision description is different technology, not equivalent Class-A proof.",
+        "fact_ids": ["v5-shape", "c-surface", "x-freeform", "c-shape-web"], "execution_status": "NOT_EXECUTED"
+      },
+      {
+        "id": "w-interference", "domain": "assembly", "basis": "OFFICIAL_PROCEDURE",
+        "inputs": ["Two 10 mm cubes, second offset 8 mm along X", "Separated variant offset 12 mm"],
+        "steps": ["Installed SOLIDWORKS: Tools / Evaluate / Interference Detection", "Select components/options in PropertyManager; Calculate", "Inspect Results volume/component names; export spreadsheet; retain option state"],
+        "outputs": ["Interference pair and 200 mm3 reference overlap", "Separated variant zero volume", "Result spreadsheet and assembly revision"],
+        "positive_controls": ["One actual overlap of 200 mm3; full pair names, not a viewport proxy"],
+        "negative_controls": ["12 mm offset has no overlap; ignored interference must not be silently counted as clean geometry"],
+        "purchase_boundary": "Documented installed SOLIDWORKS command. No xDesign command mapping or DoF/large-assembly result inferred; verify licensed installed product before execution.",
+        "fact_ids": ["s-interference-procedure", "s-interference-volume", "s-install"], "execution_status": "NOT_EXECUTED"
+      },
+      {
+        "id": "w-pmi", "domain": "drawing-pmi", "basis": "RESEARCHER_PROTOCOL",
+        "inputs": ["Two-sheet legacy drawing", "Three dimensions and one datum/GDT reference", "Bound 3D model revision"],
+        "steps": ["Designcenter Convert to PMI for selected sheet/views/annotations", "Read conversion summary and inspect resulting model views/PMI", "Convert whole drawing separately; revise model and compare semantic references"],
+        "outputs": ["Converted model views and PMI", "Conversion summary report", "Selected versus full conversion object inventory"],
+        "positive_controls": ["Selection inventory matches documented conversion scope; no orphan semantic references"],
+        "negative_controls": ["Unselected sheet remains unconverted; broken model reference must be reported, not only a visible label"],
+        "purchase_boundary": "Designcenter MBD conversion described, exact module/core entitlement must be verified. CATIA annotation role and xDesign drawings are not proven equivalent converters.",
+        "fact_ids": ["n-pmi-convert", "n-gdt", "c-tolerance-role", "x-drawing"], "execution_status": "NOT_EXECUTED"
+      },
+      {
+        "id": "w-sheet", "domain": "sheet-metal", "basis": "RESEARCHER_PROTOCOL",
+        "inputs": ["1.5 mm sheet, 2 mm inside bend radius, 90 degree bend", "Explicit K=0.4 fixture convention"],
+        "steps": ["Create flange/bend in licensed sheet tool", "Unfold and record bend sequence", "Refold, alter thickness, regenerate and reopen"],
+        "outputs": ["Flat pattern and bend order", "Reference bend allowance pi/2*(2+0.4*1.5) mm", "Folded/flat thickness provenance"],
+        "positive_controls": ["Fixture allowance and constant thickness within chosen tolerance"],
+        "negative_controls": ["Self-overlapping flange or contradictory bend rule cannot export a silent valid flat"],
+        "purchase_boundary": "CATIA specialized app/add-on versus xDesign included tools and Design store all-tier tools. K-factor convention is this protocol, not vendor documentation.",
+        "fact_ids": ["c-unfold", "c-dfm-addons", "x-sheet", "s-standard"], "execution_status": "NOT_EXECUTED"
+      },
+      {
+        "id": "w-structure", "domain": "structure", "basis": "RESEARCHER_PROTOCOL",
+        "inputs": ["Four-member rectangular frame", "Two identical profiles with different lengths", "Stable part IDs and cut dimensions"],
+        "steps": ["Create members, trims and joints using structure tool", "Revise one length and generate cut list/BOM where licensed", "Save/reopen; reconcile lengths, IDs and quantities"],
+        "outputs": ["Member/trim geometry", "Expected four-member cut inventory", "BOM/cut-list if supported by separately verified command"],
+        "positive_controls": ["Member count and cut lengths reconcile with geometry"],
+        "negative_controls": ["Duplicate ID and absent profile cannot quietly yield a complete cut list"],
+        "purchase_boundary": "xDesign frame/weldment and Design store tools described. CATIA Body Structure and composites are distinct roles. BOM-specific command documentation still NOT_VERIFIED.",
+        "fact_ids": ["x-structure", "s-standard", "c-body-role", "c-composite-design", "c-composite-manufacture"], "execution_status": "NOT_EXECUTED"
+      },
+      {
+        "id": "w-tooling", "domain": "tooling-cam", "basis": "RESEARCHER_PROTOCOL",
+        "inputs": ["Drafted cavity with one 0.8 mm wall", "Tool/stock coordinate definitions", "Explicitly licensed CAM and approved machine postprocessor"],
+        "steps": ["Check draft/wall thickness and create mold geometry", "Generate toolpath only in verified CAM entitlement", "Simulate stock removal; compare coordinates and approved post output offline"],
+        "outputs": ["Draft/wall report and mold geometry", "Toolpath/stock residual if CAM separately licensed", "Approved-post provenance, not production machine motion"],
+        "positive_controls": ["Thin wall flagged; tool/stock coordinate records reconciled"],
+        "negative_controls": ["Missing CAM license, wrong postprocessor or tool-stock collision must fail, not emit production-ready claim"],
+        "purchase_boundary": "CATIA DFM add-ons and V5 CAM portfolio; xDesign mold geometry only; Design NC card does not name all CAM modules. Never operate a production machine in this research.",
+        "fact_ids": ["c-wall-draft", "c-dfm-addons", "v5-cam", "x-mold", "s-nc"], "execution_status": "NOT_EXECUTED"
+      },
+      {
+        "id": "w-cae", "domain": "cae", "basis": "RESEARCHER_PROTOCOL",
+        "inputs": ["100x10x1 mm cantilever", "E=210000 N/mm2, load 1 N", "I=10/12 mm4, linear-small-deflection fixture"],
+        "steps": ["Bind material/units/support/load in licensed linear solver", "Solve three mesh refinements", "Compare tip displacement with PL^3/(3EI); retain solver/mesh provenance"],
+        "outputs": ["Displacement and reaction report", "Analytic reference about 1.904762 mm", "Convergence and units record"],
+        "positive_controls": ["Reaction balances load; convergence towards chosen analytic tolerance"],
+        "negative_controls": ["Unconstrained rigid body and mixed units must not yield silent validated physics"],
+        "purchase_boundary": "Design Premium linear-static card is bounded; Designcenter CAD simulation requires module check. No nonlinear, CFD or physical certification inferred.",
+        "fact_ids": ["s-premium", "n-cae", "c-dfm-addons"], "execution_status": "NOT_EXECUTED"
+      },
+      {
+        "id": "w-routing", "domain": "electrical-fluid", "basis": "RESEARCHER_PROTOCOL",
+        "inputs": ["Two connectors, three segments, fixed route IDs", "Pipe diameter and minimum bend radius", "Restricted obstacle volume"],
+        "steps": ["Create logical endpoints and physical route in licensed routing role", "Change connector location and regenerate", "Reconcile path continuity, bend radius, length and connectivity"],
+        "outputs": ["Logical-to-physical route mapping", "Segment/connector count and cut length", "Obstacle/bend violations"],
+        "positive_controls": ["Every segment connects expected endpoints and preserves IDs"],
+        "negative_controls": ["Disconnected terminal, too-small bend and obstacle crossing must be reported"],
+        "purchase_boundary": "CATIA building/civil electrical and fluid are separate roles; Design Premium routing card; Designcenter routed-systems module inclusion NOT_VERIFIED. Not hydraulic/EM simulation evidence.",
+        "fact_ids": ["c-electrical-role", "c-fluid-role", "v5-system", "s-premium", "n-routing"], "execution_status": "NOT_EXECUTED"
+      },
+      {
+        "id": "w-revision", "domain": "pdm-plm", "basis": "RESEARCHER_PROTOCOL",
+        "inputs": ["Part revision A/B, assembly references A", "Two authorized test users and one nonmember", "Explicit test-only project"],
+        "steps": ["Save revision A, revise to B, preserve assembly revision binding", "Share read/modify rights in separately entitled service", "Reopen revisions and record simultaneous-edit/recovery behavior without production writes"],
+        "outputs": ["Immutable revision/reference inventory", "Permission/readback and conflict records", "Recovery result if explicitly authorized and supported"],
+        "positive_controls": ["Saved A remains readable and assembly binding is explicit"],
+        "negative_controls": ["Nonmember read and read-only write denied; stale concurrent update not silent overwrite"],
+        "purchase_boundary": "xDesign storage/revisions and CATIA access descriptions, Connected role-based entitlement. Enterprise PLM transactions/security/recovery not certified; no real accounts or production changes here.",
+        "fact_ids": ["x-revise", "c-access", "sc-roles"], "execution_status": "NOT_EXECUTED"
+      }
+    ]
+  },
   "industrial_comparison": {
     "status": "NOT_COMPLETE",
     "not_verified": ["complete CATIA role/deployment/release coverage", "SOLIDWORKS Connected-specific role and deployment mapping", "commercial module license inclusion", "interactive server-frame topology", "production surface continuity", "large assembly/mates", "PMI/GD&T", "sheet metal", "weldments", "CAM/postprocessing", "CAE validation", "PLM enterprise controls", "industrial workloads and performance"],
