@@ -1,9 +1,10 @@
 # OpenCAD Repository Roles
 
-The intended primary is r640HA GitLab, `infra/opencad`. Gitee
+The primary is r640HA GitLab, `infra/opencad`. Gitee
 `sdfwefqaa/opencad` and GitHub `miaochunhui/opencad` are one-way code
-copies, not independent development authorities. These roles are the user's
-2026-10-11 instruction, not proof that synchronization has completed.
+copies, not independent development authorities. These roles follow the user's
+2026-10-11 instruction. The verified synchronization below is a dated snapshot,
+not a promise that future commits automatically reach all three services.
 
 Use `tools/repository_sync.py` as infra. Its fixed internal GitLab URL is
 `ssh://git@192.168.1.181/infra/opencad.git`, using the existing GitLab SSH
@@ -63,3 +64,54 @@ fast-forward, preserved history, dirty/wrong-HEAD refusal, divergence,
 deleted secrets and rejected-primary partial outcomes. GitHub tests are
 synthetic, not proof of live access. Code synchronization is not full CAD
 regression, production deployment, GPU acceptance or industrial parity.
+
+## Verified Snapshot
+
+On 2026-10-11 at 20:34:03-20:34:05 Asia/Shanghai, each service's
+`refs/heads/main` was independently read back as
+`c910e483852eb179a9237ea28d8c28186dbafcd0`, after three actual successful
+pushes. Evidence is under
+`/hf3fs-jd/data/tmp/opencad-repository-live-sync-20261011-v1/`.
+All 676 reachable objects were scanned before publication. The tool's
+15-test v5 acceptance and independent review passed. This snapshot contains
+the reviewed committed source, not the nine untracked private-entry files
+in the primary local workspace.
+
+GitLab and GitHub HEAD resolved to main. Gitee's original master remains
+`2918a471b2d9584b7f43dbf0b3e524989f8b728a`; it is historical, not the
+new Web CAD branch. Explicitly clone main:
+
+```bash
+git clone -b main ssh://git@192.168.1.181/infra/opencad.git
+git clone -b main git@gitee.com:sdfwefqaa/opencad.git
+git clone -b main https://github.com/miaochunhui/opencad.git
+```
+
+Choose one appropriate accessible endpoint. The GitLab internal endpoint
+requires the existing registered GitLab SSH identity. Public SSH host-key
+remediation remains unresolved, so no claim of a working public GitLab SSH
+route is made.
+
+The main local workspace is `/data/dev/opencad`. Its origin is GitLab,
+gitee is the preserved Gitee remote, github is the GitHub remote, and local
+main tracks origin/main. The repository-scoped SSH command selects the
+existing GitLab private key with strict host verification; it does not install
+or alter a key. Credential-bearing GitHub pushes use the sync tool, not plain
+unauthenticated HTTPS push.
+
+To undo only these local role changes, first verify config and HEAD have not
+changed since this operation. Keep source commits and untracked assets. Switch
+back to the retained `codex/opencad-bootstrap-s7` branch, remove only the new
+origin/github remote entries, rename gitee back to origin, and unset the newly
+added repository-scoped core.sshCommand. Do not delete remote repositories or
+rewrite remote history. The GitLab/Gitee/GitHub code snapshots are durable
+publication, not something to erase as a local-config rollback.
+
+Complete CAD regression v1 ran 2245 tests: 2232 passed, 13 original skips,
+zero test failures/errors, plus the original 15-check HTTP selftest. Its
+overall verdict is FAIL because the three new sync sources changed during
+the run. V2 also started before the last reviewed tool correction; neither
+run can certify a stable final source. A new all-stage run must bind the
+final committed worktree. Do not promote phase-level green or repository
+synchronization into industrial parity, private production readiness, or
+full regression acceptance.
