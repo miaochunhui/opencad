@@ -2,7 +2,7 @@
   "schema": 1,
   "owner": "research-gpu-seat8",
   "research_date": "2026-10-11",
-  "readback_at": "2026-10-11T10:40:30+08:00",
+  "readback_at": "2026-10-12T00:12:56+08:00",
   "scope": "Official product facts, not OpenCAD test results or industrial parity evidence.",
   "web_tool": {
     "status": "NOT_CAPTURED",
@@ -10,6 +10,31 @@
     "rule": "Candidate URLs and chair messages are not captured official facts."
   },
   "artifact_root": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011",
+  "continuation": {
+    "owner": "official-continuation",
+    "base_commit": "1c673442b20479a4d24c5c75ca0a10707729a8cb",
+    "branch": "codex/opencad-official-continuation-20261011",
+    "artifact_root": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1",
+    "status": "PARTIAL",
+    "web_tool_capture": "NOT_CAPTURED",
+    "web_tool_observed": "Both continuation search calls returned empty without source IDs. Two interim statements attributing candidates to returned search evidence were incorrect and explicitly withdrawn; no search facts are accepted.",
+    "fetch_tool_sha256": "4c08e4eb72dafd2a2953dbcd9ed8f9bf7042e8b2c8e0f36b97f01c15176e64ad",
+    "rate": "1500k",
+    "tries": 1,
+    "max_concurrent_this_seat": 1,
+    "configured_bytes_per_s": 1536000,
+    "query_policy": "Unique capture query changes the remote cache key; this does not fix upstream availability. Old unsuccessful captures remain unchanged. No original URL was blindly repeated.",
+    "verification_scope": "Observed public HTTPS body and remote/local transfer hashes, not a publisher-signed digest, browser interaction, licensing advice or OpenCAD acceptance.",
+    "rate_measurement": "Accepted bodies have remote/local byte-window maxima below 8 MB/s. Buffered wget tails are not packet-level peak evidence; c14_ok is not an independent certification.",
+    "dependency_scope": "url path does not call ensure_remote_tools; no installation, credential read, configuration or service change. Shared transfer-lock refusals were retained, not stolen or automatically retried.",
+    "security_review": {
+      "commit_scope": "Only the two research documents; credential-shaped grep scans returned zero matches before staging. A selected-history scan is also required after commit; no token input.",
+      "raw_body_scope": "Seven public official HTML captures contain an API_key-shaped attribute. Values were not transcribed into research documents or diagnostics. Raw source evidence is external and not certified secret-free or eligible for Git inclusion.",
+      "raw_coordinates": ["catia-experience.html:3", "catia-mechanical.html:3", "solidworks-family.html:3", "solidworks-xdesign-store.html:3", "solidworks-install.html:5", "solidworks-individual.html:6", "solidworks-computers.html:6"],
+      "measurement_failure": "First rg PCRE2 scan failed because this build lacks PCRE2; it was not a clean scan. Subsequent grep scans actually ran. No secret values or local credentials were read for comparison."
+    },
+    "remaining": ["CATIA V5 and full CATIA family deployment", "SOLIDWORKS Connected-specific install/role mapping", "complete commercial role/module entitlement", "interactive server-frame topology", "industrial parity"]
+  },
   "fetch_recipe": {
     "entry": "/data/dev/infra/ops/astrill-jumphost/astrill-fetch.py",
     "argv_template": ["sudo", "-n", "-u", "infra", "python3", "-B", "/data/dev/infra/ops/astrill-jumphost/astrill-fetch.py", "url", "--url", "{url}", "--out", "{new_3fs_path}", "--rate", "1500k", "--tries", "1", "--hard-timeout", "60", "--log-dir", "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs"],
@@ -20,9 +45,143 @@
     "verification": "Read nonempty semantic body, record actual bytes and SHA256, cross-check fetch terminal and remote/local digest. Do not trust rc=0 or HEAD Content-Length=0 alone.",
     "rate_measurement": "Small pieces are below sampler resolution; reported 0.000 is NOT_MEASURED, not measured zero. Wget tiny buffered tails can exceed the set rate; peak-window total compliance is NOT_ESTABLISHED. Do not present c14_ok=1 as independent proof.",
     "failure_policy": "No blind retry; retain failed logs and remote shared caches. A changed candidate or isolated capture query is a new scoped attempt.",
-    "caveat": "The existing fetch tool has a zero-length HEAD/already-complete false intermediate gate. The final failed pull and missing body are NOT_CAPTURED. Tool is read-only dependency and was not modified."
+    "caveat": "Historical captures used a tool with a zero-length HEAD/already-complete false intermediate gate. Their final failed pulls and missing bodies remain NOT_CAPTURED. Continuation pins the later read-only tool separately; no tool was modified here."
   },
   "sources": [
+    {
+      "id": "catia-experience-continuation",
+      "url": "https://www.3ds.com/products/catia/3dexperience-catia?capture=opencad-official-continuation-20261011-v1-experience",
+      "canonical_url": "https://www.3ds.com/products/catia/3dexperience-catia",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-11T23:54:57+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/official/catia-experience.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/fetch-logs/url-fetch-20261011-235457-2921211-be536274.log",
+      "bytes": 641645,
+      "sha256": "50d322927b54fd3a0557dd6defe89cbacfc8499907441768f835610be880eae2",
+      "actual_rc": 0,
+      "wget_rc": 0,
+      "get_http_status": 200,
+      "body_title": "Online CAD software | 3DEXPERIENCE CATIA - Dassault Systemes",
+      "semantic_location": "HTML line 5 release/discipline section and line 9 role card; not script-only matches.",
+      "facts": [
+        {"key": "release_scope", "value": "The captured page advertises R2026x and separates disciplines; this is a page claim, not verification of release availability or all features.", "anchor": "3DEXPERIENCE CATIA R2026x"},
+        {"key": "role_browser", "value": "The 3D Shape Designer role card explicitly describes browser applications for 3D design, freeform shaping and pattern design. Do not extend that runtime to all CATIA roles.", "anchor": "Web browser Applications"},
+        {"key": "catalogue_platforms", "value": "The role catalogue has on-premise and public-cloud filters; these do not establish deployment for an individual role or included entitlement.", "anchor": "On Premise"}
+      ],
+      "native_web": "3D_SHAPE_DESIGNER_ROLE_ONLY_EXPLICIT_BROWSER",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "catia-mechanical-continuation",
+      "url": "https://www.3ds.com/cloud/catia-product-design-experience/mechanical-design-engineering-3dexperience-catia?capture=opencad-official-continuation-20261011-v1-mechanical",
+      "canonical_url": "https://www.3ds.com/cloud/catia-product-design-experience/mechanical-design-engineering-3dexperience-catia",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-11T23:59:01+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/official/catia-mechanical.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/fetch-logs/url-fetch-20261011-235901-3157469-27b6e3b7.log",
+      "bytes": 388852,
+      "sha256": "08ce059a3acc3a13b99378a28c5fc99745a5bc15de50920663859bbc55c70e4c",
+      "actual_rc": 0,
+      "wget_rc": 0,
+      "get_http_status": 200,
+      "semantic_location": "HTML line 4 introduction and subsequent design/manufacturing/collaboration lists.",
+      "facts": [
+        {"key": "mechanical_scope", "value": "Cloud-platform mechanical offering describes assembly design, kinematic mechanisms and mechanical surfacing. Marketing capability is not measured industrial scale or browser execution.", "anchor": "Design and animate complex kinematic mechanisms."},
+        {"key": "manufacturing_scope", "value": "Feature lists describe sheet-metal unfolding and bend ordering as well as machining/plastic/cast/printed-part workflows; no all-role inclusion claim is accepted.", "anchor": "For sheet metal parts"},
+        {"key": "annotation_scope", "value": "Collaboration list describes model-based 3D tolerances and annotations; standards conformance and OpenCAD parity are untested.", "anchor": "3D tolerances and annotations"}
+      ],
+      "native_web": "CLOUD_OFFERING_CLIENT_RUNTIME_NOT_VERIFIED",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "solidworks-family-continuation",
+      "url": "https://www.3ds.com/products/solidworks?capture=opencad-official-continuation-20261011-v1-family",
+      "canonical_url": "https://www.3ds.com/products/solidworks",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-12T00:00:21+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/official/solidworks-family.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/fetch-logs/url-fetch-20261012-000021-3228878-a6cd35eb.log",
+      "bytes": 490297,
+      "sha256": "5f1562e224ffb4e1a5eea232b834315a68a31e61dc9e91df37888908d93aff88",
+      "actual_rc": 0,
+      "wget_rc": 0,
+      "get_http_status": 200,
+      "semantic_location": "Visible product/domain card descriptions and introductory paragraph; not a single-runtime entitlement statement.",
+      "facts": [
+        {"key": "family_scope", "value": "Official family body separates design/engineering, manufacturing, simulation and data-management offerings; family coverage does not mean every seat includes them.", "anchor": "integrated CAD, simulation, collaboration, and manufacturing tools"},
+        {"key": "runtime_boundary", "value": "Body mentions a new generation of browser/mobile-ready applications, but does not classify all SOLIDWORKS products as browser applications.", "anchor": "SOLIDWORKS browser-based and mobile-ready applications"}
+      ],
+      "native_web": "FAMILY_NOT_ONE_RUNTIME",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "solidworks-individual-continuation",
+      "url": "https://help.solidworks.com/2026/english/Installation/install_guide/c_individual_installations.htm?id=0.1&capture=opencad-official-continuation-20261011-v1-individual",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-12T00:06:03+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/official/solidworks-individual.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/fetch-logs/url-fetch-20261012-000603-3532395-86858a5a.log",
+      "bytes": 992495,
+      "sha256": "bc2f5e83b35ee5c9a48d95aafee476f0db207b9b0fa5858878888eeae10f0f27",
+      "actual_rc": 0,
+      "wget_rc": 0,
+      "get_http_status": 200,
+      "semantic_location": "Decode __NEXT_DATA__.props.pageProps.helpContentData.helpText as JSON, then read its main/article. Outer title remains generic Web Help; inner title is Individual Installations and errorDetails is null.",
+      "facts": [
+        {"key": "installation_scope", "value": "Inner topic describes individual SOLIDWORKS Design installation and links to the exact computer-installation topic, not merely a generic help homepage.", "anchor": "Design on an individual computer using several installation methods."}
+      ],
+      "native_web": "INSTALLED_DESIGN_CLIENT",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "solidworks-computers-continuation",
+      "url": "https://help.solidworks.com/2026/english/Installation/install_guide/c_installing_on_individual_computers.htm?id=0.1.0&capture=opencad-official-continuation-20261011-v1-computers",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-12T00:09:38+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/official/solidworks-computers.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/fetch-logs/url-fetch-20261012-000938-3694349-ed11cc56.log",
+      "bytes": 1005312,
+      "sha256": "3352c5eb81aa5aa1e73b518eedf411dd8807e50869ec46144fc7f696f840d03f",
+      "actual_rc": 0,
+      "wget_rc": 0,
+      "get_http_status": 200,
+      "semantic_location": "Decoded __NEXT_DATA__.props.pageProps.helpContentData.helpText main/article; inner title Installation on Individual Computers, errorDetails null. Topic link was discovered in preceding captured body.",
+      "facts": [
+        {"key": "desktop_installation", "value": "2026 Design help specifies installation on a computer through Installation Manager, including Windows prerequisites. Embedded Chromium shows platform content; it is not evidence that the CAD client is a native browser application.", "anchor": "The SOLIDWORKS Installation Manager performs the installation"},
+        {"key": "entitlement", "value": "Installation is tailored to purchased products; a working connection checks entitlement, and the topic describes local license activation. This is not proof that all modules are licensed.", "anchor": "required for checking entitlement"}
+      ],
+      "native_web": "INSTALLED_DESIGN_CLIENT",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "solidworks-xdesign-store-continuation",
+      "url": "https://www.3ds.com/store/solidworks-xdesign?capture=opencad-official-continuation-20261011-v1-store",
+      "canonical_url": "https://www.3ds.com/store/solidworks-xdesign",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-12T00:07:42+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/official/solidworks-xdesign-store.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/fetch-logs/url-fetch-20261012-000742-3599769-e484f266.log",
+      "bytes": 540563,
+      "sha256": "a5ef4ca922d4b8bfc1122f216e1ce5ebc36ab0c397d9127854e2e3eae15f4b3e",
+      "actual_rc": 0,
+      "wget_rc": 0,
+      "get_http_status": 200,
+      "semantic_location": "HTML line 4 introduction/features/Who is xDesign for FAQ, line 29 comparison/modeling and line 32 rendering FAQ; visible prose, not metadata-only.",
+      "facts": [
+        {"key": "browser_execution", "value": "Store introduction explicitly describes xDesign running in a browser without client installation. This does not locate geometry computation or interactive rasterization.", "anchor": "runs entirely in your browser"},
+        {"key": "desktop_separation", "value": "FAQ explicitly distinguishes xDesign from SOLIDWORKS Design, which is locally installed and cloud-deployed, and Design with Cloud Services, described as license-key desktop CAD. Connected legacy-name mapping remains unverified.", "anchor": "professional desktop CAD"},
+        {"key": "modeling_scope", "value": "Feature descriptions list parametric/freeform modeling, part/assembly design and sheet-metal/structure tools; bounded commercial descriptions, not OpenCAD acceptance.", "anchor": "Parametric & freeform"},
+        {"key": "render_role", "value": "Rendering FAQ names the separate 3D Render (xStudio) role and job credits for photorealistic output. It does not identify the interactive viewport frame topology or certify all subscription entitlement.", "anchor": "Rendering credits"}
+      ],
+      "native_web": "XDESIGN_EXPLICIT_BROWSER_DESIGN_INSTALLED",
+      "remote_rendering": "NOT_VERIFIED"
+    },
     {
       "id": "onshape-root",
       "url": "https://www.onshape.com/en/",
@@ -283,9 +442,53 @@
     {"url": "https://www.freecad.org/features.php", "status": "NOT_CAPTURED", "reason": "shared remote cache same-size/no_progress", "log": "fetch-logs/url-fetch-20261011-093959-420165.log"},
     {"url": "https://www.freecad.org/downloads.php", "status": "NOT_CAPTURED", "reason": "shared remote cache same-size/no_progress; isolated capture query subsequently captured", "log": "fetch-logs/url-fetch-20261011-103307-3414362.log"}
   ],
+  "continuation_rejected_attempts": [
+    {
+      "id": "solidworks-design-continuation-timeout",
+      "url": "https://www.solidworks.com/product/solidworks-design?capture=opencad-official-continuation-20261011-v1-design",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/fetch-logs/url-fetch-20261011-235549-2966192-601c1006.log",
+      "actual_rc": 1, "remote_rc": 7, "wget_rc": 124, "bytes": 0, "sha256": null,
+      "status": "NOT_CAPTURED", "facts": [],
+      "reason": "Connected TLS, then awaited HTTP response until wget timeout; missing byte evidence/no progress. No root-cause assertion about upstream infrastructure."
+    },
+    {
+      "id": "solidworks-xdesign-continuation-timeout",
+      "url": "https://www.solidworks.com/product/solidworks-xdesign?capture=opencad-official-continuation-20261011-v1-xdesign",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/fetch-logs/url-fetch-20261012-000319-3374110-63105556.log",
+      "actual_rc": 1, "remote_rc": 7, "wget_rc": 124, "bytes": 0, "sha256": null,
+      "status": "NOT_CAPTURED", "facts": [],
+      "reason": "Awaited HTTP response with no payload; new 3ds.com store candidate was used instead, not a retry of this failed URL."
+    },
+    {
+      "id": "solidworks-install-wrong-topic",
+      "url": "https://help.solidworks.com/2026/English/Installation/install_guide/c_installation_individual.htm?capture=opencad-official-continuation-20261011-v1-install",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/fetch-logs/url-fetch-20261012-000135-3279652-cffd47e0.log",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/official/solidworks-install.html",
+      "actual_rc": 0, "wget_rc": 0, "bytes": 954814,
+      "sha256": "4349634ccc88771f80e27f5c79cfed5b2089dc649686502a4c12964c57033102",
+      "status": "CAPTURED_ERROR_BODY", "facts": [],
+      "reason": "Generic Web Help title; decoded helpContentData.errorDetails says File does not exist for requested topic. Successful HTTP/transfer does not establish product fact. Exact new topic links from captured navigation were used."
+    },
+    {
+      "id": "catia-family-continuation-budget-refused",
+      "url": "https://www.3ds.com/products/catia?capture=opencad-official-continuation-20261011-v1-catia",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/fetch-logs/url-fetch-20261012-001039-3748070-de9ae9b9.log",
+      "actual_rc": 2, "wget_rc": null, "bytes": 0, "sha256": null,
+      "status": "NOT_STARTED_BUDGET_LOCK", "http_requested": false, "facts": [],
+      "reason": "Another astrill-fetch transfer held the shared budget. No stealing, cleanup or automatic retry."
+    },
+    {
+      "id": "solidworks-design-store-budget-refused",
+      "url": "https://www.3ds.com/store/solidworks-design?capture=opencad-official-continuation-20261011-v1-connected",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-continuation-20261011-v1/fetch-logs/url-fetch-20261012-001210-3802579-e5d85282.log",
+      "actual_rc": 2, "wget_rc": null, "bytes": 0, "sha256": null,
+      "status": "NOT_STARTED_BUDGET_LOCK", "http_requested": false, "facts": [],
+      "reason": "Another transfer held shared budget; no HTTP was launched. xDesign FAQ establishes Design install distinction, not Connected-specific role mapping."
+    }
+  ],
   "industrial_comparison": {
     "status": "NOT_COMPLETE",
-    "not_verified": ["CATIA disciplines/roles/R2026x", "SOLIDWORKS desktop/Connected/xDesign separation", "commercial module license inclusion", "production surface continuity", "large assembly/mates", "PMI/GD&T", "sheet metal", "weldments", "CAM/postprocessing", "CAE validation", "PLM enterprise controls", "industrial workloads and performance"],
+    "not_verified": ["complete CATIA role/deployment/release coverage", "SOLIDWORKS Connected-specific role and deployment mapping", "commercial module license inclusion", "interactive server-frame topology", "production surface continuity", "large assembly/mates", "PMI/GD&T", "sheet metal", "weldments", "CAM/postprocessing", "CAE validation", "PLM enterprise controls", "industrial workloads and performance"],
     "rule": "A feature name, upstream library capability, or a captured marketing statement is not an OpenCAD industrial acceptance result."
   }
 }
