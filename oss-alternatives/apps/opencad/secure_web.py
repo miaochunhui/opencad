@@ -11,6 +11,7 @@ import argparse
 from dataclasses import dataclass, field
 from http.cookies import SimpleCookie, CookieError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import ipaddress
 import json
 import mimetypes
 from pathlib import Path
@@ -221,8 +222,8 @@ class Handler(BaseHTTPRequestHandler):
     def _csrf(self, path: str, cookie_auth: bool):
         if self.command != "POST" or not (cookie_auth or path == "/api/auth/login"):
             return
-        if (self.headers.get("Origin") != self.server.public_origin
-                or self.headers.get("X-OpenCAD-Request") != "1"):
+        if (self.headers.get_all("Origin", []) != [self.server.public_origin]
+                or self.headers.get_all("X-OpenCAD-Request", []) != ["1"]):
             raise HttpError("cross_site_request", "A same-origin browser request is required", 403)
 
     def _static(self, path: str):
@@ -264,8 +265,13 @@ class Handler(BaseHTTPRequestHandler):
             projects = self.headers.get_all("X-OpenCAD-Project", [])
             if len(projects) > 1:
                 raise HttpError("ambiguous_project", "Only one project header is accepted")
+            try:
+                query = (parse_qs(parts.query, keep_blank_values=True, strict_parsing=True,
+                                  errors="strict", max_num_fields=64) if parts.query else {})
+            except (ValueError, UnicodeError) as exc:
+                raise HttpError("bad_query", "Invalid or oversized query fields") from exc
             request = Request(
-                self.command, parts.path, parse_qs(parts.query, strict_parsing=False),
+                self.command, parts.path, query,
                 self._body() if self.command == "POST" else {}, token,
                 projects[0] if projects else None, cookie_auth,
             )
@@ -345,7 +351,16 @@ def validated_origin(origin):
 def build_server(application, *, host="127.0.0.1", port=0, public_origin=None,
                  web_root=None, verbose=False):
     origin = validated_origin(public_origin) if public_origin is not None else None
+    try:
+        loopback = host == "localhost" or ipaddress.ip_address(host).is_loopback
+    except ValueError as exc:
+        raise ValueError("Private HTTP upstream requires a literal loopback host") from exc
+    if not loopback:
+        raise ValueError("Private HTTP upstream must stay on loopback behind a TLS proxy")
     httpd = BoundedServer((host, port), Handler)
+    if not ipaddress.ip_address(httpd.server_address[0]).is_loopback:
+        httpd.server_close()
+        raise ValueError("Private HTTP upstream resolved outside loopback")
     # server_close must drain admitted requests before their databases close.
     httpd.daemon_threads = False
     httpd.block_on_close = True

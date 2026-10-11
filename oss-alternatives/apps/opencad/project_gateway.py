@@ -345,8 +345,9 @@ class ProjectGateway:
             from server import Workspace
             Workspace._validated_standard(standard, list(self.core["i18n_standards"].load_profiles()))
             snapshot = self._initial_snapshot(principal, body["request_id"], standard)
-            head = self.store.create_project(principal.user_id, title=body["title"],
-                                             request_id=body["request_id"], payload=snapshot)
+            with self.auth.authorized_transaction(principal, owner_id=principal.user_id):
+                head = self.store.create_project(principal.user_id, title=body["title"],
+                                                 request_id=body["request_id"], payload=snapshot)
             return Reply(201, {"ok": True, **self._metadata(head), "title": head["title"]})
         if path == "/api/locale" and method == "POST":
             self._fields(body, {"locale"}, {"locale"})
@@ -461,7 +462,8 @@ class ProjectGateway:
         receipt = self.store.read_receipt(head["project_id"], body["request_id"],
                                           request_payload=request_payload)
         if receipt is not None:
-            return Reply(payload={**receipt["response"], **self._metadata(receipt)})
+            with self.auth.authorized_transaction(principal, owner_id=head["owner"]):
+                return Reply(payload={**receipt["response"], **self._metadata(receipt)})
         from project_store import RevisionConflict
         if (body["expected_revision"], body["expected_sha"]) != (head["revision"], head["sha256"]):
             raise RevisionConflict(head["revision"], head["sha256"])
@@ -510,9 +512,11 @@ class ProjectGateway:
                 self._validate_document(doc)
             if path not in {"/api/surfaces", "/api/assembly", "/api/parametric", "/api/drawing"}:
                 self._validate_geometry(workspace, head["revision"] + 1)
-            self.auth.authorize(principal, owner_id=head["owner"])
-            receipt = self.store.commit(
-                head["project_id"], expected_revision=body["expected_revision"],
-                expected_sha=body["expected_sha"], request_id=body["request_id"],
-                request_payload=request_payload, payload=snapshot, response=response)
+            # Lock ordering matches recovery: auth first, projects second.
+            # Revocation cannot commit between this check and durable CAS.
+            with self.auth.authorized_transaction(principal, owner_id=head["owner"]):
+                receipt = self.store.commit(
+                    head["project_id"], expected_revision=body["expected_revision"],
+                    expected_sha=body["expected_sha"], request_id=body["request_id"],
+                    request_payload=request_payload, payload=snapshot, response=response)
         return Reply(payload={**receipt["response"], **self._metadata(receipt)})

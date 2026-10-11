@@ -27,7 +27,8 @@ TESTS = {
 SOURCES = {
     "http": ("secure_web.py", "tests/test_secure_web.py"),
     "gateway": ("secure_web.py", "project_gateway.py", "project_store.py",
-                "access_control.py", "request_context.py", "tests/test_project_gateway.py"),
+                "access_control.py", "request_context.py", "tests/test_project_gateway.py",
+                "tests/auth_boundary_actor.py"),
 }
 
 

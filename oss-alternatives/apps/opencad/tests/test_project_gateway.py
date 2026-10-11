@@ -458,6 +458,103 @@ class PrivateProjectTests(unittest.TestCase):
         reply = self.app.handle(Request("GET", "/api/projects", {}, {}, ticket.token, None, True))
         self.assertEqual(reply.status, 401)
 
+    def race_identity(self):
+        username, password = "race-" + uuid.uuid4().hex, uuid.uuid4().hex
+        self.auth.register(username, password)
+        status, headers, reply = self.call(
+            "POST", "/api/auth/login", {"username": username, "password": password})
+        self.assertEqual(status, 200, reply)
+        cookie = headers["Set-Cookie"].split(";", 1)[0]
+        return username, cookie
+
+    def revoke_actor(self, username):
+        result = subprocess.run([
+            sys.executable, "-B", str(APP / "tests/auth_boundary_actor.py"),
+            "--database", str(self.auth.path), "--username", username],
+            capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_revocation_cannot_cross_final_project_commit(self):
+        username, cookie = self.race_identity()
+        status, _, head = self.call(
+            "POST", "/api/projects",
+            {"title": "Revocation boundary", "request_id": uuid.uuid4().hex},
+            headers={"Cookie": cookie})
+        self.assertEqual(status, 201, head)
+        body = self.edit_body(head)
+        commit, outcomes = self.store.commit, []
+
+        def commit_with_competing_revocation(*args, **kwargs):
+            outcomes.append(self.revoke_actor(username))
+            return commit(*args, **kwargs)
+
+        with patch.object(self.store, "commit", side_effect=commit_with_competing_revocation):
+            status, _, saved = self.call(
+                "POST", "/api/command", body, project=head["project_id"],
+                headers={"Cookie": cookie})
+        self.assertEqual(status, 200, saved)
+        self.assertEqual(outcomes, [{"state": "BUSY", "changed": 0}])
+        persisted = self.store.read_head(head["project_id"])
+        self.assertEqual(persisted["revision"], head["revision"] + 1)
+        receipt = self.store.read_receipt(
+            head["project_id"], body["request_id"],
+            request_payload={**body, "route": "/api/command"})
+        self.assertEqual(receipt["revision"], saved["revision"])
+        self.assertEqual(self.revoke_actor(username), {"state": "REVOKED", "changed": 1})
+        status, _, denied = self.call(
+            "POST", "/api/command", self.edit_body(saved), project=head["project_id"],
+            headers={"Cookie": cookie})
+        self.assertEqual(status, 401, denied)
+        self.assertEqual(self.store.read_head(head["project_id"]), persisted)
+
+    def test_revocation_cannot_cross_project_creation(self):
+        username, cookie = self.race_identity()
+        create, outcomes = self.store.create_project, []
+
+        def create_with_competing_revocation(*args, **kwargs):
+            outcomes.append(self.revoke_actor(username))
+            return create(*args, **kwargs)
+
+        with patch.object(self.store, "create_project", side_effect=create_with_competing_revocation):
+            status, _, created = self.call(
+                "POST", "/api/projects",
+                {"title": "Creation boundary", "request_id": uuid.uuid4().hex},
+                headers={"Cookie": cookie})
+        self.assertEqual(status, 201, created)
+        self.assertEqual(outcomes, [{"state": "BUSY", "changed": 0}])
+        self.assertEqual(self.revoke_actor(username), {"state": "REVOKED", "changed": 1})
+        status, _, denied = self.call(
+            "GET", "/api/state", project=created["project_id"], headers={"Cookie": cookie})
+        self.assertEqual(status, 401, denied)
+
+    def test_revocation_before_final_guard_prevents_receipt(self):
+        username, cookie = self.race_identity()
+        status, _, head = self.call(
+            "POST", "/api/projects",
+            {"title": "Revoke before confirmation", "request_id": uuid.uuid4().hex},
+            headers={"Cookie": cookie})
+        self.assertEqual(status, 201, head)
+        before = self.store.read_head(head["project_id"])
+        body = self.edit_body(head)
+        snapshot, outcomes = self.app._snapshot, []
+
+        def candidate_with_prior_revocation(workspace):
+            candidate = snapshot(workspace)
+            outcomes.append(self.revoke_actor(username))
+            return candidate
+
+        with patch.object(self.app, "_snapshot", side_effect=candidate_with_prior_revocation):
+            status, _, denied = self.call(
+                "POST", "/api/command", body, project=head["project_id"],
+                headers={"Cookie": cookie})
+        self.assertEqual(status, 401, denied)
+        self.assertEqual(outcomes, [{"state": "REVOKED", "changed": 1}])
+        self.assertEqual(self.store.read_head(head["project_id"]), before)
+        self.assertIsNone(self.store.read_receipt(
+            head["project_id"], body["request_id"],
+            request_payload={**body, "route": "/api/command"}))
+
     def test_real_3d_hole_plate_and_step_same_version(self):
         head, _ = self.create()
         points = [[0, 0], [40000000, 0], [40000000, 20000000], [0, 20000000]]

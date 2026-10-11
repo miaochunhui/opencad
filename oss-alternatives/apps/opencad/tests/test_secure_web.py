@@ -142,6 +142,53 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaises(ValueError, msg=origin):
                 build_server(self.app, public_origin=origin)
 
+    def test_private_upstream_never_binds_public_http(self):
+        for host in ("0.0.0.0", "192.0.2.1", "::", "example.invalid"):
+            with self.subTest(host=host), self.assertRaisesRegex(ValueError, "loopback"):
+                build_server(self.app, host=host, public_origin="https://example.invalid")
+
+    def test_actual_cli_public_host_does_not_initialize_databases(self):
+        root = Path(self.directory.name) / "must-not-exist-public"
+        process = subprocess.run([
+            sys.executable, "-B", str(APP / "secure_web.py"), "--data-root", str(root),
+            "--public-origin", "https://example.invalid", "--host", "0.0.0.0", "--port", "0"],
+            capture_output=True, timeout=15, check=False)
+        self.assertNotEqual(process.returncode, 0)
+        self.assertIn(b"loopback", process.stderr)
+        self.assertNotIn(b"verdict=READY", process.stdout)
+        self.assertFalse(root.exists(), "Public plaintext listener initialized private databases")
+
+    def test_duplicate_browser_source_headers_are_rejected(self):
+        for field in ("Origin", "X-OpenCAD-Request"):
+            connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=3)
+            try:
+                connection.putrequest("POST", "/api/auth/login")
+                connection.putheader("Content-Type", "application/json")
+                connection.putheader("Content-Length", "2")
+                connection.putheader("Origin", self.origin)
+                connection.putheader("X-OpenCAD-Request", "1")
+                connection.putheader(field, self.origin if field == "Origin" else "1")
+                connection.endheaders(b"{}")
+                response = connection.getresponse()
+                raw = json.loads(response.read())
+                self.assertEqual(response.status, 403)
+                self.assertEqual(raw["error"], "cross_site_request")
+            finally:
+                connection.close()
+        self.assertEqual(self.app.requests, [])
+
+    def test_blank_query_values_are_not_silently_dropped(self):
+        status, _, _ = self.call("GET", "/api/state?action=&action=state")
+        self.assertEqual(status, 200)
+        self.assertEqual(self.app.requests[-1].query, {"action": ["", "state"]})
+        before = len(self.app.requests)
+        for query in ("missing-equals", "x=%FF",
+                      "&".join("x=1" for _ in range(65))):
+            status, _, raw = self.call("GET", "/api/state?" + query)
+            self.assertEqual(status, 400)
+            self.assertEqual(json.loads(raw)["error"], "bad_query")
+        self.assertEqual(len(self.app.requests), before)
+
     def test_actual_cli_bad_origin_does_not_initialize_databases(self):
         root = Path(self.directory.name) / "must-not-exist-origin"
         process = subprocess.run([
