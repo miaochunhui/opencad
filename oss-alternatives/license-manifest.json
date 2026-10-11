@@ -1,0 +1,48 @@
+{
+  "_doc": "oss-alternatives 的许可清单（shipped 闭包）。字段口径见 tools/cad/license_posture_gate.py：每条 {name, version, license(SPDX), scope ∈ shipped|build-only|tool, link, i18n_assets}。scope=shipped 的闭包禁止 GPL-*/AGPL-*/SSPL/BUSL/Commons-Clause；LGPL 允许进 shipped（本项目姿态：LGPL 内核 + 宽松外圈，见 docs/research/cad-base-selection/synthesis/DECISION.md）。",
+  "_scope_note": "本清单只枚举**第一方**组件与其随包数据（CAD MVP 的 shipped 闭包，2026-09-29 落）。第三方传递依赖不在这里：由 tools/sbom-check.py 从各 manifests 现扫（当前 SBOM verdict=PASS deps=8 licenses_ok=8 copyleft=0 unknown=0）。apps/freechat-desktop 与 packages/vault-rs 的 Rust 传递闭包尚未镜像进本清单 —— 这是**显式欠账**，不许当成已全覆盖。",
+  "_judgment_line": "python3 oss-alternatives/tools/cad/license_posture_gate.py  ⇒ LICENSE_POSTURE verdict=PASS shipped_denylist_hits=0 …（以脚本当次输出为准，禁手抄）",
+  "components": [
+    {
+      "name": "cadcore",
+      "version": "0.1.0",
+      "license": "Apache-2.0",
+      "scope": "shipped",
+      "link": "oss-alternatives/packages/cadcore/",
+      "i18n_assets": "cadcore/data/i18n/{en,zh-CN,ja}.json + languages.json（自译，Apache-2.0）",
+      "note": "CAD MVP 自研包；**零第三方运行期依赖**（纯 Python 标准库），几何走自带 nano 后端或可选进程外后端。"
+    },
+    {
+      "name": "cadcore-standards-data",
+      "version": "0.1.0",
+      "license": "Apache-2.0",
+      "scope": "shipped",
+      "link": "oss-alternatives/packages/cadcore/cadcore/data/standards/",
+      "note": "制图标准档（iso/gbt/ansi/din/jis）：只登记公开可得的事实字段，未取到标准正文的字段写 null 并进 na_fields —— 不搬运标准正文（合规红线 R3）。"
+    },
+    {
+      "name": "oss-alternatives-dxf",
+      "version": "0.1.0",
+      "license": "Apache-2.0",
+      "scope": "shipped",
+      "link": "oss-alternatives/packages/dxf/",
+      "note": "第一方 DXF 解析/序列化层，被 cadcore.io 复用（本轮零改动）。"
+    },
+    {
+      "name": "oss-alternatives-vault",
+      "version": "0.1.0",
+      "license": "Apache-2.0",
+      "scope": "shipped",
+      "link": "oss-alternatives/packages/vault/",
+      "note": "第一方存储底座（SQLite/FTS5/内容寻址/op-log），被 cadcore.store 复用（本轮零改动）。"
+    },
+    {
+      "name": "oss-alternatives-ui-kit",
+      "version": "0.1.0",
+      "license": "Apache-2.0",
+      "scope": "shipped",
+      "link": "oss-alternatives/packages/ui-kit/",
+      "note": "第一方 UI 令牌与样式（CAD 外壳下一期接线）。"
+    }
+  ]
+}

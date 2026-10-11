@@ -1,0 +1,18 @@
+OpenCAD
+
+This repository originates from the first-party OpenCAD/CAD source in the
+infra repository's oss-alternatives directory. Original source notices and
+the original first-party license-manifest.json are preserved.
+
+The manifest declares cadcore, CAD standards fact data, DXF and vault under
+Apache-2.0. CAD standards data contains facts, not standards body text.
+The original manifest also describes components outside this migration;
+their mention does not mean those components are included here.
+
+No third-party geometry engine, desktop runtime or CAD source is bundled by
+the bootstrap. Optional FreeCAD/OpenCascade/OCP and other externally installed
+software remain subject to their own licenses and attribution requirements.
+The first-party manifest is not a complete third-party SBOM or license audit.
+
+AutoCAD, CATIA, SolidWorks, DXF and other product names belong to their
+respective owners. This project does not imply affiliation or endorsement.

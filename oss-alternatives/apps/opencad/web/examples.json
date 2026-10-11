@@ -1,0 +1,5052 @@
+{
+  "schema": "opencad.examples/1",
+  "_doc": "OpenCAD 示例库：34 条可点示例（board 画板 / sketch 草图 / annotation 标注 / export 导出）。按 steps 顺序发请求即可复现；steps[].result / observed 里的每个字段都是真跑现算的（真 HTTP 响应 + 真落盘产物），不是手写的。steps[].body 里的 $<step>.uuid 是绑定（见 run_recipe.binding）。labels 是**原样现读** cadcore 自带语言包（未打补丁）：重复键按标准 JSON last-wins 取值，哪些键落在重复键上见 labels_from_duplicate_key。schema 命名对齐兄弟件 web-i18n.json。",
+  "resource": {
+    "consumers": [
+      {
+        "role": "page",
+        "how": "GET /web/examples.json（既有静态路由，HTTP 200 + application/json）；点一条示例 = 按 run_recipe.precondition 回到空文档，再顺序发 steps，把 $<step>.uuid 换成该步响应里的 uuid。",
+        "target": "oss-alternatives/apps/opencad/web/js/app.js（当前尚未接线）"
+      },
+      {
+        "role": "server",
+        "how": "server.py 的 /web/ 静态面按 _MIME['.json'] 供给，无需新路由。",
+        "target": "oss-alternatives/apps/opencad/server.py _serve_static()"
+      }
+    ],
+    "regeneration": "生成器在 i-d5 席位目录 /hf3fs-jd/data/tmp/web-i-d5/build-examples.py（题面在 specs.py，判据在 check-examples.py）；禁手改本件，改题面后重跑生成器与判据。"
+  },
+  "run_recipe": {
+    "precondition": "observed 全部是在**空文档**上量到的：先让文档回到 0 实体（例如 POST /api/save 存一份空 L1，再 GET /api/open?path=...），或直接用刚启动的服务。",
+    "binding": {
+      "$<step>.uuid": "该步响应里的 uuid 字段",
+      "$<step>.uuids[i]": "该步响应里 uuids 表的第 i 项"
+    },
+    "tristate": {
+      "整数": "实测值；0 就是真为零",
+      "-1": "未采（两遍跑不一致，不许拿一次读数当结论）",
+      "NA": "不适用（真件显式回 NA，例如没有闭合环时的面积）"
+    },
+    "uuid_placeholder": "<uuid:per-run> = 每次运行新生成的 uuid 身份值；它在静态示例里没有复现意义，故规范化，见 verified.normalized_uuid_fields"
+  },
+  "generated_by": {
+    "script": "build-examples.py",
+    "specs": "specs.py",
+    "specs_sha256": "8367728d1467eae6512d69a124217a909271e5ba908fdd5890e0865e7f6e2eed",
+    "builder_sha256": "93ccd8d08281f695fafd0f027f77ecb62bb071a0c7f1a24564c13955255da5b7",
+    "server_sha256": "f2feada92fcbcc5425438af708686025ff49bd313050c05b8542793f546a6252"
+  },
+  "categories": [
+    {
+      "id": "board",
+      "title_zh": "画板：基元与图层",
+      "order": 10
+    },
+    {
+      "id": "sketch",
+      "title_zh": "草图：变换与编辑",
+      "order": 20
+    },
+    {
+      "id": "annotation",
+      "title_zh": "标注：尺寸与测量",
+      "order": 30
+    },
+    {
+      "id": "export",
+      "title_zh": "导出：真字节落盘",
+      "order": 40
+    }
+  ],
+  "i18n": {
+    "source": "oss-alternatives/packages/cadcore/cadcore/data/i18n/",
+    "languages_json_sha256": "cb0c7764b018809f6eb275883cbc80777afa693b71ff3de3058a3e3ca59e8c7c",
+    "packs": [
+      {
+        "code": "en",
+        "file": "en.json",
+        "native_name": "English",
+        "string_keys": 262,
+        "duplicate_keys": 37,
+        "duplicates": [
+          "cmd.array_linear",
+          "cmd.chamfer",
+          "cmd.copy",
+          "cmd.delete_constraint",
+          "cmd.extend",
+          "cmd.fillet",
+          "cmd.mirror",
+          "cmd.move",
+          "cmd.offset",
+          "cmd.ortho",
+          "cmd.polar",
+          "cmd.polygon",
+          "cmd.rectangle",
+          "cmd.rotate",
+          "cmd.scale",
+          "cmd.slot",
+          "cmd.snap_query",
+          "cmd.trim",
+          "status.command_done",
+          "status.ortho",
+          "status.polar",
+          "status.polar.increment",
+          "status.snap",
+          "status.snap.candidates",
+          "status.snap.center",
+          "status.snap.endpoint",
+          "status.snap.grid",
+          "status.snap.indicator",
+          "status.snap.intersection",
+          "status.snap.midpoint",
+          "status.snap.nearest",
+          "status.snap.none",
+          "status.snap.perpendicular",
+          "status.snap.quadrant",
+          "status.toggle.off",
+          "status.toggle.on",
+          "status.tool"
+        ],
+        "sha256": "e51ce5d34a520ffaffc4e44bfddc661f5e473bc835fbb4d8f6982ea5facfc5b9"
+      },
+      {
+        "code": "zh-CN",
+        "file": "zh-CN.json",
+        "native_name": "简体中文",
+        "string_keys": 262,
+        "duplicate_keys": 37,
+        "duplicates": [
+          "cmd.array_linear",
+          "cmd.chamfer",
+          "cmd.copy",
+          "cmd.delete_constraint",
+          "cmd.extend",
+          "cmd.fillet",
+          "cmd.mirror",
+          "cmd.move",
+          "cmd.offset",
+          "cmd.ortho",
+          "cmd.polar",
+          "cmd.polygon",
+          "cmd.rectangle",
+          "cmd.rotate",
+          "cmd.scale",
+          "cmd.slot",
+          "cmd.snap_query",
+          "cmd.trim",
+          "status.command_done",
+          "status.ortho",
+          "status.polar",
+          "status.polar.increment",
+          "status.snap",
+          "status.snap.candidates",
+          "status.snap.center",
+          "status.snap.endpoint",
+          "status.snap.grid",
+          "status.snap.indicator",
+          "status.snap.intersection",
+          "status.snap.midpoint",
+          "status.snap.nearest",
+          "status.snap.none",
+          "status.snap.perpendicular",
+          "status.snap.quadrant",
+          "status.toggle.off",
+          "status.toggle.on",
+          "status.tool"
+        ],
+        "sha256": "7afc539b217faad49f057daebf38265e7b83df03124d641ee00f1e5c34edf222"
+      },
+      {
+        "code": "ja",
+        "file": "ja.json",
+        "native_name": "日本語",
+        "string_keys": 262,
+        "duplicate_keys": 0,
+        "duplicates": [],
+        "sha256": "dbdcd1d51a5c1811ba996009d0aefc729ddfd50777fe4700a42cc2c2f4a3d20b"
+      }
+    ],
+    "legend": "labels 是现读语言包取的真译文；缺键的 locale 落进 labels_missing，本文件不编译文。duplicate_keys>0 表示该包里有重复键：标准 JSON 解析是 last-wins，重复的那一份会盖掉先出现的那一份（现读事实）。"
+  },
+  "surface": {
+    "/api/export/dxf": {
+      "implementer": "cadcore.io.dxf_bridge.sketch_to_dxf",
+      "implementer_verified": 1,
+      "wire": "route",
+      "reachable": 1
+    },
+    "/api/open": {
+      "implementer": "cadcore.docmodel.load_l1",
+      "implementer_verified": 1,
+      "wire": "route",
+      "reachable": 1
+    },
+    "/api/save": {
+      "implementer": "cadcore.docmodel.save_l1",
+      "implementer_verified": 1,
+      "wire": "route",
+      "reachable": 1
+    },
+    "add_arc": {
+      "implementer": "cadcore.sketch.commands.add_arc",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "add_circle": {
+      "implementer": "cadcore.sketch.commands.add_circle",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "add_dimension": {
+      "implementer": "cadcore.sketch.commands.add_dimension",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "add_line": {
+      "implementer": "cadcore.sketch.commands.add_line",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "add_point": {
+      "implementer": "cadcore.ops.draw_extra.add_point",
+      "implementer_verified": 1,
+      "wire": "extra",
+      "reachable": 1
+    },
+    "add_polygon": {
+      "implementer": "cadcore.sketch.primitives.add_polygon",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "add_polyline": {
+      "implementer": "cadcore.sketch.primitives.add_polyline",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "add_rectangle": {
+      "implementer": "cadcore.sketch.primitives.add_rectangle",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "add_slot": {
+      "implementer": "cadcore.sketch.primitives.add_slot",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "array_linear": {
+      "implementer": "cadcore.edit.modify.array_linear",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "boundary": {
+      "implementer": "cadcore.ops.hatch_measure.boundary_from_point",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "boundary_probe": {
+      "implementer": "cadcore.ops.hatch_measure.boundary_from_point",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "chamfer": {
+      "implementer": "cadcore.edit.modify.chamfer",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "copy": {
+      "implementer": "cadcore.edit.modify.copy",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "create_layout": {
+      "implementer": "cadcore.ops.output.OPERATIONS[create_layout]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "create_viewport": {
+      "implementer": "cadcore.ops.output.OPERATIONS[create_viewport]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "current_layer": {
+      "implementer": "cadcore.ops.organization.OPERATIONS[current_layer]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "delete": {
+      "implementer": "cadcore.ops.edit_ops.delete",
+      "implementer_verified": 1,
+      "wire": "extra",
+      "reachable": 1
+    },
+    "delete_constraint": {
+      "implementer": "cadcore.sketch.constraints.delete_constraint",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "delete_entity": {
+      "implementer": "opencad.server:Workspace (cadcore has no such command)",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "dyninput_point": {
+      "implementer": "cadcore.ops.draw_ops_extra.dyninput_point",
+      "implementer_verified": 1,
+      "wire": "extra",
+      "reachable": 1
+    },
+    "dyninput_set": {
+      "implementer": "cadcore.ops.precision_ops.dyninput_set",
+      "implementer_verified": 1,
+      "wire": "precision",
+      "reachable": 1
+    },
+    "explode": {
+      "implementer": "cadcore.ops.edit_ops.explode",
+      "implementer_verified": 1,
+      "wire": "extra",
+      "reachable": 1
+    },
+    "export_pdf": {
+      "implementer": "cadcore.ops.sw_drawings_extra.render_pdf",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "extend": {
+      "implementer": "cadcore.edit.modify.extend",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "fillet": {
+      "implementer": "cadcore.edit.modify.fillet",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "gradient": {
+      "implementer": "cadcore.ops.hatch_measure.gradient_fill",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "grid_set": {
+      "implementer": "cadcore.ops.precision_ops.grid_set",
+      "implementer_verified": 1,
+      "wire": "precision",
+      "reachable": 1
+    },
+    "grip_edit": {
+      "implementer": "cadcore.ops.edit_ops.grip_edit",
+      "implementer_verified": 1,
+      "wire": "extra",
+      "reachable": 1
+    },
+    "grip_positions": {
+      "implementer": "cadcore.ops.edit_ops.grip_positions",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "hatch": {
+      "implementer": "cadcore.ops.hatch_measure.hatch_create",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "layer_assign": {
+      "implementer": "cadcore.ops.organization.OPERATIONS[layer_assign]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "layer_create": {
+      "implementer": "cadcore.ops.organization.OPERATIONS[layer_create]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "layer_delete": {
+      "implementer": "cadcore.ops.organization.OPERATIONS[layer_delete]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "layer_freeze": {
+      "implementer": "cadcore.ops.features.organization__w10.OPERATIONS[layer_freeze]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "layer_off": {
+      "implementer": "cadcore.ops.features.organization__w10.OPERATIONS[layer_off]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "layer_set": {
+      "implementer": "cadcore.ops.organization.OPERATIONS[layer_set]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "layer_state": {
+      "implementer": "cadcore.ops.features.organization__w10.OPERATIONS[layer_state]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "layer_state_set": {
+      "implementer": "cadcore.ops.features.organization__w10.OPERATIONS[layer_state_set]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "layer_visible_entities": {
+      "implementer": "cadcore.ops.features.organization__w10.OPERATIONS[layer_visible_entities]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "lineweight": {
+      "implementer": "cadcore.ops.output.OPERATIONS[lineweight]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "manage_layout": {
+      "implementer": "cadcore.ops.output.OPERATIONS[manage_layout]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "matchprop": {
+      "implementer": "cadcore.ops.hatch_measure.match_properties",
+      "implementer_verified": 1,
+      "wire": "extra",
+      "reachable": 1
+    },
+    "measure_area": {
+      "implementer": "cadcore.ops.hatch_measure.measure_area",
+      "implementer_verified": 1,
+      "wire": "measure",
+      "reachable": 1
+    },
+    "measure_distance": {
+      "implementer": "cadcore.ops.hatch_measure.measure_distance",
+      "implementer_verified": 1,
+      "wire": "measure",
+      "reachable": 1
+    },
+    "measure_perimeter": {
+      "implementer": "cadcore.ops.hatch_measure.measure_perimeter",
+      "implementer_verified": 1,
+      "wire": "measure",
+      "reachable": 1
+    },
+    "mirror": {
+      "implementer": "cadcore.edit.modify.mirror",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "model_space_plot": {
+      "implementer": "cadcore.ops.output.OPERATIONS[model_space_plot]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "move": {
+      "implementer": "cadcore.edit.modify.move",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "offset": {
+      "implementer": "cadcore.edit.modify.offset",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "ortho_set": {
+      "implementer": "cadcore.ops.precision_ops.ortho_set",
+      "implementer_verified": 1,
+      "wire": "precision",
+      "reachable": 1
+    },
+    "otrack_set": {
+      "implementer": "cadcore.ops.precision_ops.otrack_set",
+      "implementer_verified": 1,
+      "wire": "precision",
+      "reachable": 1
+    },
+    "plot": {
+      "implementer": "cadcore.ops.output.OPERATIONS[plot]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "plot_area": {
+      "implementer": "cadcore.ops.output.OPERATIONS[plot_area]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "plot_flag": {
+      "implementer": "cadcore.ops.output.OPERATIONS[plot_flag]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "plot_pdf": {
+      "implementer": "cadcore.ops.output.OPERATIONS[plot_pdf]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "plot_scale": {
+      "implementer": "cadcore.ops.output.OPERATIONS[plot_scale]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "polar_set": {
+      "implementer": "cadcore.ops.precision_ops.polar_set",
+      "implementer_verified": 1,
+      "wire": "precision",
+      "reachable": 1
+    },
+    "precision_pick": {
+      "implementer": "cadcore.ops.precision_ops.cursor_readout",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "precision_status": {
+      "implementer": "cadcore.ops.precision_ops.MODE_NAMES",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "preview": {
+      "implementer": "cadcore.ops.output.OPERATIONS[preview]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "publish": {
+      "implementer": "cadcore.ops.output.OPERATIONS[publish]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "redo": {
+      "implementer": "opencad.server:Workspace (cadcore has no such command)",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "revcloud": {
+      "implementer": "cadcore.ops.draw_ops_extra.revcloud",
+      "implementer_verified": 1,
+      "wire": "extra",
+      "reachable": 1
+    },
+    "revcloud_rect": {
+      "implementer": "cadcore.ops.draw_ops_extra.revcloud_rect",
+      "implementer_verified": 1,
+      "wire": "extra",
+      "reachable": 1
+    },
+    "rotate": {
+      "implementer": "cadcore.edit.modify.rotate",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "scale": {
+      "implementer": "cadcore.edit.modify.scale",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "set_viewport_layer_override": {
+      "implementer": "cadcore.ops.output.OPERATIONS[set_viewport_layer_override]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "set_viewport_scale": {
+      "implementer": "cadcore.ops.output.OPERATIONS[set_viewport_scale]",
+      "implementer_verified": 1,
+      "wire": "doc_passthrough",
+      "reachable": 1
+    },
+    "snap_enable": {
+      "implementer": "cadcore.ops.precision_ops.snap_enable",
+      "implementer_verified": 1,
+      "wire": "precision",
+      "reachable": 1
+    },
+    "snap_kinds_set": {
+      "implementer": "cadcore.ops.precision_ops.snap_kinds_set",
+      "implementer_verified": 1,
+      "wire": "precision",
+      "reachable": 1
+    },
+    "snap_priority_set": {
+      "implementer": "cadcore.ops.precision_ops.snap_priority_set",
+      "implementer_verified": 1,
+      "wire": "precision",
+      "reachable": 1
+    },
+    "snap_query": {
+      "implementer": "cadcore.precision.osnap.snap",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    },
+    "snap_tolerance_set": {
+      "implementer": "cadcore.ops.precision_ops.snap_tolerance_set",
+      "implementer_verified": 1,
+      "wire": "precision",
+      "reachable": 1
+    },
+    "stretch": {
+      "implementer": "cadcore.ops.draw_extra.stretch",
+      "implementer_verified": 1,
+      "wire": "extra",
+      "reachable": 1
+    },
+    "trim": {
+      "implementer": "cadcore.edit.modify.trim",
+      "implementer_verified": 1,
+      "wire": "passthrough",
+      "reachable": 1
+    },
+    "undo": {
+      "implementer": "opencad.server:Workspace (cadcore has no such command)",
+      "implementer_verified": 1,
+      "wire": "explicit",
+      "reachable": 1
+    }
+  },
+  "counts": {
+    "candidates": 34,
+    "examples": 34,
+    "steps": 94,
+    "bindings": 56,
+    "categories_used": 4,
+    "unstable_examples": 2,
+    "skipped": 0
+  },
+  "tristate_scan": {
+    "zero": 320,
+    "unmeasured": 11,
+    "na": 4,
+    "measured": 701
+  },
+  "examples": [
+    {
+      "id": "board-line-circle-arc",
+      "category": "board",
+      "title_zh": "三个基本图元：直线 + 圆 + 圆弧",
+      "note_zh": "一次点出画板的三块基石；三条命令各自返回自己的 uuid。",
+      "label_keys": [
+        "cmd.line",
+        "cmd.circle",
+        "cmd.arc"
+      ],
+      "steps": [
+        {
+          "id": "line",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                40000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "circle",
+          "api": "/api/command",
+          "body": {
+            "command": "add_circle",
+            "args": {
+              "center": [
+                0,
+                0
+              ],
+              "radius_nm": 15000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "arc",
+          "api": "/api/command",
+          "body": {
+            "command": "add_arc",
+            "args": {
+              "center": [
+                0,
+                0
+              ],
+              "radius_nm": 15000000,
+              "start_deg": 0,
+              "end_deg": 90
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 3,
+            "dimensions": 0,
+            "undo_depth": 3,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 3,
+        "dimensions": 0,
+        "created_total": -1,
+        "created_steps": 0
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "add_circle",
+          "implementer": "cadcore.sketch.commands.add_circle",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "add_arc",
+          "implementer": "cadcore.sketch.commands.add_arc",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.line": "Line",
+          "cmd.circle": "Circle",
+          "cmd.arc": "Arc"
+        },
+        "zh-CN": {
+          "cmd.line": "直线",
+          "cmd.circle": "圆",
+          "cmd.arc": "圆弧"
+        },
+        "ja": {
+          "cmd.line": "直線",
+          "cmd.circle": "円",
+          "cmd.arc": "円弧"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "board-rectangle",
+      "category": "board",
+      "title_zh": "矩形 40x20 mm（落成 4 条直线）",
+      "note_zh": "矩形不是一种实体：真件把它落成 4 条 line，所以要数 4 个 uuid。",
+      "label_keys": [
+        "cmd.rectangle"
+      ],
+      "steps": [
+        {
+          "id": "rect",
+          "api": "/api/command",
+          "body": {
+            "command": "add_rectangle",
+            "args": {
+              "p1_nm": [
+                0,
+                0
+              ],
+              "p2_nm": [
+                40000000,
+                20000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 4,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 4,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 4,
+        "dimensions": 0,
+        "created_total": 4,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_rectangle",
+          "implementer": "cadcore.sketch.primitives.add_rectangle",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.rectangle": "矩形"
+        },
+        "zh-CN": {
+          "cmd.rectangle": "長方形"
+        },
+        "ja": {
+          "cmd.rectangle": "長方形"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.rectangle"
+        ],
+        "zh-CN": [
+          "cmd.rectangle"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "board-polygon-pentagon",
+      "category": "board",
+      "title_zh": "正五边形：半径 20 mm，5 条边",
+      "note_zh": "多边形按边数落成 N 条直线，内接圆半径口径。",
+      "label_keys": [
+        "cmd.polygon"
+      ],
+      "steps": [
+        {
+          "id": "poly",
+          "api": "/api/command",
+          "body": {
+            "command": "add_polygon",
+            "args": {
+              "center_nm": [
+                60000000,
+                0
+              ],
+              "radius_nm": 20000000,
+              "sides": 5
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 5,
+            "dimensions": 0,
+            "created": 5,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 5,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 5,
+        "dimensions": 0,
+        "created_total": 5,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_polygon",
+          "implementer": "cadcore.sketch.primitives.add_polygon",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.polygon": "多边形"
+        },
+        "zh-CN": {
+          "cmd.polygon": "多角形"
+        },
+        "ja": {
+          "cmd.polygon": "多角形"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.polygon"
+        ],
+        "zh-CN": [
+          "cmd.polygon"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "board-slot",
+      "category": "board",
+      "title_zh": "腰形槽：长 30 mm、宽 10 mm（2 线 + 2 弧）",
+      "note_zh": "槽是复合基元：4 个实体、其中 2 条圆弧。",
+      "label_keys": [
+        "cmd.slot"
+      ],
+      "steps": [
+        {
+          "id": "slot",
+          "api": "/api/command",
+          "body": {
+            "command": "add_slot",
+            "args": {
+              "p1_nm": [
+                0,
+                0
+              ],
+              "p2_nm": [
+                30000000,
+                0
+              ],
+              "width_nm": 10000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 4,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 4,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 4,
+        "dimensions": 0,
+        "created_total": 4,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_slot",
+          "implementer": "cadcore.sketch.primitives.add_slot",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.slot": "腰形槽"
+        },
+        "zh-CN": {
+          "cmd.slot": "スロット"
+        },
+        "ja": {
+          "cmd.slot": "スロット"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.slot"
+        ],
+        "zh-CN": [
+          "cmd.slot"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "board-polyline-closed",
+      "category": "board",
+      "title_zh": "闭合多段线（3 个顶点）",
+      "note_zh": "多段线是一个实体，不是 3 条线。",
+      "label_keys": [
+        "cmd.polyline"
+      ],
+      "steps": [
+        {
+          "id": "pl",
+          "api": "/api/command",
+          "body": {
+            "command": "add_polyline",
+            "args": {
+              "points_nm": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  20000000,
+                  0
+                ],
+                [
+                  20000000,
+                  10000000
+                ]
+              ],
+              "closed": true
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 1,
+        "dimensions": 0,
+        "created_total": 1,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_polyline",
+          "implementer": "cadcore.sketch.primitives.add_polyline",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.polyline": "Polyline"
+        },
+        "zh-CN": {
+          "cmd.polyline": "多段线"
+        },
+        "ja": {
+          "cmd.polyline": "ポリライン"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "board-point-delete-undo",
+      "category": "board",
+      "title_zh": "放一个点 -> 删掉它 -> 撤销（点回来）",
+      "note_zh": "删除要指名 uuid（禁下标）；撤销走的是 L1 文本快照，不是反向命令。",
+      "label_keys": [
+        "cmd.delete",
+        "cmd.undo"
+      ],
+      "steps": [
+        {
+          "id": "pt",
+          "api": "/api/command",
+          "body": {
+            "command": "add_point",
+            "args": {
+              "position": [
+                5000000,
+                5000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "ln",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                10000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "del",
+          "api": "/api/command",
+          "body": {
+            "command": "delete_entity",
+            "args": {
+              "uuid": "$pt.uuid"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "removed_dimensions": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "undo",
+          "api": "/api/command",
+          "body": {
+            "command": "undo",
+            "args": {}
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "undo_depth": 2,
+            "redo_depth": 1,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 2,
+        "dimensions": 0,
+        "created_total": 1,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_point",
+          "implementer": "cadcore.ops.draw_extra.add_point",
+          "implementer_verified": 1,
+          "wire": "extra"
+        },
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "delete_entity",
+          "implementer": "opencad.server:Workspace (cadcore has no such command)",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "undo",
+          "implementer": "opencad.server:Workspace (cadcore has no such command)",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.delete": "Delete",
+          "cmd.undo": "Undo"
+        },
+        "zh-CN": {
+          "cmd.delete": "删除",
+          "cmd.undo": "撤销"
+        },
+        "ja": {
+          "cmd.delete": "削除",
+          "cmd.undo": "元に戻す"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "board-layer-outline",
+      "category": "board",
+      "title_zh": "建一个 OUTLINE 层，把线画在层上，并设为当前层",
+      "note_zh": "图层面是文档级命令（第一实参是文档，不是草图）；最后一条 layer_state 是只读查询。",
+      "label_keys": [
+        "cmd.line"
+      ],
+      "steps": [
+        {
+          "id": "lay",
+          "api": "/api/command",
+          "body": {
+            "command": "layer_create",
+            "args": {
+              "name": "OUTLINE",
+              "color": 1
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 0,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "ln",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                30000000,
+                0
+              ],
+              "layer": "OUTLINE"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "assign",
+          "api": "/api/command",
+          "body": {
+            "command": "layer_assign",
+            "args": {
+              "refs": [
+                "$ln.uuid"
+              ],
+              "layer": "OUTLINE"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 3,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "cur",
+          "api": "/api/command",
+          "body": {
+            "command": "current_layer",
+            "args": {
+              "name": "OUTLINE"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 4,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "state",
+          "api": "/api/command",
+          "body": {
+            "command": "layer_state",
+            "args": {
+              "state": "all"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "count": 2,
+            "undo_depth": 4,
+            "redo_depth": 0,
+            "uuids_len": 2,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 1,
+        "dimensions": 0,
+        "created_total": 3,
+        "created_steps": 3
+      },
+      "surface": [
+        {
+          "verb": "layer_create",
+          "implementer": "cadcore.ops.organization.OPERATIONS[layer_create]",
+          "implementer_verified": 1,
+          "wire": "doc_passthrough"
+        },
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "layer_assign",
+          "implementer": "cadcore.ops.organization.OPERATIONS[layer_assign]",
+          "implementer_verified": 1,
+          "wire": "doc_passthrough"
+        },
+        {
+          "verb": "current_layer",
+          "implementer": "cadcore.ops.organization.OPERATIONS[current_layer]",
+          "implementer_verified": 1,
+          "wire": "doc_passthrough"
+        },
+        {
+          "verb": "layer_state",
+          "implementer": "cadcore.ops.features.organization__w10.OPERATIONS[layer_state]",
+          "implementer_verified": 1,
+          "wire": "doc_passthrough"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.line": "Line"
+        },
+        "zh-CN": {
+          "cmd.line": "直线"
+        },
+        "ja": {
+          "cmd.line": "直線"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "sketch-move-copy",
+      "category": "sketch",
+      "title_zh": "把一条边平移 1 mm，再复制一条到 30 mm 外",
+      "note_zh": "平移是原地改写（实体数不变），复制才新增实体。",
+      "label_keys": [
+        "cmd.move",
+        "cmd.copy"
+      ],
+      "steps": [
+        {
+          "id": "rect",
+          "api": "/api/command",
+          "body": {
+            "command": "add_rectangle",
+            "args": {
+              "p1_nm": [
+                0,
+                0
+              ],
+              "p2_nm": [
+                20000000,
+                10000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 4,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 4,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "mv",
+          "api": "/api/command",
+          "body": {
+            "command": "move",
+            "args": {
+              "refs": [
+                "$rect.uuids[0]"
+              ],
+              "dx_nm": 1000000,
+              "dy_nm": 2000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "cp",
+          "api": "/api/command",
+          "body": {
+            "command": "copy",
+            "args": {
+              "refs": [
+                "$rect.uuids[0]"
+              ],
+              "dx_nm": 30000000,
+              "dy_nm": 0
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 5,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 3,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 5,
+        "dimensions": 0,
+        "created_total": 6,
+        "created_steps": 3
+      },
+      "surface": [
+        {
+          "verb": "add_rectangle",
+          "implementer": "cadcore.sketch.primitives.add_rectangle",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "move",
+          "implementer": "cadcore.edit.modify.move",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "copy",
+          "implementer": "cadcore.edit.modify.copy",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.move": "移动",
+          "cmd.copy": "复制"
+        },
+        "zh-CN": {
+          "cmd.move": "移動",
+          "cmd.copy": "複写"
+        },
+        "ja": {
+          "cmd.move": "移動",
+          "cmd.copy": "複写"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.move",
+          "cmd.copy"
+        ],
+        "zh-CN": [
+          "cmd.move",
+          "cmd.copy"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "sketch-rotate-scale",
+      "category": "sketch",
+      "title_zh": "绕原点旋转 90 度，再整体放大 2 倍",
+      "note_zh": "两个算子都原地改写：实体数进出一致，只动几何。",
+      "label_keys": [
+        "cmd.rotate",
+        "cmd.scale"
+      ],
+      "steps": [
+        {
+          "id": "rect",
+          "api": "/api/command",
+          "body": {
+            "command": "add_rectangle",
+            "args": {
+              "p1_nm": [
+                10000000,
+                10000000
+              ],
+              "p2_nm": [
+                30000000,
+                20000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 4,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 4,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "rot",
+          "api": "/api/command",
+          "body": {
+            "command": "rotate",
+            "args": {
+              "refs": [
+                "$rect.uuids[0]"
+              ],
+              "center_nm": [
+                0,
+                0
+              ],
+              "angle_deg": 90
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "scl",
+          "api": "/api/command",
+          "body": {
+            "command": "scale",
+            "args": {
+              "refs": [
+                "$rect.uuids[0]"
+              ],
+              "center_nm": [
+                0,
+                0
+              ],
+              "factor": 2.0
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 3,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "grips",
+          "api": "/api/command",
+          "body": {
+            "command": "grip_positions",
+            "args": {
+              "ref": "$rect.uuids[0]"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "doc_unchanged": 1,
+            "grips": {
+              "end": [
+                -20000000,
+                60000000
+              ],
+              "mid": [
+                -20000000,
+                40000000
+              ],
+              "start": [
+                -20000000,
+                20000000
+              ]
+            },
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 4,
+        "dimensions": 0,
+        "created_total": 6,
+        "created_steps": 3
+      },
+      "surface": [
+        {
+          "verb": "add_rectangle",
+          "implementer": "cadcore.sketch.primitives.add_rectangle",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "rotate",
+          "implementer": "cadcore.edit.modify.rotate",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "scale",
+          "implementer": "cadcore.edit.modify.scale",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "grip_positions",
+          "implementer": "cadcore.ops.edit_ops.grip_positions",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.rotate": "旋转",
+          "cmd.scale": "缩放"
+        },
+        "zh-CN": {
+          "cmd.rotate": "回転",
+          "cmd.scale": "尺度変更"
+        },
+        "ja": {
+          "cmd.rotate": "回転",
+          "cmd.scale": "尺度変更"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.rotate",
+          "cmd.scale"
+        ],
+        "zh-CN": [
+          "cmd.rotate",
+          "cmd.scale"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "sketch-mirror-keep",
+      "category": "sketch",
+      "title_zh": "以竖轴镜像一条线，并保留原线",
+      "note_zh": "keep_original=true 表示新增 1 条线。",
+      "label_keys": [
+        "cmd.mirror"
+      ],
+      "steps": [
+        {
+          "id": "ln",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                10000000,
+                0
+              ],
+              "p2": [
+                30000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "mir",
+          "api": "/api/command",
+          "body": {
+            "command": "mirror",
+            "args": {
+              "refs": [
+                "$ln.uuid"
+              ],
+              "p1_nm": [
+                0,
+                0
+              ],
+              "p2_nm": [
+                0,
+                10000000
+              ],
+              "keep_original": true
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "gap",
+          "api": "/api/command",
+          "body": {
+            "command": "measure_distance",
+            "args": {
+              "ref_a": "$ln.uuid",
+              "ref_b": "$mir.uuids[0]"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "doc_unchanged": 1,
+            "tokens": [
+              "distance_nm=20000000",
+              "dx_nm=-20000000",
+              "dy_nm=0",
+              "nearest_a_nm=10000000,0",
+              "nearest_b_nm=-10000000,0"
+            ],
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 2,
+        "dimensions": 0,
+        "created_total": 1,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "mirror",
+          "implementer": "cadcore.edit.modify.mirror",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "measure_distance",
+          "implementer": "cadcore.ops.hatch_measure.measure_distance",
+          "implementer_verified": 1,
+          "wire": "measure"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.mirror": "镜像"
+        },
+        "zh-CN": {
+          "cmd.mirror": "鏡像"
+        },
+        "ja": {
+          "cmd.mirror": "鏡像"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.mirror"
+        ],
+        "zh-CN": [
+          "cmd.mirror"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "sketch-offset",
+      "category": "sketch",
+      "title_zh": "把一条线偏移 5 mm",
+      "note_zh": "偏移面：side=1 与 side=-1 落在哪一侧由真件判定，本示例走 side=1。",
+      "label_keys": [
+        "cmd.offset"
+      ],
+      "steps": [
+        {
+          "id": "ln",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                40000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "off",
+          "api": "/api/command",
+          "body": {
+            "command": "offset",
+            "args": {
+              "ref": "$ln.uuid",
+              "distance_nm": 5000000,
+              "side": 1
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "gap",
+          "api": "/api/command",
+          "body": {
+            "command": "measure_distance",
+            "args": {
+              "ref_a": "$ln.uuid",
+              "ref_b": "$off.uuids[0]"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "doc_unchanged": 1,
+            "tokens": [
+              "distance_nm=5000000",
+              "dx_nm=0",
+              "dy_nm=5000000",
+              "nearest_a_nm=0,0",
+              "nearest_b_nm=0,5000000"
+            ],
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 2,
+        "dimensions": 0,
+        "created_total": 1,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "offset",
+          "implementer": "cadcore.edit.modify.offset",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "measure_distance",
+          "implementer": "cadcore.ops.hatch_measure.measure_distance",
+          "implementer_verified": 1,
+          "wire": "measure"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.offset": "偏移"
+        },
+        "zh-CN": {
+          "cmd.offset": "オフセット"
+        },
+        "ja": {
+          "cmd.offset": "オフセット"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.offset"
+        ],
+        "zh-CN": [
+          "cmd.offset"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "sketch-array-linear",
+      "category": "sketch",
+      "title_zh": "线性阵列 3 行 x 2 列（行距 20 mm、列距 10 mm）",
+      "note_zh": "1 条线 -> 6 条线，返回的 uuid 表只有新建的那 5 条。",
+      "label_keys": [
+        "cmd.array_linear"
+      ],
+      "steps": [
+        {
+          "id": "ln",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                10000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "arr",
+          "api": "/api/command",
+          "body": {
+            "command": "array_linear",
+            "args": {
+              "refs": [
+                "$ln.uuid"
+              ],
+              "rows": 3,
+              "cols": 2,
+              "dx_nm": 20000000,
+              "dy_nm": 10000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 6,
+            "dimensions": 0,
+            "created": 5,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "uuids_len": 5,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 6,
+        "dimensions": 0,
+        "created_total": 5,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "array_linear",
+          "implementer": "cadcore.edit.modify.array_linear",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.array_linear": "线性阵列"
+        },
+        "zh-CN": {
+          "cmd.array_linear": "直線配列"
+        },
+        "ja": {
+          "cmd.array_linear": "直線配列"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.array_linear"
+        ],
+        "zh-CN": [
+          "cmd.array_linear"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "sketch-fillet",
+      "category": "sketch",
+      "title_zh": "两条成直角边的 1 mm 圆角",
+      "note_zh": "圆角新增 1 条圆弧（实体数 +1），两条输入线被原地改写。",
+      "label_keys": [
+        "cmd.fillet"
+      ],
+      "steps": [
+        {
+          "id": "a",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                20000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "b",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                5000000,
+                -10000000
+              ],
+              "p2": [
+                5000000,
+                12000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "f",
+          "api": "/api/command",
+          "body": {
+            "command": "fillet",
+            "args": {
+              "ref_a": "$a.uuid",
+              "ref_b": "$b.uuid",
+              "radius_nm": 1000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 3,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 3,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 3,
+        "dimensions": 0,
+        "created_total": 1,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "fillet",
+          "implementer": "cadcore.edit.modify.fillet",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.fillet": "圆角"
+        },
+        "zh-CN": {
+          "cmd.fillet": "フィレット"
+        },
+        "ja": {
+          "cmd.fillet": "フィレット"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.fillet"
+        ],
+        "zh-CN": [
+          "cmd.fillet"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "sketch-chamfer",
+      "category": "sketch",
+      "title_zh": "两条成直角边的 1 mm 倒角",
+      "note_zh": "倒角新增 1 条直线（实体数 +1）。",
+      "label_keys": [
+        "cmd.chamfer"
+      ],
+      "steps": [
+        {
+          "id": "a",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                20000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "b",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                5000000,
+                -10000000
+              ],
+              "p2": [
+                5000000,
+                12000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "ch",
+          "api": "/api/command",
+          "body": {
+            "command": "chamfer",
+            "args": {
+              "ref_a": "$a.uuid",
+              "ref_b": "$b.uuid",
+              "distance_nm": 1000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 3,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 3,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 3,
+        "dimensions": 0,
+        "created_total": 1,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "chamfer",
+          "implementer": "cadcore.edit.modify.chamfer",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.chamfer": "倒角"
+        },
+        "zh-CN": {
+          "cmd.chamfer": "面取り"
+        },
+        "ja": {
+          "cmd.chamfer": "面取り"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.chamfer"
+        ],
+        "zh-CN": [
+          "cmd.chamfer"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "sketch-trim",
+      "category": "sketch",
+      "title_zh": "用竖线当剪切边，剪掉横线的左半段",
+      "note_zh": "修剪原地改写目标线（实体数不变）；最后一步现读目标线的夹点表，裁剪结果由坐标说话，不由标题断言。",
+      "label_keys": [
+        "cmd.trim"
+      ],
+      "steps": [
+        {
+          "id": "a",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                10000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "b",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                5000000,
+                -1000000
+              ],
+              "p2": [
+                5000000,
+                1000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "tr",
+          "api": "/api/command",
+          "body": {
+            "command": "trim",
+            "args": {
+              "target_ref": "$a.uuid",
+              "cutter_refs": [
+                "$b.uuid"
+              ],
+              "keep": "start"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 3,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "grips",
+          "api": "/api/command",
+          "body": {
+            "command": "grip_positions",
+            "args": {
+              "ref": "$a.uuid"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "doc_unchanged": 1,
+            "grips": {
+              "end": [
+                5000000,
+                0
+              ],
+              "mid": [
+                2500000,
+                0
+              ],
+              "start": [
+                0,
+                0
+              ]
+            },
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 2,
+        "dimensions": 0,
+        "created_total": 1,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "trim",
+          "implementer": "cadcore.edit.modify.trim",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "grip_positions",
+          "implementer": "cadcore.ops.edit_ops.grip_positions",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.trim": "修剪"
+        },
+        "zh-CN": {
+          "cmd.trim": "トリム"
+        },
+        "ja": {
+          "cmd.trim": "トリム"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.trim"
+        ],
+        "zh-CN": [
+          "cmd.trim"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "sketch-extend",
+      "category": "sketch",
+      "title_zh": "把横线延伸到竖线边界上",
+      "note_zh": "延伸原地改写（实体数不变）；边界必须显式点名，不猜最近的一条。最后一步现读夹点表，延伸后端点坐标可核对。",
+      "label_keys": [
+        "cmd.extend"
+      ],
+      "steps": [
+        {
+          "id": "a",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                5000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "b",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                8000000,
+                -1000000
+              ],
+              "p2": [
+                8000000,
+                1000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "ex",
+          "api": "/api/command",
+          "body": {
+            "command": "extend",
+            "args": {
+              "target_ref": "$a.uuid",
+              "boundary_refs": [
+                "$b.uuid"
+              ],
+              "end": "end"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 3,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "grips",
+          "api": "/api/command",
+          "body": {
+            "command": "grip_positions",
+            "args": {
+              "ref": "$a.uuid"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "doc_unchanged": 1,
+            "grips": {
+              "end": [
+                8000000,
+                0
+              ],
+              "mid": [
+                4000000,
+                0
+              ],
+              "start": [
+                0,
+                0
+              ]
+            },
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 2,
+        "dimensions": 0,
+        "created_total": 1,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "extend",
+          "implementer": "cadcore.edit.modify.extend",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "grip_positions",
+          "implementer": "cadcore.ops.edit_ops.grip_positions",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.extend": "延伸"
+        },
+        "zh-CN": {
+          "cmd.extend": "延長"
+        },
+        "ja": {
+          "cmd.extend": "延長"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.extend"
+        ],
+        "zh-CN": [
+          "cmd.extend"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "sketch-snap-hit-and-miss",
+      "category": "sketch",
+      "title_zh": "捕捉查询：近处命中端点，远处如实报 0 命中",
+      "note_zh": "同一个查询面两种结果：命中给真实点坐标，没命中给 hit=0 + snap=null —— 0 是真为零，不是没算。查询不动文档。",
+      "label_keys": [
+        "cmd.snap_query"
+      ],
+      "steps": [
+        {
+          "id": "ln",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                10000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "near",
+          "api": "/api/command",
+          "body": {
+            "command": "snap_query",
+            "args": {
+              "point_nm": [
+                1000,
+                1000
+              ],
+              "tolerance_nm": 5000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "hit": 1,
+            "doc_unchanged": 1,
+            "snap": {
+              "distance_nm": 1414,
+              "kind": "endpoint",
+              "point_nm": [
+                0,
+                0
+              ],
+              "ref": [
+                "<uuid:per-run>",
+                "start"
+              ]
+            },
+            "http_status": 200
+          }
+        },
+        {
+          "id": "far",
+          "api": "/api/command",
+          "body": {
+            "command": "snap_query",
+            "args": {
+              "point_nm": [
+                5000000,
+                50000000
+              ],
+              "tolerance_nm": 1000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "hit": 0,
+            "doc_unchanged": 1,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 1,
+        "dimensions": 0,
+        "created_total": -1,
+        "created_steps": 0
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "snap_query",
+          "implementer": "cadcore.precision.osnap.snap",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "snap_query",
+          "implementer": "cadcore.precision.osnap.snap",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.snap_query": "捕捉查询"
+        },
+        "zh-CN": {
+          "cmd.snap_query": "スナップ問い合わせ"
+        },
+        "ja": {
+          "cmd.snap_query": "スナップ問い合わせ"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.snap_query"
+        ],
+        "zh-CN": [
+          "cmd.snap_query"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [
+          "steps.near.result.snap.ref[0]"
+        ],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "sketch-grip-positions",
+      "category": "sketch",
+      "title_zh": "查一条直线的可拖拽夹点表",
+      "note_zh": "夹点是只读查询：给出 名称 -> [x,y] 的整数纳米表，不改文档。",
+      "label_keys": [
+        "cmd.line"
+      ],
+      "steps": [
+        {
+          "id": "ln",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                10000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "grips",
+          "api": "/api/command",
+          "body": {
+            "command": "grip_positions",
+            "args": {
+              "ref": "$ln.uuid"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "doc_unchanged": 1,
+            "grips": {
+              "end": [
+                10000000,
+                0
+              ],
+              "mid": [
+                5000000,
+                0
+              ],
+              "start": [
+                0,
+                0
+              ]
+            },
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 1,
+        "dimensions": 0,
+        "created_total": -1,
+        "created_steps": 0
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "grip_positions",
+          "implementer": "cadcore.ops.edit_ops.grip_positions",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.line": "Line"
+        },
+        "zh-CN": {
+          "cmd.line": "直线"
+        },
+        "ja": {
+          "cmd.line": "直線"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "sketch-explode-polyline",
+      "category": "sketch",
+      "title_zh": "把闭合多段线炸开成直线",
+      "note_zh": "炸开是 1 个实体 -> N 个实体，N 由真件按顶点数现算。",
+      "label_keys": [
+        "cmd.polyline"
+      ],
+      "steps": [
+        {
+          "id": "pl",
+          "api": "/api/command",
+          "body": {
+            "command": "add_polyline",
+            "args": {
+              "points_nm": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  20000000,
+                  0
+                ],
+                [
+                  20000000,
+                  10000000
+                ]
+              ],
+              "closed": true
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "ex",
+          "api": "/api/command",
+          "body": {
+            "command": "explode",
+            "args": {
+              "refs": [
+                "$pl.uuid"
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 3,
+            "dimensions": 0,
+            "created": 3,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "uuids_len": 3,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 3,
+        "dimensions": 0,
+        "created_total": 4,
+        "created_steps": 2
+      },
+      "surface": [
+        {
+          "verb": "add_polyline",
+          "implementer": "cadcore.sketch.primitives.add_polyline",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "explode",
+          "implementer": "cadcore.ops.edit_ops.explode",
+          "implementer_verified": 1,
+          "wire": "extra"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.polyline": "Polyline"
+        },
+        "zh-CN": {
+          "cmd.polyline": "多段线"
+        },
+        "ja": {
+          "cmd.polyline": "ポリライン"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "sketch-stretch-window",
+      "category": "sketch",
+      "title_zh": "用窗口拉伸：把线的右端点拉出去 10 mm",
+      "note_zh": "拉伸是窗口选择集算子：窗口内落下的端点被搬走，其余不动。最后一步现读夹点表，搬没搬由坐标说话。",
+      "label_keys": [
+        "cmd.line"
+      ],
+      "steps": [
+        {
+          "id": "ln",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                10000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "st",
+          "api": "/api/command",
+          "body": {
+            "command": "stretch",
+            "args": {
+              "refs": [
+                "$ln.uuid"
+              ],
+              "window_nm": [
+                9000000,
+                -1000000,
+                11000000,
+                1000000
+              ],
+              "dx_nm": 10000000,
+              "dy_nm": 0
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "grips",
+          "api": "/api/command",
+          "body": {
+            "command": "grip_positions",
+            "args": {
+              "ref": "$ln.uuid"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "doc_unchanged": 1,
+            "grips": {
+              "end": [
+                20000000,
+                0
+              ],
+              "mid": [
+                10000000,
+                0
+              ],
+              "start": [
+                0,
+                0
+              ]
+            },
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 1,
+        "dimensions": 0,
+        "created_total": 1,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "stretch",
+          "implementer": "cadcore.ops.draw_extra.stretch",
+          "implementer_verified": 1,
+          "wire": "extra"
+        },
+        {
+          "verb": "grip_positions",
+          "implementer": "cadcore.ops.edit_ops.grip_positions",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.line": "Line"
+        },
+        "zh-CN": {
+          "cmd.line": "直线"
+        },
+        "ja": {
+          "cmd.line": "直線"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "annotation-linear-dimension",
+      "category": "annotation",
+      "title_zh": "给 40 mm 直线标一条线性尺寸（驱动值 40 mm）",
+      "note_zh": "尺寸不算实体：dimensions +1、entities 不变。引用是 (uuid, 子形状名) 二元组。",
+      "label_keys": [
+        "cmd.dimension.linear"
+      ],
+      "steps": [
+        {
+          "id": "ln",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                40000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "dim",
+          "api": "/api/command",
+          "body": {
+            "command": "add_dimension",
+            "args": {
+              "kind": "linear",
+              "refs": [
+                [
+                  "$ln.uuid",
+                  "start"
+                ],
+                [
+                  "$ln.uuid",
+                  "end"
+                ]
+              ],
+              "value_nm": 40000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 1,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 1,
+        "dimensions": 1,
+        "created_total": -1,
+        "created_steps": 0
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "add_dimension",
+          "implementer": "cadcore.sketch.commands.add_dimension",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.dimension.linear": "Linear dimension"
+        },
+        "zh-CN": {
+          "cmd.dimension.linear": "线性尺寸"
+        },
+        "ja": {
+          "cmd.dimension.linear": "長さ寸法"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "annotation-radial-dimension",
+      "category": "annotation",
+      "title_zh": "给半径 15 mm 的圆标半径尺寸",
+      "note_zh": "半径/直径尺寸只收 1 个圆或弧引用。",
+      "label_keys": [
+        "cmd.dimension.radial"
+      ],
+      "steps": [
+        {
+          "id": "c",
+          "api": "/api/command",
+          "body": {
+            "command": "add_circle",
+            "args": {
+              "center": [
+                0,
+                0
+              ],
+              "radius_nm": 15000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "dim",
+          "api": "/api/command",
+          "body": {
+            "command": "add_dimension",
+            "args": {
+              "kind": "radial",
+              "refs": [
+                [
+                  "$c.uuid",
+                  ""
+                ]
+              ],
+              "value_nm": 15000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 1,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 1,
+        "dimensions": 1,
+        "created_total": -1,
+        "created_steps": 0
+      },
+      "surface": [
+        {
+          "verb": "add_circle",
+          "implementer": "cadcore.sketch.commands.add_circle",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "add_dimension",
+          "implementer": "cadcore.sketch.commands.add_dimension",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.dimension.radial": "Radial dimension"
+        },
+        "zh-CN": {
+          "cmd.dimension.radial": "半径尺寸"
+        },
+        "ja": {
+          "cmd.dimension.radial": "半径寸法"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "annotation-diameter-dimension",
+      "category": "annotation",
+      "title_zh": "给直径 30 mm 的圆标直径尺寸",
+      "note_zh": "直径尺寸与半径尺寸同一形状面，只是口径不同。",
+      "label_keys": [
+        "cmd.dimension.diameter"
+      ],
+      "steps": [
+        {
+          "id": "c",
+          "api": "/api/command",
+          "body": {
+            "command": "add_circle",
+            "args": {
+              "center": [
+                0,
+                0
+              ],
+              "radius_nm": 15000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "dim",
+          "api": "/api/command",
+          "body": {
+            "command": "add_dimension",
+            "args": {
+              "kind": "diameter",
+              "refs": [
+                [
+                  "$c.uuid",
+                  ""
+                ]
+              ],
+              "value_nm": 30000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 1,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 1,
+        "dimensions": 1,
+        "created_total": -1,
+        "created_steps": 0
+      },
+      "surface": [
+        {
+          "verb": "add_circle",
+          "implementer": "cadcore.sketch.commands.add_circle",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "add_dimension",
+          "implementer": "cadcore.sketch.commands.add_dimension",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.dimension.diameter": "Diameter dimension"
+        },
+        "zh-CN": {
+          "cmd.dimension.diameter": "直径尺寸"
+        },
+        "ja": {
+          "cmd.dimension.diameter": "直径寸法"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "annotation-angular-dimension",
+      "category": "annotation",
+      "title_zh": "两条垂直边的 90 度角度尺寸",
+      "note_zh": "角度尺寸的 value_nm 是微度（90 度 = 90000000），引用必须是两条整线。",
+      "label_keys": [
+        "cmd.dimension.angular"
+      ],
+      "steps": [
+        {
+          "id": "a",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                20000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "b",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                0,
+                20000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "dim",
+          "api": "/api/command",
+          "body": {
+            "command": "add_dimension",
+            "args": {
+              "kind": "angular",
+              "refs": [
+                [
+                  "$a.uuid",
+                  ""
+                ],
+                [
+                  "$b.uuid",
+                  ""
+                ]
+              ],
+              "value_nm": 90000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 1,
+            "undo_depth": 3,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 2,
+        "dimensions": 1,
+        "created_total": -1,
+        "created_steps": 0
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "add_dimension",
+          "implementer": "cadcore.sketch.commands.add_dimension",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.dimension.angular": "Angular dimension"
+        },
+        "zh-CN": {
+          "cmd.dimension.angular": "角度尺寸"
+        },
+        "ja": {
+          "cmd.dimension.angular": "角度寸法"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "annotation-measure-area-perimeter",
+      "category": "annotation",
+      "title_zh": "量 40x20 mm 矩形的面积与周长",
+      "note_zh": "只读测量：token 原样回；没有闭合环时回 NA（不适用），不与算出来是 0 同形。",
+      "label_keys": [
+        "cmd.rectangle"
+      ],
+      "steps": [
+        {
+          "id": "rect",
+          "api": "/api/command",
+          "body": {
+            "command": "add_rectangle",
+            "args": {
+              "p1_nm": [
+                0,
+                0
+              ],
+              "p2_nm": [
+                40000000,
+                20000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 4,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 4,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "area",
+          "api": "/api/command",
+          "body": {
+            "command": "measure_area",
+            "args": {
+              "boundary": [
+                "$rect.uuids[0]",
+                "$rect.uuids[1]",
+                "$rect.uuids[2]",
+                "$rect.uuids[3]"
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "loop_count": "1",
+            "closed": "1",
+            "doc_unchanged": 1,
+            "tokens": [
+              "area_nm2=800000000000000",
+              "outer_area_nm2=800000000000000",
+              "hole_area_nm2=0",
+              "perimeter_nm=120000000",
+              "loop_count=1",
+              "closed=1"
+            ],
+            "http_status": 200
+          }
+        },
+        {
+          "id": "peri",
+          "api": "/api/command",
+          "body": {
+            "command": "measure_perimeter",
+            "args": {
+              "boundary": [
+                "$rect.uuids[0]",
+                "$rect.uuids[1]",
+                "$rect.uuids[2]",
+                "$rect.uuids[3]"
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "closed": "1",
+            "doc_unchanged": 1,
+            "tokens": [
+              "perimeter_nm=120000000",
+              "curve_count=4",
+              "closed=1"
+            ],
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 4,
+        "dimensions": 0,
+        "created_total": 4,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_rectangle",
+          "implementer": "cadcore.sketch.primitives.add_rectangle",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "measure_area",
+          "implementer": "cadcore.ops.hatch_measure.measure_area",
+          "implementer_verified": 1,
+          "wire": "measure"
+        },
+        {
+          "verb": "measure_perimeter",
+          "implementer": "cadcore.ops.hatch_measure.measure_perimeter",
+          "implementer_verified": 1,
+          "wire": "measure"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.rectangle": "矩形"
+        },
+        "zh-CN": {
+          "cmd.rectangle": "長方形"
+        },
+        "ja": {
+          "cmd.rectangle": "長方形"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {
+        "en": [
+          "cmd.rectangle"
+        ],
+        "zh-CN": [
+          "cmd.rectangle"
+        ]
+      },
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "annotation-measure-open-profile-na",
+      "category": "annotation",
+      "title_zh": "量一条不闭合的轮廓：面积回 NA（不适用），周长照样给真数",
+      "note_zh": "同两条平行线：面积面一个闭合环都没有 -> area_nm2=NA；周长面回真长度、closed=0。NA 不是 0 —— 没有闭合轮廓与面积为零是两件事。",
+      "label_keys": [
+        "cmd.line"
+      ],
+      "steps": [
+        {
+          "id": "a",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                40000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "b",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                10000000
+              ],
+              "p2": [
+                40000000,
+                10000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "area",
+          "api": "/api/command",
+          "body": {
+            "command": "measure_area",
+            "args": {
+              "boundary": [
+                "$a.uuid",
+                "$b.uuid"
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "loop_count": "0",
+            "closed": "0",
+            "doc_unchanged": 1,
+            "tokens": [
+              "area_nm2=NA",
+              "outer_area_nm2=NA",
+              "hole_area_nm2=NA",
+              "perimeter_nm=NA",
+              "loop_count=0",
+              "closed=0"
+            ],
+            "http_status": 200
+          }
+        },
+        {
+          "id": "peri",
+          "api": "/api/command",
+          "body": {
+            "command": "measure_perimeter",
+            "args": {
+              "boundary": [
+                "$a.uuid",
+                "$b.uuid"
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "closed": "0",
+            "doc_unchanged": 1,
+            "tokens": [
+              "perimeter_nm=80000000",
+              "curve_count=2",
+              "closed=0"
+            ],
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 2,
+        "dimensions": 0,
+        "created_total": -1,
+        "created_steps": 0
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "measure_area",
+          "implementer": "cadcore.ops.hatch_measure.measure_area",
+          "implementer_verified": 1,
+          "wire": "measure"
+        },
+        {
+          "verb": "measure_perimeter",
+          "implementer": "cadcore.ops.hatch_measure.measure_perimeter",
+          "implementer_verified": 1,
+          "wire": "measure"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.line": "Line"
+        },
+        "zh-CN": {
+          "cmd.line": "直线"
+        },
+        "ja": {
+          "cmd.line": "直線"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "annotation-measure-distance",
+      "category": "annotation",
+      "title_zh": "量两条平行线之间的距离",
+      "note_zh": "实体-实体距离按离散点列取最近点对，最近点坐标也一起回。",
+      "label_keys": [
+        "cmd.line"
+      ],
+      "steps": [
+        {
+          "id": "a",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                0
+              ],
+              "p2": [
+                40000000,
+                0
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "b",
+          "api": "/api/command",
+          "body": {
+            "command": "add_line",
+            "args": {
+              "p1": [
+                0,
+                12000000
+              ],
+              "p2": [
+                40000000,
+                12000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "dist",
+          "api": "/api/command",
+          "body": {
+            "command": "measure_distance",
+            "args": {
+              "ref_a": "$a.uuid",
+              "ref_b": "$b.uuid"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 2,
+            "dimensions": 0,
+            "doc_unchanged": 1,
+            "tokens": [
+              "distance_nm=12000000",
+              "dx_nm=0",
+              "dy_nm=12000000",
+              "nearest_a_nm=0,0",
+              "nearest_b_nm=0,12000000"
+            ],
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 2,
+        "dimensions": 0,
+        "created_total": -1,
+        "created_steps": 0
+      },
+      "surface": [
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "add_line",
+          "implementer": "cadcore.sketch.commands.add_line",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "measure_distance",
+          "implementer": "cadcore.ops.hatch_measure.measure_distance",
+          "implementer_verified": 1,
+          "wire": "measure"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.line": "Line"
+        },
+        "zh-CN": {
+          "cmd.line": "直线"
+        },
+        "ja": {
+          "cmd.line": "直線"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "annotation-hatch-fill",
+      "category": "annotation",
+      "title_zh": "在矩形内部点一下，直接填充图案",
+      "note_zh": "HATCH 口径：从内部点反求闭合边界再填充；边界成员 uuid 原样回给前端。",
+      "label_keys": [
+        "cmd.hatch"
+      ],
+      "steps": [
+        {
+          "id": "rect",
+          "api": "/api/command",
+          "body": {
+            "command": "add_rectangle",
+            "args": {
+              "p1_nm": [
+                0,
+                0
+              ],
+              "p2_nm": [
+                40000000,
+                20000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 4,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 4,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "hatch",
+          "api": "/api/command",
+          "body": {
+            "command": "hatch",
+            "args": {
+              "point_nm": [
+                10000000,
+                10000000
+              ],
+              "pattern": "lines"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 8,
+            "dimensions": 0,
+            "created": 4,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "uuids_len": 4,
+            "boundary_len": 4,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 8,
+        "dimensions": 0,
+        "created_total": 8,
+        "created_steps": 2
+      },
+      "surface": [
+        {
+          "verb": "add_rectangle",
+          "implementer": "cadcore.sketch.primitives.add_rectangle",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "hatch",
+          "implementer": "cadcore.ops.hatch_measure.hatch_create",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.hatch": "Hatch"
+        },
+        "zh-CN": {
+          "cmd.hatch": "图案填充"
+        },
+        "ja": {
+          "cmd.hatch": "ハッチング"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "annotation-revcloud-rect",
+      "category": "annotation",
+      "title_zh": "修订云线：圈住 40x20 mm 的复核区",
+      "note_zh": "复核标记是标注面的一种：落成 1 条云线（多段线）实体。",
+      "label_keys": [
+        "cmd.revcloud"
+      ],
+      "steps": [
+        {
+          "id": "cloud",
+          "api": "/api/command",
+          "body": {
+            "command": "revcloud_rect",
+            "args": {
+              "center_nm": [
+                20000000,
+                10000000
+              ],
+              "width_nm": 40000000,
+              "height_nm": 20000000,
+              "arc_length_nm": 5000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 1,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 1,
+        "dimensions": 0,
+        "created_total": 1,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "revcloud_rect",
+          "implementer": "cadcore.ops.draw_ops_extra.revcloud_rect",
+          "implementer_verified": 1,
+          "wire": "extra"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.revcloud": "Revision cloud"
+        },
+        "zh-CN": {
+          "cmd.revcloud": "修订云线"
+        },
+        "ja": {
+          "cmd.revcloud": "改訂雲マーク"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "export-dxf-with-dimension",
+      "category": "export",
+      "title_zh": "导出 DXF：矩形 + 一条线性尺寸",
+      "note_zh": "dimension_entities 是从落盘字节里数出来的 DIMENSION 记录数；草图尺寸没有图纸定位，只记 999 注释，数出来就是 0（真为零）。",
+      "label_keys": [
+        "cmd.export.dxf"
+      ],
+      "steps": [
+        {
+          "id": "rect",
+          "api": "/api/command",
+          "body": {
+            "command": "add_rectangle",
+            "args": {
+              "p1_nm": [
+                0,
+                0
+              ],
+              "p2_nm": [
+                40000000,
+                20000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 4,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 4,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "dim",
+          "api": "/api/command",
+          "body": {
+            "command": "add_dimension",
+            "args": {
+              "kind": "linear",
+              "refs": [
+                [
+                  "$rect.uuids[0]",
+                  "start"
+                ],
+                [
+                  "$rect.uuids[0]",
+                  "end"
+                ]
+              ],
+              "value_nm": 40000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 1,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "dxf",
+          "api": "/api/export/dxf",
+          "body": {
+            "path": "examples/export-dxf.dxf"
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "bytes": 770,
+            "dimension_entities": 0,
+            "document_dimensions": 1,
+            "document_annotations": 0,
+            "annotation_texts": 0,
+            "dxf_mode": "sketch",
+            "file": {
+              "rel": "examples/export-dxf.dxf",
+              "on_disk_bytes": 770,
+              "sha256": "2f9568640c05e8e8feec0ca206acb361ad425b045ce806545ebf99eb76dd7b40"
+            },
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 4,
+        "dimensions": 1,
+        "created_total": 4,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_rectangle",
+          "implementer": "cadcore.sketch.primitives.add_rectangle",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "add_dimension",
+          "implementer": "cadcore.sketch.commands.add_dimension",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "/api/export/dxf",
+          "implementer": "cadcore.io.dxf_bridge.sketch_to_dxf",
+          "implementer_verified": 1,
+          "wire": "route"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.export.dxf": "Export DXF…"
+        },
+        "zh-CN": {
+          "cmd.export.dxf": "导出 DXF…"
+        },
+        "ja": {
+          "cmd.export.dxf": "DXF を書き出す…"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "export-pdf-via-command",
+      "category": "export",
+      "title_zh": "导出 PDF：export_pdf 命令真出 PDF 字节",
+      "note_zh": "magic 是现读落盘文件头得到的，不是把常量回显一遍。",
+      "label_keys": [
+        "cmd.export.pdf"
+      ],
+      "steps": [
+        {
+          "id": "rect",
+          "api": "/api/command",
+          "body": {
+            "command": "add_rectangle",
+            "args": {
+              "p1_nm": [
+                0,
+                0
+              ],
+              "p2_nm": [
+                40000000,
+                20000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 4,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 4,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "pdf",
+          "api": "/api/command",
+          "body": {
+            "command": "export_pdf",
+            "args": {
+              "out": "examples/export.pdf"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 59,
+            "pages": 1,
+            "bytes": 3328,
+            "magic": "%PDF-1.4",
+            "writer": "builtin_pdf:sw_drawings_extra.render_pdf",
+            "sheet_uuid": "<uuid:per-run>",
+            "pdf_sheet_uuid": "<uuid:per-run>",
+            "stream_bytes": 2738,
+            "paths": 32,
+            "file": {
+              "rel": "examples/export.pdf",
+              "on_disk_bytes": 3328,
+              "sha256": "26371c469d1ce1d8227cd5f61815041746b71c6c2424da6a0084e1f10f2046f8"
+            },
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 4,
+        "dimensions": 0,
+        "created_total": 4,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_rectangle",
+          "implementer": "cadcore.sketch.primitives.add_rectangle",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "export_pdf",
+          "implementer": "cadcore.ops.sw_drawings_extra.render_pdf",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.export.pdf": "Export PDF…"
+        },
+        "zh-CN": {
+          "cmd.export.pdf": "导出 PDF…"
+        },
+        "ja": {
+          "cmd.export.pdf": "PDF を書き出す…"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [
+          "steps.pdf.result.pdf_sheet_uuid",
+          "steps.pdf.result.sheet_uuid"
+        ],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "export-save-and-reopen",
+      "category": "export",
+      "title_zh": "存成 L1 文本，再读回来（往返不丢实体）",
+      "note_zh": "L1 文本是文档真源：save_l1 落盘、load_l1 读回，实体数与尺寸数必须一模一样。",
+      "label_keys": [
+        "cmd.save",
+        "cmd.open"
+      ],
+      "steps": [
+        {
+          "id": "rect",
+          "api": "/api/command",
+          "body": {
+            "command": "add_rectangle",
+            "args": {
+              "p1_nm": [
+                0,
+                0
+              ],
+              "p2_nm": [
+                40000000,
+                20000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 4,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 4,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "dim",
+          "api": "/api/command",
+          "body": {
+            "command": "add_dimension",
+            "args": {
+              "kind": "linear",
+              "refs": [
+                [
+                  "$rect.uuids[0]",
+                  "start"
+                ],
+                [
+                  "$rect.uuids[0]",
+                  "end"
+                ]
+              ],
+              "value_nm": 40000000
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 1,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "save",
+          "api": "/api/save",
+          "body": {
+            "path": "examples/roundtrip.l1"
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "bytes": 3153,
+            "file": {
+              "rel": "examples/roundtrip.l1",
+              "on_disk_bytes": 3153,
+              "sha256": -1
+            },
+            "http_status": 200
+          }
+        },
+        {
+          "id": "open",
+          "api": "/api/open",
+          "method": "GET",
+          "query": {
+            "path": "examples/roundtrip.l1"
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 1,
+            "file": {
+              "rel": "examples/roundtrip.l1",
+              "on_disk_bytes": 3153,
+              "sha256": -1
+            },
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 4,
+        "dimensions": 1,
+        "created_total": 4,
+        "created_steps": 1
+      },
+      "surface": [
+        {
+          "verb": "add_rectangle",
+          "implementer": "cadcore.sketch.primitives.add_rectangle",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "add_dimension",
+          "implementer": "cadcore.sketch.commands.add_dimension",
+          "implementer_verified": 1,
+          "wire": "explicit"
+        },
+        {
+          "verb": "/api/save",
+          "implementer": "cadcore.docmodel.save_l1",
+          "implementer_verified": 1,
+          "wire": "route"
+        },
+        {
+          "verb": "/api/open",
+          "implementer": "cadcore.docmodel.load_l1",
+          "implementer_verified": 1,
+          "wire": "route"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.save": "Save",
+          "cmd.open": "Open…"
+        },
+        "zh-CN": {
+          "cmd.save": "保存",
+          "cmd.open": "打开…"
+        },
+        "ja": {
+          "cmd.save": "保存",
+          "cmd.open": "開く…"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": [
+          "steps.save.result.file.sha256",
+          "steps.open.result.file.sha256"
+        ]
+      }
+    },
+    {
+      "id": "export-layout-viewport-preview",
+      "category": "export",
+      "title_zh": "建 A3 布局 + 开一个视图 + 出打印预览 SVG",
+      "note_zh": "出图面是文档级直通：布局/视口落在 document.sheets[]，预览真落盘成 SVG。",
+      "label_keys": [
+        "cmd.export.svg"
+      ],
+      "steps": [
+        {
+          "id": "rect",
+          "api": "/api/command",
+          "body": {
+            "command": "add_rectangle",
+            "args": {
+              "p1_nm": [
+                0,
+                0
+              ],
+              "p2_nm": [
+                40000000,
+                20000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 4,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 4,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "lay",
+          "api": "/api/command",
+          "body": {
+            "command": "create_layout",
+            "args": {
+              "name": "A3-REVIEW",
+              "size": "A3",
+              "scale": "1:1"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "vp",
+          "api": "/api/command",
+          "body": {
+            "command": "create_viewport",
+            "args": {
+              "sheet_uuid": "$lay.uuid",
+              "view": "front"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 3,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "prev",
+          "api": "/api/command",
+          "body": {
+            "command": "preview",
+            "args": {
+              "sheet_uuid": "$lay.uuid",
+              "out": "examples/preview.svg"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 4,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "file": {
+              "rel": "examples/preview.svg",
+              "on_disk_bytes": 9717,
+              "sha256": "7c7537309b7772c615562572ecf2e6c5916b32a285a573905975d156716d01fd"
+            },
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 4,
+        "dimensions": 0,
+        "created_total": 7,
+        "created_steps": 4
+      },
+      "surface": [
+        {
+          "verb": "add_rectangle",
+          "implementer": "cadcore.sketch.primitives.add_rectangle",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "create_layout",
+          "implementer": "cadcore.ops.output.OPERATIONS[create_layout]",
+          "implementer_verified": 1,
+          "wire": "doc_passthrough"
+        },
+        {
+          "verb": "create_viewport",
+          "implementer": "cadcore.ops.output.OPERATIONS[create_viewport]",
+          "implementer_verified": 1,
+          "wire": "doc_passthrough"
+        },
+        {
+          "verb": "preview",
+          "implementer": "cadcore.ops.output.OPERATIONS[preview]",
+          "implementer_verified": 1,
+          "wire": "doc_passthrough"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.export.svg": "Export SVG…"
+        },
+        "zh-CN": {
+          "cmd.export.svg": "导出 SVG…"
+        },
+        "ja": {
+          "cmd.export.svg": "SVG を書き出す…"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    },
+    {
+      "id": "export-plot-pdf-sheet",
+      "category": "export",
+      "title_zh": "把布局打印成 PDF（plot_pdf）",
+      "note_zh": "打印到 PDF 是出图面的真 PDF 半边：给全 sheet_uuid + out 才落盘。",
+      "label_keys": [
+        "cmd.export.pdf"
+      ],
+      "steps": [
+        {
+          "id": "rect",
+          "api": "/api/command",
+          "body": {
+            "command": "add_rectangle",
+            "args": {
+              "p1_nm": [
+                0,
+                0
+              ],
+              "p2_nm": [
+                40000000,
+                20000000
+              ]
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 4,
+            "undo_depth": 1,
+            "redo_depth": 0,
+            "uuids_len": 4,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "lay",
+          "api": "/api/command",
+          "body": {
+            "command": "create_layout",
+            "args": {
+              "name": "A3-PLOT",
+              "size": "A3",
+              "scale": "1:1"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 2,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "vp",
+          "api": "/api/command",
+          "body": {
+            "command": "create_viewport",
+            "args": {
+              "sheet_uuid": "$lay.uuid",
+              "view": "front"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 3,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "http_status": 200
+          }
+        },
+        {
+          "id": "plot",
+          "api": "/api/command",
+          "body": {
+            "command": "plot_pdf",
+            "args": {
+              "sheet_uuid": "$lay.uuid",
+              "out": "examples/plot.pdf"
+            }
+          },
+          "result": {
+            "ok": 1,
+            "entities": 4,
+            "dimensions": 0,
+            "created": 1,
+            "undo_depth": 4,
+            "redo_depth": 0,
+            "uuids_len": 1,
+            "file": {
+              "rel": "examples/plot.pdf",
+              "on_disk_bytes": 4394,
+              "sha256": "4ffe1fabd3011a98ddcfe71181c631ba754c8455bac89a122612b97b25062db8"
+            },
+            "http_status": 200
+          }
+        }
+      ],
+      "observed": {
+        "entities": 4,
+        "dimensions": 0,
+        "created_total": 7,
+        "created_steps": 4
+      },
+      "surface": [
+        {
+          "verb": "add_rectangle",
+          "implementer": "cadcore.sketch.primitives.add_rectangle",
+          "implementer_verified": 1,
+          "wire": "passthrough"
+        },
+        {
+          "verb": "create_layout",
+          "implementer": "cadcore.ops.output.OPERATIONS[create_layout]",
+          "implementer_verified": 1,
+          "wire": "doc_passthrough"
+        },
+        {
+          "verb": "create_viewport",
+          "implementer": "cadcore.ops.output.OPERATIONS[create_viewport]",
+          "implementer_verified": 1,
+          "wire": "doc_passthrough"
+        },
+        {
+          "verb": "plot_pdf",
+          "implementer": "cadcore.ops.output.OPERATIONS[plot_pdf]",
+          "implementer_verified": 1,
+          "wire": "doc_passthrough"
+        }
+      ],
+      "labels": {
+        "en": {
+          "cmd.export.pdf": "Export PDF…"
+        },
+        "zh-CN": {
+          "cmd.export.pdf": "导出 PDF…"
+        },
+        "ja": {
+          "cmd.export.pdf": "PDF を書き出す…"
+        }
+      },
+      "labels_missing": {},
+      "labels_from_duplicate_key": {},
+      "verified": {
+        "all_steps_ok": 1,
+        "runs": 2,
+        "normalized_uuid_fields": [],
+        "unstable_fields": []
+      }
+    }
+  ]
+}

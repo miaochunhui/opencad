@@ -1,0 +1,4763 @@
+{
+  "created_at": "2026-10-11T01:36:09.470096+00:00",
+  "excluded": [
+    {
+      "path": "oss-alternatives/apps/opencad/build",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/apps/opencad/docs",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/apps/opencad/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/apps/opencad/packaging",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/apps/opencad/tests/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/.pytest_cache",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/precision/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/draw/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/sketch/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/kernel/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/io/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/ops/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/ops/precision_ops.py.orig",
+      "reason": "not source/fixture allowlist"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/ops/features/.edit_ops__w10.py.3222776.4e4b6f90-059f-4f49-b5bc-1ba432a3d43f.tmpdir",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/ops/features/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/ops/features/.draw_ops__w17.py.3222776.5233a220-d799-4ba4-9062-61471358df67.tmpdir",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/ops/features/.sw_assembly__w22.py.3222776.46d9cd7c-2f80-402c-a667-9293397fb4f3.tmpdir",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/ops/features/.sw_assembly__w15.py.3222776.15124ad8-38ab-45a9-8e40-1177cf8abb8f.tmpdir",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/ops/features/MEASUREMENT-GAPS.md",
+      "reason": "not source/fixture allowlist"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/ops/features/COLLISIONS.md",
+      "reason": "not source/fixture allowlist"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/ops/features/QUARANTINE-TRIAGE.md",
+      "reason": "not source/fixture allowlist"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/ops/features/QUARANTINE.md",
+      "reason": "not source/fixture allowlist"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/i18n/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/geom/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/cadcore/edit/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/cadcore/tests/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/dxf/tests/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    },
+    {
+      "path": "oss-alternatives/packages/dxf/dxf/__pycache__",
+      "reason": "generated/desktop/evidence directory"
+    }
+  ],
+  "files": {
+    "oss-alternatives/apps/opencad/README.md": {
+      "bytes": 14272,
+      "sha256": "cd6b8baf8e93650c8a154a70cb0baeb303c5197bc35c8825ca692c5d72e4004b"
+    },
+    "oss-alternatives/apps/opencad/release_state.py": {
+      "bytes": 10480,
+      "sha256": "c022a9cf28190693a55d5ed69570d5f87cefb1bfbbfeab07001d2b1b206c55d2"
+    },
+    "oss-alternatives/apps/opencad/selfcheck.py": {
+      "bytes": 8935,
+      "sha256": "c5c6065b7bea55005584f4543d5a04481d5d59568a2f4cc7512f9165a8adc95b"
+    },
+    "oss-alternatives/apps/opencad/server.py": {
+      "bytes": 104834,
+      "sha256": "4f821cc7fe037cde502ea563e9d49a613578fedf37fbbeccc87541e1e82abd7c"
+    },
+    "oss-alternatives/apps/opencad/solid_commands.py": {
+      "bytes": 5454,
+      "sha256": "3fedcf9f78d0311eb34de04bdc94391b81e82167a5a0a26ee3ece4cf8c75f4a4"
+    },
+    "oss-alternatives/apps/opencad/tests/__init__.py": {
+      "bytes": 90,
+      "sha256": "5dec1d7576e4cb6c6d37cb7ae4f19ee2d2b1f16b0aea6e9a75b757f10e2981bc"
+    },
+    "oss-alternatives/apps/opencad/tests/legacy_browser_compat_gate.py": {
+      "bytes": 27961,
+      "sha256": "ef4209b7dfbb15d69b4aa10ea5b22707ece401dccc2010d877f201e03640a016"
+    },
+    "oss-alternatives/apps/opencad/tests/test_a10_doc_command_surface.py": {
+      "bytes": 13716,
+      "sha256": "2f2d2388de380e43dd2363005684080c81303564cd1847d15659efa7c3e85583"
+    },
+    "oss-alternatives/apps/opencad/tests/test_advanced_solids.py": {
+      "bytes": 7085,
+      "sha256": "f7d30c894a8adabf2f2357d4c11bef9a058bd067ead58c6494577df1f8f85448"
+    },
+    "oss-alternatives/apps/opencad/tests/test_advanced_ui_review.py": {
+      "bytes": 52757,
+      "sha256": "0c9bdb5cc07f101c6452ba15d57188c2573848c68821ce942020c254bc4959c1"
+    },
+    "oss-alternatives/apps/opencad/tests/test_b6_param_boundary.py": {
+      "bytes": 18704,
+      "sha256": "871cca7dfa3656a72c99000b4ec17cc2f5fef76e68a0e7ebb7098278b233d78b"
+    },
+    "oss-alternatives/apps/opencad/tests/test_b6_param_gate_api.py": {
+      "bytes": 16678,
+      "sha256": "3ff887768fbd28352c6a30e1b54658a713f1ff2bfb72b589f12c214937e35582"
+    },
+    "oss-alternatives/apps/opencad/tests/test_b6_product_defects.py": {
+      "bytes": 17283,
+      "sha256": "ae2ce84bb5a3d41728ecb97a45180e1b8d6b224db5b4f9148e0918850d16684a"
+    },
+    "oss-alternatives/apps/opencad/tests/test_g28_dxf_scope_real_paths.py": {
+      "bytes": 13078,
+      "sha256": "d11d3143c664a424c780f811efe3ae868bad7d722ab57622b4383ad8ab7490ad"
+    },
+    "oss-alternatives/apps/opencad/tests/test_legacy_browser_compat_gate.py": {
+      "bytes": 2493,
+      "sha256": "bd1f763dd32bf7bccda92c10ed859552d1167a02a622bea305c5b28c49f14457"
+    },
+    "oss-alternatives/apps/opencad/tests/test_release_ack_review.py": {
+      "bytes": 34468,
+      "sha256": "2dabf2b10dff5a13b9cb348f60ecff6b40bb42e94986ae3fd564c1b2861c342f"
+    },
+    "oss-alternatives/apps/opencad/tests/test_release_output_destinations.py": {
+      "bytes": 23939,
+      "sha256": "2988f93ffc7007a5eeffa1fe564ffeda303afe5f19081935645ac467d4f81f3f"
+    },
+    "oss-alternatives/apps/opencad/tests/test_release_state.py": {
+      "bytes": 5724,
+      "sha256": "06172ba630f5ece4ecdd4e4e1a4598ed303ce24c3490a0c09a0e88c8843d5e65"
+    },
+    "oss-alternatives/apps/opencad/tests/test_server.py": {
+      "bytes": 50474,
+      "sha256": "327c5ca6d8016581fc9b2291b79214390594b988cc9f69afdc9e1b9168c7ae82"
+    },
+    "oss-alternatives/apps/opencad/tests/test_server_shutdown.py": {
+      "bytes": 16010,
+      "sha256": "d9702efbc02dcd55f039592dcbbed58c1328d3febf6bfc9a81d0b3e3bdbdb1d8"
+    },
+    "oss-alternatives/apps/opencad/tests/test_solid_atomic_review.py": {
+      "bytes": 50192,
+      "sha256": "42f3e5abd25be9914b21f7f41c6b03ac311ca75a9792da53af7426e1470354ee"
+    },
+    "oss-alternatives/apps/opencad/tests/test_ui_accessible_i18n.py": {
+      "bytes": 20633,
+      "sha256": "b4a9eec5eb74be700c17c06673b8c25a50edd229ca40776c6073af5af6bb3595"
+    },
+    "oss-alternatives/apps/opencad/tests/test_ui_gate_contract.py": {
+      "bytes": 13959,
+      "sha256": "d8b7b8f9af43b937a387f1cf5c737b86122eb919c3f6457bb1ebae022a1acb38"
+    },
+    "oss-alternatives/apps/opencad/tests/test_viewer3d_controls.py": {
+      "bytes": 14448,
+      "sha256": "e7deb056b1e87d167ef4a6edc0c49ecdef17154d0b560679272a27cbd1df7535"
+    },
+    "oss-alternatives/apps/opencad/tests/test_web3d.py": {
+      "bytes": 6147,
+      "sha256": "fc94883d375261cf0b07927761cfbafc87ada7774f1610e5d96bd6849c19d780"
+    },
+    "oss-alternatives/apps/opencad/tools/staged_probe_20260930.py": {
+      "bytes": 9918,
+      "sha256": "ef8d16ba989ba9cfb2d49024107104e72d8ac97dde33561029285c351e2f3ec4"
+    },
+    "oss-alternatives/apps/opencad/viewer3d_page.py": {
+      "bytes": 5509,
+      "sha256": "8e0707d1b0a2c91cb4990a518d83d030c348309270b934b7a7f9a9a5f40d9237"
+    },
+    "oss-alternatives/apps/opencad/web/css/app.css": {
+      "bytes": 23612,
+      "sha256": "ecef186a56e8ea8d05b795d0bf1996edbcb640e2436ffdc9c96953e136f8ecef"
+    },
+    "oss-alternatives/apps/opencad/web/css/viewer3d.css": {
+      "bytes": 3545,
+      "sha256": "05ccf53c0324a20cb1680005d1213c61abfa297a621bfab96943c3e9f2942233"
+    },
+    "oss-alternatives/apps/opencad/web/examples.json": {
+      "bytes": 127920,
+      "sha256": "1fd4b2868ac70ed9a63841f08a331bd6541bcdbc61833d61590a269f97d7fcf6"
+    },
+    "oss-alternatives/apps/opencad/web/index.html": {
+      "bytes": 30212,
+      "sha256": "5abca314bf7012e91bb6af5d3071d9e9f9f98c818fe4e46622e108210a4ff1ad"
+    },
+    "oss-alternatives/apps/opencad/web/js/advanced3d.js": {
+      "bytes": 9626,
+      "sha256": "2ef2237b725de5377a3c640f97c00d8f9be4b6917415594ec61be5c86f8cf648"
+    },
+    "oss-alternatives/apps/opencad/web/js/app.js": {
+      "bytes": 154019,
+      "sha256": "18dd43932feeabec17abd53a8bf5ebbc149c6b4b9e3641cbf82f13c2b5eea9a8"
+    },
+    "oss-alternatives/apps/opencad/web/js/shell.js": {
+      "bytes": 17485,
+      "sha256": "022827eca68ba6fe610b6029cfe7f396c28cd43d4ef8a7d0e21006643c0320ba"
+    },
+    "oss-alternatives/apps/opencad/web/js/viewer3d.js": {
+      "bytes": 15021,
+      "sha256": "60bbb4f42f4927893ae6a6156489f929dfb181e2b8fa7029a8db2cc4e49a7f06"
+    },
+    "oss-alternatives/apps/opencad/web/web-i18n.json": {
+      "bytes": 57939,
+      "sha256": "e7d0887f1c210850aa74c27ad04aff724f6e9476fc5f3393fb418034f775ae82"
+    },
+    "oss-alternatives/docs/design/opencad-web-product-scope.md": {
+      "bytes": 10311,
+      "sha256": "f4dd3c3c59eeab7cf61d5ffc38022bd9055c80344b5957ed8a20e48c0af854f4"
+    },
+    "oss-alternatives/license-manifest.json": {
+      "bytes": 2775,
+      "sha256": "2b31e8d3592f44a755bc3398edd0adc3620e82a8e0aaf227e901deecfcebaa37"
+    },
+    "oss-alternatives/packages/cadcore/README.md": {
+      "bytes": 8975,
+      "sha256": "519f2ffdfe0c69141d4c14d1de7eddfc34bf6031e50d6321072b748e54315999"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/__init__.py": {
+      "bytes": 2656,
+      "sha256": "a7b54810ad84e8c4b7937f91bc90defe284078591f23b042bc44399b881dd920"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/data/i18n/en.json": {
+      "bytes": 13708,
+      "sha256": "6ce8846c01c22d7223d7c3d2d23831e395c28f9f2935ca31430fe3d2c959198f"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/data/i18n/ja.json": {
+      "bytes": 14596,
+      "sha256": "e1289c046bf0377970da14af03fdf64d2925a5be991e70650a890c521356b620"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/data/i18n/languages.json": {
+      "bytes": 766,
+      "sha256": "cb0c7764b018809f6eb275883cbc80777afa693b71ff3de3058a3e3ca59e8c7c"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/data/i18n/zh-CN.json": {
+      "bytes": 13378,
+      "sha256": "ff3484fcbe0587a4c1803e020a1d212a8e2ecbb7133aac5bc7cbae236ac30364"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/data/standards/ansi.json": {
+      "bytes": 4400,
+      "sha256": "54b16eb7667eb758bd1ff831c1e3f5ace646831c60dc6e0d7f333e88c0d3fbb5"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/data/standards/din.json": {
+      "bytes": 4068,
+      "sha256": "2aaf77c14a2f5ff20b38bb83e2aeedb547df4ac469d9a56ee0963e0acdafe49f"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/data/standards/gbt.json": {
+      "bytes": 4178,
+      "sha256": "dd52133768b967079be4364bc4745854d72886150f9f294c6207128cd2ad04dd"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/data/standards/iso.json": {
+      "bytes": 4612,
+      "sha256": "231bcea3b64c7bddabe1910d275bc129fe504aa85ed51cc74d57a1637bfdea30"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/data/standards/jis.json": {
+      "bytes": 4128,
+      "sha256": "c14ca21f0d5aa77f45a1b7c7df7f9838c1a9e6df32a88355a1bc39d9126848e1"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/docmodel.py": {
+      "bytes": 69602,
+      "sha256": "b8a98ade1a52464e7889aa7005cfe8f4ca8b955f18a29c242b99fb18f4af8fe8"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/draw/sheet.py": {
+      "bytes": 136312,
+      "sha256": "7278d5b44406331ec6a8f98e7a78d8a5a94cd1a7a893a4105408f6946f185eee"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/draw/titleblock.py": {
+      "bytes": 17760,
+      "sha256": "9df72b2f6bdecd4705df07585e94c692ab50ad2f177747d557e906fb4f369f3f"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/edit/modify.py": {
+      "bytes": 56015,
+      "sha256": "1d6e2470a11981c6ec7da5f7d455f2bc5c0ef722ab0dfb927f31ce17fbd90cdc"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/errors.py": {
+      "bytes": 3168,
+      "sha256": "0d86cf26acdc6cf3be0d34d2b16daaa3a072607ea1046fc8f9e9bf56e3a15195"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/geom/__init__.py": {
+      "bytes": 238,
+      "sha256": "b6533d515d1984bbfd3a7c5d8d77b9fa5cb1ec17c866403217ab6bfa17edda68"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/geom/fillet.py": {
+      "bytes": 31127,
+      "sha256": "30aa40cf0b81acac0a8862ff0ecc0aa1d9f87713f454e628c990d3ab479083d0"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/i18n/aliases.py": {
+      "bytes": 16207,
+      "sha256": "f9976634aa327da18c504c9b8dfd254efd67e07185358124ed72e084b971ca2f"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/i18n/catalog.py": {
+      "bytes": 48885,
+      "sha256": "2afc447da6f83686f98ae3a8ae85456674b665364cbb41649857c416a2b37070"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/i18n/keys.py": {
+      "bytes": 2326,
+      "sha256": "f46544067f1e1b3883fed8cce7ea5bbf53c4b5c70723cb78d9974d6191fd8ac4"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/i18n/standards.py": {
+      "bytes": 20570,
+      "sha256": "6ffe6f43076a0e28c2138accbde20e354be32d857a4cd5efe8678c59eded859c"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/io/dwg_bridge.py": {
+      "bytes": 15561,
+      "sha256": "d98d8cbf819fbe63d1208be75595264aa578068c00ee4002bf4da313df8144c8"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/io/dxf_bridge.py": {
+      "bytes": 44984,
+      "sha256": "8de8a16daeab5e99ea74f0907ba0f2ac02a0d5f257ef3f1a5842e344e3b7c026"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/io/plot_config.py": {
+      "bytes": 61743,
+      "sha256": "f8823c88121267819bb2bf2094a0920a108fcd563ad32b7687d5daa6ffe8e0b4"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/io/step.py": {
+      "bytes": 20067,
+      "sha256": "3e832777d9c9ecb482e33ac0b108c3ccc31fea05e8edf95f900ff60c727538fb"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/io/write_guard.py": {
+      "bytes": 708,
+      "sha256": "644aede24385589b89291e56e094a7109b2905080e93728239b7086a65afc67a"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/kernel/base.py": {
+      "bytes": 10982,
+      "sha256": "ce084f7c93d2df69537d6e21867c3004a1333d533e282274c27b7832c1b135ff"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/kernel/features_clearance.py": {
+      "bytes": 11582,
+      "sha256": "9e76669f71071619ab26a8873c8c05d3dea6cc2fa83919157cfd39dd6c39d682"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/kernel/features_edges.py": {
+      "bytes": 5137,
+      "sha256": "4fb60e2aba1556d29caf714e15d571813f91ac028f2bf5c5eda65a72f08f326f"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/kernel/features_loft.py": {
+      "bytes": 4572,
+      "sha256": "d37c9ea2f555bdfacf2d35e702c229820b4c7c78f5aaea51c210ee1ad640f234"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/kernel/features_pattern.py": {
+      "bytes": 6580,
+      "sha256": "1d39ce5b8e68bc6203d3347942ba89b335a9de19aea0115ee8762b59660aa954"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/kernel/features_registry.py": {
+      "bytes": 9343,
+      "sha256": "a123b8498d7f99998b3a3446c97dee81425f1550db908b071b77950cffd72d92"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/kernel/features_shell.py": {
+      "bytes": 5144,
+      "sha256": "faafbbe2cf665ae816468fd46aff6ad583c48cf7908c73672c03d6e885fce387"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/kernel/features_step.py": {
+      "bytes": 4840,
+      "sha256": "02d752ecdeee52bb44068589446e5fa589b9ad17bd54e8ef0faf474f6f7a7500"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/kernel/features_sweep.py": {
+      "bytes": 7895,
+      "sha256": "1707cb228f660a96de00d97c1f4d564574ecddd75f9601a339bd9693d3680b09"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/kernel/nano.py": {
+      "bytes": 25700,
+      "sha256": "be2c9389ea0de4f3dac54cb21007f5b654b811ef463f4562d414b8ae9375c17a"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/kernel/occt.py": {
+      "bytes": 31943,
+      "sha256": "888df2b5701cee264c20616a9f5c06e239f53553e400252c7a0297e0d4396f97"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/kernel/subproc.py": {
+      "bytes": 94350,
+      "sha256": "049175a4705183fcb83a18a419952e79968e3c09f238eca12efeb67b3965ba10"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/annotation.py": {
+      "bytes": 79689,
+      "sha256": "f27e4d1d52fd487c9008d4418c7b1c4f881a5ade054931c73bdb30214dda859a"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/annotation_extra.py": {
+      "bytes": 32429,
+      "sha256": "1c705f1c1106c8d589f3c9f0deab617904e23809c6a28aba4d12943f671796fa"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/draw_extra.py": {
+      "bytes": 78078,
+      "sha256": "67433076d1d92d1172283c2a22f39934fcc098cff7e6f04302e1bdace5d1f5a2"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/draw_extra_extra.py": {
+      "bytes": 37691,
+      "sha256": "51025d6d92a638fbdaf6e272117b99ce0b4da4625139f023358285cb3e5c22f8"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/draw_ops.py": {
+      "bytes": 102738,
+      "sha256": "f9c8f75faefb5b46e77e37a2353f6da8adcdb71cf899c83f02d4e1dddd2bd6db"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/draw_ops_extra.py": {
+      "bytes": 52065,
+      "sha256": "33feff43512b6ca8844bd833eb0a4971db5618ecbb083f55ead1436a16f16180"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/edit_ops.py": {
+      "bytes": 81473,
+      "sha256": "a7d8e25d4f8790ba913c4816e1424e785465503c404adb4fac7e97be4d2f3e2a"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/README.md": {
+      "bytes": 5652,
+      "sha256": "b7e9ecf80e170983895f2c2cad855a7a64132929148491d02c4c446a5b46578c"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/__init__.py": {
+      "bytes": 72292,
+      "sha256": "990c0d3ec59aa3e4cf1ddb052ffc97a9eff66408f0eaf420fc4853f7e5f0b8de"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/_seat_merge_release_tool.py": {
+      "bytes": 13961,
+      "sha256": "881a947b3dd7f9b38f5c55e987055d45144b9614736548a48d6610dc17c7e3f2"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/_seat_release_tool.py": {
+      "bytes": 10851,
+      "sha256": "a73fcf9e070d87df2d652c42ff496b2168f3b438db438c2ecf30b753986ff0af"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/_seat_release_tool_v8.py": {
+      "bytes": 9542,
+      "sha256": "baaa5e42fdfd18d78f9a582492ba9943a01e499bc6b564a0d6a75a3d255ba975"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/annotation__w28.py": {
+      "bytes": 21590,
+      "sha256": "6f4ead88c4fc0f3ac43583a7ecc172828533edf615228d5a0c2ca43a1c2aa6f7"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/draw_extra__w16.py": {
+      "bytes": 23703,
+      "sha256": "d91f2a7e2e74174f96b0ef6456f4145b03286e7c82fa8ad37e134411d554adf0"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/draw_ops__w11.py": {
+      "bytes": 32691,
+      "sha256": "421c18d724d100fe20dcc6cdf5b1150a14ffaf40dbaa3035dbdcaf8aa12b3937"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/draw_ops__w16.py": {
+      "bytes": 56324,
+      "sha256": "16156848f97a7bd1d047387acd1e03a7734f08f23a48ebd4b2ad0731534d4c79"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/draw_ops__w17.py": {
+      "bytes": 49443,
+      "sha256": "d724bbdae409d55e016ec81b5dc6e30613ab59b00129860b65944209af89c1f9"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/draw_ops__w27.py": {
+      "bytes": 18116,
+      "sha256": "801b2f8273c219d4e4fa574706c105fb7c055e7cac4fb3bcfee94909a490f1e4"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/edit_ops__w10.py": {
+      "bytes": 29249,
+      "sha256": "c71156fb270fc84ea5a09a942268612851aef6e6d19f62a662984cd45aed1ec9"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/edit_ops__w24.py": {
+      "bytes": 41441,
+      "sha256": "63080a4f4d3bd766517cbfc105918104f2c0a4a06e25f6ccc9b5bf8786d025d6"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/output__w21.py": {
+      "bytes": 14660,
+      "sha256": "75fc11a8a762d45ac0a947b8d6e73796e90f16418f3a947756407344aeb81150"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/precision_ops__w12.py": {
+      "bytes": 30518,
+      "sha256": "8e9a80c32457bc121729469029afdb7ce53c7de7b43df803782c79cea914bd67"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/precision_ops__w16.py": {
+      "bytes": 32358,
+      "sha256": "87ca16ecca7af969a9b12cc636eed6b460939a075c2119d8276677000778fcbd"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_assembly__w10.py": {
+      "bytes": 30469,
+      "sha256": "4a8b7256ef9ffd0807f46fe04df4f1e487a57872a78eb476c337a97d375a68f1"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_assembly__w28.py": {
+      "bytes": 41834,
+      "sha256": "ac5b28a4f3eca2e5733e0867d0d4f4daafa8adb24cd52c89b7f1e3e97c8d101b"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_drawings__w11.py": {
+      "bytes": 44133,
+      "sha256": "93dc9c1bb1e48f04a470f2ea1587a0ca72680233475f954906d85965f05435f6"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_drawings__w12.py": {
+      "bytes": 58594,
+      "sha256": "2eadb0ac3f808372a133fe9b1c734328e80b086706230c23effc826f48467d0c"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_drawings__w19.py": {
+      "bytes": 44579,
+      "sha256": "3187444ec2a39a07480abe456b84e88d35aebebb50e7596931661383cfe48081"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_features__w14.py": {
+      "bytes": 32972,
+      "sha256": "0b6fcce6c481b585188aff3c043447e94f2aeca7089d8e886ae989139de21da6"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_features__w17.py": {
+      "bytes": 42963,
+      "sha256": "ff3ddcfa531c2bd09181e3b63cae250bfc4485cc4771d0325b0395483cf591ba"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_features__w18.py": {
+      "bytes": 36480,
+      "sha256": "ee0ff94017587d62492f7f103a1e71321450f4c5c919e26749d601f690f72aaa"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_features__w25.py": {
+      "bytes": 26207,
+      "sha256": "15b58ade725c62f1520280a9b48934f597eeb8827892e1829349d8be6c419015"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_pattern_refgeom__w13.py": {
+      "bytes": 41084,
+      "sha256": "9d8cb322b3d124fddedeb03dfca1b86c16539e82185dbffad0efe9ecd4981e28"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_pattern_refgeom__w18.py": {
+      "bytes": 18510,
+      "sha256": "aa22c32912c941feaa08a4463a561a7f1ac0d2b5d4f6cd06d0a4820e9b7ed516"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_pattern_refgeom__w21.py": {
+      "bytes": 17504,
+      "sha256": "9d5987759ff6d12c03541ac2f1d95222e2c880a94aa2f4a68e446e4c4299d6d6"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_pattern_refgeom__w23.py": {
+      "bytes": 38757,
+      "sha256": "bed9bee673fca17f253e4be2460d0b3ecf8a7982bfa0727c6bfd3f80ef67b029"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_pattern_refgeom__w26.py": {
+      "bytes": 30002,
+      "sha256": "c65f1485a95abc4a0b438db104caaa8fad5d392c7f7a81e9fd4d92d7f7435619"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/annotation__w16.py": {
+      "bytes": 23191,
+      "sha256": "fd966faf8f8830bfd43d873022d6e92f8671bde103fcb729329cab6ef88c2db6"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/annotation__w22.py": {
+      "bytes": 27646,
+      "sha256": "1a32b4eaa07a9d6f0e3ad003148f3d43d067a9b3d3c8b30fdecb009c18b3bca1"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/annotation__w25.py": {
+      "bytes": 17516,
+      "sha256": "3a57dbe79f9eee7e9343a0eb8a3f9e64e290505026235a9c030fca6728022774"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/annotation__w27.py": {
+      "bytes": 63028,
+      "sha256": "0317bb54bd0b417ced055f1b4132e28706b77a9a9e1b125dc57081acdc19b4bb"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/draw_extra__w22.py": {
+      "bytes": 26384,
+      "sha256": "a418d15fd951062f16b3b0db32ab8f90317b94954ccf08a310d03044d309e51e"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/draw_extra__w9.py": {
+      "bytes": 21941,
+      "sha256": "360808bb447db4c2f8de4fe9aa48611aee0d5e89ef3e40a875420acbcd263324"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/draw_ops__w19.py": {
+      "bytes": 39727,
+      "sha256": "f922b6b1f17fffd92f04ca1bd3ad1ce93015e51fed193a919f3a3eaf06400c74"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/draw_ops__w20.py": {
+      "bytes": 22888,
+      "sha256": "a52d985b3ccd2dcc24c7c74e4992ed28cf1c3a15b2e74b59772d9e125592e7cd"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/draw_ops__w26.py": {
+      "bytes": 32119,
+      "sha256": "cd56bd3f7e845ac2c0894465c5119a24539b556c814a77a81a5365acb03cfc39"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/edit_ops__w13.py": {
+      "bytes": 25615,
+      "sha256": "d629cde0c2c3337b809d058f1e03d7e202b3aa8e1fe8a32a90a3f6da398bb726"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/edit_ops__w16.py": {
+      "bytes": 29122,
+      "sha256": "d26c119e8d84e0ce6c2a1ab73b58bcaaa68fb6370682dcaaffbc55362f1b78c3"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/edit_ops__w9.py": {
+      "bytes": 49001,
+      "sha256": "33413484b0a4f3582b9d8b7e32590ce14f09bcb8ce73ffadf1bc8fe6d57265ca"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w11.py": {
+      "bytes": 33640,
+      "sha256": "f97f18b86729e1fd7de88d1d4789ce52b21b66b5b1e0dec3b9966e151b61887b"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w12.py": {
+      "bytes": 30293,
+      "sha256": "69e295257ebfd38cdc7ce92c34dcb4097ff9f65cb0e732b43ebf174d806e2075"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w13.py": {
+      "bytes": 33213,
+      "sha256": "9e7fba577a62ff778bc79055ce62ec24b748dba936c23d62f0fc20da8c1398e2"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w14.py": {
+      "bytes": 28008,
+      "sha256": "2fa8f42f222103816d0e482a249ccb2e66d31caa1a3656f2a27eae5d9665376d"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w19.py": {
+      "bytes": 42243,
+      "sha256": "7f58b1e20f0a202642b033fcf43d2da165f8b2b7a0fe18e90a861fdf62f52b24"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w20.py": {
+      "bytes": 26087,
+      "sha256": "45a6bb8cb50148a11a855fe853f0f24c7daf6b4a5f9f87e1c24636aaa72a8af2"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w24.py": {
+      "bytes": 24424,
+      "sha256": "52def2f6e32cfadb5494c76795684aa288833d5efb2f9439c204203be48596d7"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/organization__w10.py": {
+      "bytes": 39847,
+      "sha256": "49adb5b9c789d9bcdbadcb452aa016f9174aae7331d4e059c413db3b5426e449"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/organization__w19.py": {
+      "bytes": 26903,
+      "sha256": "0bbb8522af9ddd0ce72386d72b13c0146b69f4ac14f235ee22cdabbd35669225"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/organization__w23.py": {
+      "bytes": 31129,
+      "sha256": "44df3aacf1cfb39a7a105ffdaf6c0d7fbc2cc6abc32682c3364f626b1b8440fe"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/organization__w26.py": {
+      "bytes": 24286,
+      "sha256": "a4c845145fe51f7caa7bdf86c7a5c01760051c1a6c3576aa9cf347561b40f17f"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/organization__w9.py": {
+      "bytes": 23119,
+      "sha256": "3a17a6387de7df45df0cf9ce9d7e397c190c8e5656f110494d4a197bf264b005"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/output__w10.py": {
+      "bytes": 32485,
+      "sha256": "582887a816bbc0ad2d01495aef3cb6debd4f8088d94c527664b45e0e7c892ba8"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/output__w11.py": {
+      "bytes": 32546,
+      "sha256": "5bdfd32c8d8e7ac4eabfa8f9e76fdc4f8ce2addedd0bf7622409a6e69f0f2023"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/output__w14.py": {
+      "bytes": 43108,
+      "sha256": "3098aaa90912697a91a44c09617ba9d06e51dd4b58332ffa7eaab4d0856c81a0"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/output__w18.py": {
+      "bytes": 22544,
+      "sha256": "f450b2f7314fea1bf3ced990048806c2ebfda47054f9d299def2566e09a183b6"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/precision_ops__w20.py": {
+      "bytes": 26544,
+      "sha256": "efe8e8aee8c8ef0d1ca3f5d1f94805ac69490283197063558497340aab356d5f"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/precision_ops__w24.py": {
+      "bytes": 24351,
+      "sha256": "37b5c80f24d0fd7433c883b07767c027fcb6f155f24367ff1158a6df4507ca47"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/precision_ops__w26.py": {
+      "bytes": 25287,
+      "sha256": "a6357093f0a685303e0047647273b83a476042d77b8083343fb28f7ef56d05d5"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/precision_ops__w28.py": {
+      "bytes": 33404,
+      "sha256": "859f4c59571894ab2d535419c74c58dc92bc79ec373d573c9aa07f25d08eb283"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/precision_ops__w9.py": {
+      "bytes": 17773,
+      "sha256": "b591ed26c9b1755f6bf1f8cfd98366142382b71f6f098da43196510296ba7308"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_assembly__w12.py": {
+      "bytes": 21473,
+      "sha256": "1dac33c731ba5b1310c4c5113ffdfeb18ac4840ee84874b072d999d410eacb39"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_assembly__w15.py": {
+      "bytes": 29412,
+      "sha256": "7272e27337e07a89762640cb86ca17a4a87a12416223d78d5330ad912ca86a28"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_assembly__w19.py": {
+      "bytes": 38510,
+      "sha256": "9e370507bdb41436f57a6b91bb1ea53a99e1378511614b419a83595b92d58ddb"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_assembly__w22.py": {
+      "bytes": 61928,
+      "sha256": "b322d86cce235cc3de39778dee47555e6aa01a0c055949411782c75db10349b1"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_assembly__w27.py": {
+      "bytes": 24124,
+      "sha256": "c780897722fec71f8633c67dd8f80e895e158dbe795f1daca64fcff9a7a4bb2c"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_assembly__w9.py": {
+      "bytes": 38364,
+      "sha256": "a3735dc9c4c2c5aed1094ef87b5ec958f317583302421e75d0b53704d1c2b371"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w10.py": {
+      "bytes": 39569,
+      "sha256": "31150ce2bc09a979760aa685eff4d17f944e2ecc3ce6b670eab51d48c27308bb"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w15.py": {
+      "bytes": 34617,
+      "sha256": "695839f0a31ea23975703fd693ab1497a9e5bc7b873065c8b16de2e83b2f7a3a"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w16.py": {
+      "bytes": 32973,
+      "sha256": "6b4e8c38c1b32feba0a4399c76eb54bac3b6ef321c2c229773f5b1c79679ca68"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w20.py": {
+      "bytes": 32721,
+      "sha256": "9b4c8a59932860ef4ae78a0265d20a764ccc6ed2b1847c951cd6972f0c5bface"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w24.py": {
+      "bytes": 30043,
+      "sha256": "c41e0d50d848428066041276628e612a5101d4960b49bb1685f1f415acde15cc"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w25.py": {
+      "bytes": 31497,
+      "sha256": "fee61e52143d0984f7b21202a79e11482bca512f64d3b0a294bdea46c001678d"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w27.py": {
+      "bytes": 29767,
+      "sha256": "da6219f56d46944a5f1c19249b0ab9e61eef02c7d84f515f642ca0b10d164870"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_features__w15.py": {
+      "bytes": 38777,
+      "sha256": "3eecc9f1d47a45cace280c05e73b9e959d06e6f9b4ea7c44cf17a9b8bb1b0d76"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_features__w20.py": {
+      "bytes": 34566,
+      "sha256": "2da986dc360234076cd0d51795cfe32c5540524bac6475020522297ea4c57f0f"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/hatch_measure.py": {
+      "bytes": 76360,
+      "sha256": "fd08da4b2d32dcde6bd454da7f70e86fe14f699ed533e759058c03e503b01183"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/hatch_measure_extra.py": {
+      "bytes": 35758,
+      "sha256": "c8fe9c0b168be35b81238d3c952f5c771f1122ad0dfbd7b4cb760cec852441eb"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/organization.py": {
+      "bytes": 81907,
+      "sha256": "3c3788321b60918790d95306a1c48c065e6bf7d22e94218bce7702a08370936b"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/output.py": {
+      "bytes": 122785,
+      "sha256": "0b99870dbbea632a07a8dac75570000d0fb9cd4a4dfc7d97dd3e91f41a3cbeb2"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/output_extra.py": {
+      "bytes": 65897,
+      "sha256": "12dd96c5dba6f319350969586f577012dc2165bb9c4bde21c779545f104c1716"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/precision_ops.py": {
+      "bytes": 93939,
+      "sha256": "bd98877ffa800c399e19e682ba6f95891bc35420a573f3d05597481380f0be0d"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/sw_assembly.py": {
+      "bytes": 111691,
+      "sha256": "19f5e9e143caf4b41dd695d69b99604b35c5f8f22269e055be5ca9a40182271d"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/sw_drawings.py": {
+      "bytes": 140089,
+      "sha256": "fc4ea7f8220db0b51fbcb295f35f2d7a8ca32ed0e00ee57210307ddffd5e1344"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/sw_drawings_extra.py": {
+      "bytes": 53234,
+      "sha256": "ae4ada47a4ecbe1d712190c2ad8aa7276900bf31644dffd537d08584cde53c1b"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/sw_features.py": {
+      "bytes": 58477,
+      "sha256": "3475d99f734c5c9c6e5682cbaf20962f95ce680176b3f7bdf09faf1f546fef33"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/ops/sw_pattern_refgeom.py": {
+      "bytes": 68582,
+      "sha256": "b85e3c31701a55f028c837d2cee3f4e1ae2cc69f4d907f0f80f8de6cbac39182"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/precision/__init__.py": {
+      "bytes": 1423,
+      "sha256": "c0d30aa649dc28113438f2e3781a54217947dcb10bb298cb1ef4ecea11294979"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/precision/osnap.py": {
+      "bytes": 31665,
+      "sha256": "4acf2e156f7d2e31fedf0e843cf5c4fbbb7f519cb32112bcecaade153cfc98e3"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/sketch/commands.py": {
+      "bytes": 18985,
+      "sha256": "5236aaf45cf992b7266a848d10f6ec999c94153c72c26faa89a15bfc3631be86"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/sketch/constraints.py": {
+      "bytes": 95027,
+      "sha256": "23869f0e8c96af6f74016e516f4c7afad65ab6ba143a9fc0f47e3c3718e7d5e3"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/sketch/editing.py": {
+      "bytes": 44719,
+      "sha256": "7229cbcafa11bb173e7ccecf692a53b13c643e3ccbea14c940358da2a59ba08e"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/sketch/primitives.py": {
+      "bytes": 21575,
+      "sha256": "693eac4d975ce4f5e5448d0e713d3ff0abe49c643a8274cd00048d22dc3e21ba"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/sketch/rebuild.py": {
+      "bytes": 14324,
+      "sha256": "4b540109c2827343d04e2463182bc5c99c9a131c5dee74c4df7ebcc12d237da5"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/sketch/session.py": {
+      "bytes": 12059,
+      "sha256": "a866aaf86fdd41830ed1d3a76e395c65cc06c0998c0f959352127ad173c1bde5"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/store.py": {
+      "bytes": 42283,
+      "sha256": "bc6a2967524b6d7bb6aba8f2493464ce1d7981e6a4694868392e5d57158090f8"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/topo.py": {
+      "bytes": 29413,
+      "sha256": "8452bfd488095e2279272e1e0a7eab5d3e8d155dd049279f223f5600c35fe740"
+    },
+    "oss-alternatives/packages/cadcore/cadcore/units.py": {
+      "bytes": 4391,
+      "sha256": "821197d30772a0c70e6278ee0cdf495491008b3b8aa2debbc2d73244ce4ca22e"
+    },
+    "oss-alternatives/packages/cadcore/tests/__init__.py": {
+      "bytes": 438,
+      "sha256": "b4ab8403cc0346b07774cd6eee10b8ff5577097d4ab80788d591a5cfba3d8ef7"
+    },
+    "oss-alternatives/packages/cadcore/tests/corpus/dxf/README.md": {
+      "bytes": 8407,
+      "sha256": "0f75a43742fe098cf559f577c06c9a56236eda119e31852f653aa35f690ed133"
+    },
+    "oss-alternatives/packages/cadcore/tests/corpus/dxf/cjk_text.dxf": {
+      "bytes": 1071,
+      "sha256": "624015877853cee615ec06f96712ee47233ce14861b18f55caaf17dabea4deff"
+    },
+    "oss-alternatives/packages/cadcore/tests/corpus/dxf/simple_entities.dxf": {
+      "bytes": 1350,
+      "sha256": "18f401f2476c5690ffe8de2c0df299377224288390a97cbebf99fb4ac11eb037"
+    },
+    "oss-alternatives/packages/cadcore/tests/corpus/dxf/with_unknown_entity.dxf": {
+      "bytes": 1067,
+      "sha256": "29e525611710b4d11a8b740c5a8315a828f8ff204808d3a554b66eb70272e4fa"
+    },
+    "oss-alternatives/packages/cadcore/tests/corpus/dxf/with_xdata.dxf": {
+      "bytes": 1075,
+      "sha256": "e9b2142c052db0741ff5e125876517f3b58aad2f9b39cdec4bbb2ac75f81d8fc"
+    },
+    "oss-alternatives/packages/cadcore/tests/data/plate.json": {
+      "bytes": 13468,
+      "sha256": "d426d94b6b16aedfc1d93aa6be21aa3c84eda47deac8eef63c816de4ab7637fe"
+    },
+    "oss-alternatives/packages/cadcore/tests/l1_fixture.py": {
+      "bytes": 26768,
+      "sha256": "f86c3fed1828fb66fd2ad41784b7b9b58edc6794a06acee821db1080115cfc46"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_a9_fillet_geometry.py": {
+      "bytes": 15550,
+      "sha256": "0e3b3620a6bde9ba5bfb2dae95c0d1781f33cd484f98c03f8da2b2f305f45227"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_annotation_extra.py": {
+      "bytes": 31757,
+      "sha256": "39cf180cfd95284a6adc1f44900b439fb63eb0ff3f03c0e093dd6f3c21a27e05"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_annotation_ops.py": {
+      "bytes": 54060,
+      "sha256": "24e43ab987c629c228ea6c38293e18523afc0b91cc1ca28676b69de3f710631b"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_assembly_pattern_measure.py": {
+      "bytes": 6637,
+      "sha256": "0a9c86833a1a2c97bbd87dd59bca186686cc4d98a3e11638f7151a164f1e98ba"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_b6_assembly_atomic_store.py": {
+      "bytes": 10363,
+      "sha256": "17fea4502a6047a9721820a914a018e3bb03ceffec08a640bd73c1826523d6c1"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_b6_param_boundary_gate.py": {
+      "bytes": 17777,
+      "sha256": "3984a252b1cccfa4704430212a2a59402b481050652efbdc369c7fa9cfdabb6a"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_b6_param_boundary_limits.py": {
+      "bytes": 11348,
+      "sha256": "3fa906264bfd8e39570bf4db4b0cb05efa8c0c8484dc13703d2c542ded95f9b1"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_b6_product_defects.py": {
+      "bytes": 8437,
+      "sha256": "4bf988d7a8cb6e83dd2a6977cf578910723dac65ffbdc91e3444db0849317770"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_b6_round2_secondary_writers.py": {
+      "bytes": 15511,
+      "sha256": "ba523dd0ef34f2c02a59ceae6f644b17b9603dd08a4eb56e1d79d245ed2b9da3"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_b6_style_consumption.py": {
+      "bytes": 18279,
+      "sha256": "eb6675c141cd2f9c2229265f04f308ca4aefa2aa209ca188ab8d08627a53a001"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_b6_view_projection_dedup.py": {
+      "bytes": 9261,
+      "sha256": "a275162176b6790bac7065f9acebce902dab894641ae49a628c795bb62c523c7"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_clearance_http.py": {
+      "bytes": 19849,
+      "sha256": "8387de03e292abf9284254c298aebc38857f6457da8476cccd25439dd9293e22"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_constraints_ext.py": {
+      "bytes": 18129,
+      "sha256": "4f85b2034397b019fde2989037b25bd2f2911818fea45ca7cebf89b8b2dacc65"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_docmodel.py": {
+      "bytes": 31230,
+      "sha256": "ae728fd712c0b0f9f7cd41ebdc0240d22bb10fae4cfa6d8f18889006b958b232"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_draw.py": {
+      "bytes": 45804,
+      "sha256": "008fe444644fc8ba0611e9cfa14571c2bc46a2ea2f57f3defdeb6c880a5fa4ee"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_draw_extra_extra.py": {
+      "bytes": 18148,
+      "sha256": "ba9f8d6cea5e75a0a0f28fba8df68df5468444bd60c8aec04d8bae9e0feb6425"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_draw_extra_ops.py": {
+      "bytes": 33074,
+      "sha256": "752b4e3f0f51413f524e03fb3dae611d7f28323c3a82c9db6c112050027c5233"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_draw_ops_extra.py": {
+      "bytes": 23047,
+      "sha256": "08e6d4e80108ab4254946b1e88c1a39a72a421a1a78bbac249dc5ead09ce4e4a"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_draw_ops_ops.py": {
+      "bytes": 35595,
+      "sha256": "ae8b9e6c29681011acda89c97624cc98fd9830c7c8ce4d6ea22c50e62e90ce65"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_draw_ops_parity_new.py": {
+      "bytes": 23928,
+      "sha256": "e9e2536ca99785b364101e7b3c462b01b7de8c0c28516a9005599b2b04850d68"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_dwg_bridge.py": {
+      "bytes": 21150,
+      "sha256": "e1bf74b5b2b2411bd7cec75e41d08e3056bff2b79b8c26d85dcac1a8df9b346b"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_dxf_bridge.py": {
+      "bytes": 15201,
+      "sha256": "369a49c7fdae756768ac6aae4f522995cb2df473fabb6d9a71c806aac4718951"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_edit_ops_ops.py": {
+      "bytes": 30697,
+      "sha256": "d89575f900caf24df47b5164acf6fa3ce0c715cefac51c99572581b0f4863e27"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_edit_reach_contract.py": {
+      "bytes": 8083,
+      "sha256": "f5f554a729b9e99a2b033aebdd3d31c66e478b0e2af34acf95b554801a4aed67"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_feature_replay_review.py": {
+      "bytes": 37384,
+      "sha256": "da0b06c63eb4586982753716b6938740b8e1afd854f2d78fe010a79912290a30"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_features_clearance.py": {
+      "bytes": 30092,
+      "sha256": "610276aaa1a097ba885751e82cb37234d1f0657ba7b987091a1f8d18a403094a"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_features_edges.py": {
+      "bytes": 20902,
+      "sha256": "2a0e20deb85711d89add97377568416523697c957f4eb6a0c9910986ea06e66e"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_features_live.py": {
+      "bytes": 128369,
+      "sha256": "b6481aa761aff7a8ca5764c8b6670b9f719c1bd33b51a49e3a3f3df47c106b41"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_features_loft.py": {
+      "bytes": 21079,
+      "sha256": "f2f9f846ceb25258a61f8979972af110e6d54f66e77a775b5906625864b428b4"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_features_pattern.py": {
+      "bytes": 19510,
+      "sha256": "aec49b59cf40195bd641e7e9ea5a0ad2fd4c6673f84bbb78a3558bde475e061a"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_features_query_declare.py": {
+      "bytes": 9190,
+      "sha256": "b2ef010847de2d5ca48d32779148626e7ccb4eec23bac84b4ac46db8369c0a47"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_features_shell.py": {
+      "bytes": 19693,
+      "sha256": "ac7124021fda50bc971f8198c1ca0893280c429189664731f18836ad493c2b6e"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_features_smoke.py": {
+      "bytes": 38725,
+      "sha256": "55204e3a409a1302206e9ad2137fa0f88aa9a018e8f8ab391902a3198fd98800"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_features_step.py": {
+      "bytes": 23636,
+      "sha256": "e45c54e84c397cb7e96abf7af17369818afc000d32f12f8cf9dfa4796f59db03"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_features_sweep.py": {
+      "bytes": 21473,
+      "sha256": "60d87b21f844adf0d12bb2899e02f306f23d68a02cddd7edfa69e765fe4538bf"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_fixtures.py": {
+      "bytes": 53767,
+      "sha256": "d61dbf92caf708cd637d629c0bc53432aaba50cfef192e51da4a2ec3bfbc823f"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_hatch_measure_extra.py": {
+      "bytes": 21029,
+      "sha256": "911cd220c040e59c2db7dc30845014e10ed4de651a93bb6687adf3bc8d07cece"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_hatch_measure_ops.py": {
+      "bytes": 31664,
+      "sha256": "6cca2652c03870b8cab9132e015db81d76f29d4c65a6b2dcdf88d113ad3b23df"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_i18n_catalog.py": {
+      "bytes": 44721,
+      "sha256": "c2344ab90140710a9ad6fcb2c98181997cf7a0378e5f44bfa8ddf1edff6e33f9"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_i18n_new_language.py": {
+      "bytes": 13870,
+      "sha256": "6a4fd3ee38fab25639e3da67353a81ba895162dfe58f05cee5ec49e5c64b782a"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_kernel_nano.py": {
+      "bytes": 8545,
+      "sha256": "61272cf20ab6a6ba45153b2847287ba847349f7e916fd5d427f49199b288eadf"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_kernel_occt.py": {
+      "bytes": 6235,
+      "sha256": "faa855703bace50996c4603f0b8cb7f6404148adebf64cf65898a2f9d9554fe6"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_l1_fixture.py": {
+      "bytes": 19930,
+      "sha256": "8ac4df4fbd5df6809c052146824c5fd990f9a335831f6a0e7f5054b49f94ca90"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_no_source_tree_pollution.py": {
+      "bytes": 7844,
+      "sha256": "3c8f2f3f1370a2712cb2084b198acaee268799f19866753ad2b06ec5de7d3a40"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_organization_ops.py": {
+      "bytes": 35903,
+      "sha256": "0526a085911c9ed72ec78396cb76f431b15343b65ca26b4dd7e9e237cdcf2c6a"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_osnap.py": {
+      "bytes": 34432,
+      "sha256": "c4a46f6ea89ccbc8696c06751b095ad26eba15ea2fdfaadd857702bbd591fac6"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_output_extra.py": {
+      "bytes": 29346,
+      "sha256": "b5335a4608d755bfccbd0933e1edb990447c07a5104f752178581c93b3f87fcf"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_output_ops.py": {
+      "bytes": 47759,
+      "sha256": "cdd1fea2d532627978e3450151a7e77938ad847ed4c1e149bece31353af88c8e"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_output_registered_ops.py": {
+      "bytes": 12041,
+      "sha256": "5810a1434322a45871a26f432b08da510adec0c258b48ababf9f3e463371b108"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_partials_batch3_ops.py": {
+      "bytes": 8863,
+      "sha256": "cbcc8339a23313a4b7574eb5717199e97313c545b376991b75023024480befcc"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_plot_config.py": {
+      "bytes": 22971,
+      "sha256": "afad612c46c91c9235a6ac9bdef5c0ca1c1b309c043277753b73ddb10b7d636d"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_precision_ops_ops.py": {
+      "bytes": 29728,
+      "sha256": "6c13b0ac715c4f6dd775d58396801d2e94cdbf2fcaaf2c1a4852fef9ebfaf45c"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_primitives.py": {
+      "bytes": 14862,
+      "sha256": "50073c924044b832a4c7a554cb46c090dcd7f493be0cdd6c1fc37cda5382c506"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_roundtrip_extension_namespaces.py": {
+      "bytes": 30817,
+      "sha256": "a2adf7f122946ef60eab63d8807e274c47f88eb6d6446f8f7bf6d355cf21890d"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_sketch.py": {
+      "bytes": 45716,
+      "sha256": "58527ffa3dbcebb9980451b13c39c18603451b7f162539c4bf20438c9f8a6945"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_sketch_parity_new.py": {
+      "bytes": 31121,
+      "sha256": "0eb74db6a61d90c894771ef40db2f07de863bb0bc48b3c91c979919e957adfa4"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_sketch_partials_impl.py": {
+      "bytes": 21906,
+      "sha256": "67d22ee71c85d45440352c93359f4c536533aa2149af9da2c03fff730cdb05ec"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_standards.py": {
+      "bytes": 20410,
+      "sha256": "6857321aaf831947c09187aa57ab61c8ed18d3aca8e88faf24219d7a00358a5d"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_store.py": {
+      "bytes": 42435,
+      "sha256": "1f3b3e87b1d11c46f5bb754a7bbcb0f41bc449a132208a3440e6f765bde6a4e0"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_subproc_geometry.py": {
+      "bytes": 11622,
+      "sha256": "7a999f8d80a10ade36c59e3cac902cb1d595596fc3739c0db8178038b5dde420"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_subproc_step.py": {
+      "bytes": 65797,
+      "sha256": "bf59682b8edb2a048460c90c24f0a7cffc2abafad4dd58e97c0653079b88acd2"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_sw_assembly_ops.py": {
+      "bytes": 44697,
+      "sha256": "df5cea7aa0fb1441511ad99fefaa09aebd3803ada7b74a5bf42f7bc69b89603e"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_sw_drawings_annotation_ops.py": {
+      "bytes": 3476,
+      "sha256": "3d1619df9c439ecc52e99e0c11ad40f7689b28c393057043301cd537a5b48545"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_sw_drawings_extra.py": {
+      "bytes": 22982,
+      "sha256": "53fbd75778c90a18c3b8af5046a81ad234648bb812fb06090e9022d0116272fa"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_sw_drawings_ops.py": {
+      "bytes": 18980,
+      "sha256": "c9b8753ba7fd8575f4938b2cd3a9940057611d110f3b3bbff9491542e2535950"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_sw_features_ops.py": {
+      "bytes": 21447,
+      "sha256": "dd8dbf3aec7be0e9b3d18b6970cdfb66655a6ca0fb299695bc8d5468230472c5"
+    },
+    "oss-alternatives/packages/cadcore/tests/test_sw_pattern_refgeom_ops.py": {
+      "bytes": 30960,
+      "sha256": "f385cb3c508d351aa8fe4fe8369e7b313f326810fd0f8717d9558cf1808424df"
+    },
+    "oss-alternatives/packages/dxf/README.md": {
+      "bytes": 2658,
+      "sha256": "0230e86eb951bcd7e00a4c549057856339369e9fcc1f2747043cfcb651e117b4"
+    },
+    "oss-alternatives/packages/dxf/dxf/__init__.py": {
+      "bytes": 3944,
+      "sha256": "d38da8f1a502550b5ddc8eceaa0a620759a3f05fc1e34e3e7a59ad6a84975991"
+    },
+    "oss-alternatives/packages/dxf/dxf/index.py": {
+      "bytes": 38055,
+      "sha256": "1d7ac25b73b27e03ad0af4128a03b4512a797ea7e66f17cd0ea51ca263b5cbb6"
+    },
+    "oss-alternatives/packages/dxf/dxf/model.py": {
+      "bytes": 38608,
+      "sha256": "181c8a797ada841e4c86b67886b87daca3b1f8d3e8f291b90f2249a07dcdbde2"
+    },
+    "oss-alternatives/packages/dxf/dxf/reader.py": {
+      "bytes": 16019,
+      "sha256": "7afc59b2b99fe4588599faee03513af52ced3bb812c2e8df8fda9af739bf5934"
+    },
+    "oss-alternatives/packages/dxf/dxf/writer.py": {
+      "bytes": 5320,
+      "sha256": "0012e6d68709fc8957358323f74edef7cdc5ff7b4bc3a8a8c25fbb38d524caaf"
+    },
+    "oss-alternatives/packages/dxf/tests/__init__.py": {
+      "bytes": 71,
+      "sha256": "a235703881f96a95c68455bade3d9521583f9db7e57c1fd20c3e430f1a19d028"
+    },
+    "oss-alternatives/packages/dxf/tests/test_dxf.py": {
+      "bytes": 48491,
+      "sha256": "9b3f082da7b68babe26bfeb0171ef3b59fe0f554d7286b48f787e7461978eb55"
+    },
+    "oss-alternatives/packages/vault/freechat_vault/__init__.py": {
+      "bytes": 444,
+      "sha256": "8ffe9b1de6af2ae03d8848e4fba78c6a62bc7d3994dd1c13eb457eadb99b77e4"
+    },
+    "oss-alternatives/packages/vault/freechat_vault/fcx.py": {
+      "bytes": 24586,
+      "sha256": "08f92233d22790976da98fed6a48052ecbd3648d7da2d7b6d8ff4b857a9c3440"
+    },
+    "oss-alternatives/packages/vault/freechat_vault/store.py": {
+      "bytes": 36022,
+      "sha256": "5149e5d8d289cfcc33478318949a7db357aebddaf1361b1ceb677962c3feaa99"
+    },
+    "oss-alternatives/tools/cad/i18n_gate.py": {
+      "bytes": 32718,
+      "sha256": "c5dc6b48728db582bd1bdb69a0796ba45ed02610ca9d8ddbaaae822baae0a9be"
+    },
+    "oss-alternatives/tools/cad/i18n_newlang_gate.py": {
+      "bytes": 28942,
+      "sha256": "6f5f0ce7248ed359c380ecc81b8e8a8b23d4395567403f44dba22e88da58b08d"
+    },
+    "oss-alternatives/tools/cad/param_boundary_gate.py": {
+      "bytes": 70563,
+      "sha256": "48cd70cbbfd3908d6eafdcfb25021d2aed05cecfaeb234468010aad858783c1a"
+    },
+    "oss-alternatives/tools/cad/parity_output_gate.py": {
+      "bytes": 83920,
+      "sha256": "a87121bbc4de3d12957734969db7f61e95f32ef2288be2fe16e13d51b9da5afe"
+    },
+    "oss-alternatives/tools/cad/ui_gate.py": {
+      "bytes": 80072,
+      "sha256": "9d0212a230c45b5c8537c200593424faee55ebd2ab653e817d0f6268a852f27c"
+    },
+    "oss-alternatives/tools/cad3d/advanced_browser_check.py": {
+      "bytes": 15440,
+      "sha256": "ae2b0cc085e90a6940840fe83ce26bbdc5cb07eff37876223a49b811d0e61d0e"
+    },
+    "oss-alternatives/tools/cad3d/browser_render.py": {
+      "bytes": 4630,
+      "sha256": "d0a30368d32abd146bedf4f28a082da2a65430d6a981ced162fe011a6bc86dad"
+    },
+    "oss-alternatives/tools/cad3d/numeric-gate-kernel.py": {
+      "bytes": 23385,
+      "sha256": "7af667f59e64df359eb01300fee533daece12088e0e180e65c19a14b7145c0b0"
+    },
+    "oss-alternatives/tools/cad3d/opencad_acceptance.py": {
+      "bytes": 13430,
+      "sha256": "4cdb6752b5b750e11a0e0ad4fc41ccb32f3a0a100aa883606d278ae1d5751d72"
+    },
+    "oss-alternatives/tools/cad3d/viewer_controls_check.py": {
+      "bytes": 34796,
+      "sha256": "5ac2561a62e0420955b2793c03b561e2cf93bed0e89a798046779fb1754504df"
+    },
+    "oss-alternatives/tools/cad3d/web3d_browser_check.py": {
+      "bytes": 19331,
+      "sha256": "6311a0babf793a479a5c9b6ac81c1fc30ef6694b95f574bfe6e43148a926775d"
+    }
+  },
+  "files_sha256": "68525940847a111d14ebde5f39be8ea84bdce59d340082aebbff246a21457918",
+  "imports": {
+    "dynamic": {
+      "oss-alternatives/apps/opencad/server.py": [
+        {
+          "call": "import_module('cadcore.' + name)",
+          "line": 719
+        }
+      ],
+      "oss-alternatives/apps/opencad/tests/test_advanced_ui_review.py": [
+        {
+          "call": "importlib.util.spec_from_file_location(name, path)",
+          "line": 43
+        }
+      ],
+      "oss-alternatives/apps/opencad/tests/test_legacy_browser_compat_gate.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('legacy_browser_compat_gate', GATE_PATH)",
+          "line": 23
+        }
+      ],
+      "oss-alternatives/apps/opencad/tests/test_release_ack_review.py": [
+        {
+          "call": "importlib.import_module('server')",
+          "line": 58
+        },
+        {
+          "call": "importlib.import_module('release_state')",
+          "line": 59
+        }
+      ],
+      "oss-alternatives/apps/opencad/tests/test_release_output_destinations.py": [
+        {
+          "call": "importlib.import_module('server')",
+          "line": 67
+        },
+        {
+          "call": "importlib.import_module('release_state')",
+          "line": 68
+        },
+        {
+          "call": "importlib.import_module('cadcore.draw.sheet')",
+          "line": 242
+        },
+        {
+          "call": "importlib.import_module('cadcore.io.write_guard')",
+          "line": 360
+        }
+      ],
+      "oss-alternatives/apps/opencad/tests/test_server_shutdown.py": [
+        {
+          "call": "importlib.import_module('server')",
+          "line": 64
+        }
+      ],
+      "oss-alternatives/apps/opencad/tests/test_solid_atomic_review.py": [
+        {
+          "call": "importlib.import_module('server')",
+          "line": 49
+        },
+        {
+          "call": "importlib.import_module('cadcore.kernel.features_registry')",
+          "line": 50
+        },
+        {
+          "call": "importlib.import_module('cadcore.kernel.subproc')",
+          "line": 51
+        },
+        {
+          "call": "importlib.import_module('solid_commands')",
+          "line": 52
+        },
+        {
+          "call": "importlib.import_module('cadcore.ops.sw_features')",
+          "line": 53
+        }
+      ],
+      "oss-alternatives/apps/opencad/tests/test_ui_accessible_i18n.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('accessible_i18n_cdp', helper_path)",
+          "line": 92
+        }
+      ],
+      "oss-alternatives/apps/opencad/tests/test_ui_gate_contract.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('ui_gate_under_test_g9', GATE_PATH)",
+          "line": 45
+        }
+      ],
+      "oss-alternatives/apps/opencad/tests/test_viewer3d_controls.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('viewer_controls_runner', tool)",
+          "line": 279
+        },
+        {
+          "call": "importlib.util.spec_from_file_location('viewer_controls_discovery', tool)",
+          "line": 27
+        }
+      ],
+      "oss-alternatives/apps/opencad/tools/staged_probe_20260930.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('opencad_server_probe', path)",
+          "line": 46
+        }
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/draw/sheet.py": [
+        {
+          "call": "importlib.import_module(name)",
+          "line": 255
+        },
+        {
+          "call": "importlib.import_module(module_name)",
+          "line": 2305
+        }
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/base.py": [
+        {
+          "call": "importlib.import_module(relative, __package__)",
+          "line": 166
+        }
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/features_registry.py": [
+        {
+          "call": "importlib.import_module('cadcore.kernel.features_' + name)",
+          "line": 111
+        }
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/__init__.py": [
+        {
+          "call": "importlib.util.spec_from_file_location(module_name, str(path))",
+          "line": 719
+        },
+        {
+          "call": "importlib.import_module('tests.test_features_live')",
+          "line": 510
+        },
+        {
+          "call": "importlib.import_module(module_name)",
+          "line": 752
+        }
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/draw_ops__w16.py": [
+        {
+          "call": "importlib.import_module(module_name)",
+          "line": 868
+        }
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/draw_ops__w17.py": [
+        {
+          "call": "importlib.import_module('cadcore.docmodel')",
+          "line": 801
+        },
+        {
+          "call": "importlib.import_module(module_name)",
+          "line": 815
+        }
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_features__w17.py": [
+        {
+          "call": "__import__('json')",
+          "line": 868
+        }
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_pattern_refgeom__w18.py": [
+        {
+          "call": "importlib.import_module('cadcore.ops.sw_pattern_refgeom')",
+          "line": 108
+        }
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_features__w20.py": [
+        {
+          "call": "importlib.import_module(name)",
+          "line": 467
+        }
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/sw_features.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('parity_sw_features_gate_selftest', path)",
+          "line": 990
+        }
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/store.py": [
+        {
+          "call": "importlib.import_module(full)",
+          "line": 243
+        },
+        {
+          "call": "importlib.import_module(full_name)",
+          "line": 200
+        },
+        {
+          "call": "importlib.import_module(full_name)",
+          "line": 205
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_b6_round2_secondary_writers.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('b6_prior_probe', PRIOR_PROBE)",
+          "line": 249
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_clearance_http.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('_opencad_clearance_http_server', app / 'server.py')",
+          "line": 93
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_draw_ops_ops.py": [
+        {
+          "call": "importlib.import_module(REAL_MODULE)",
+          "line": 109
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_draw_ops_parity_new.py": [
+        {
+          "call": "importlib.import_module(REAL_MODULE)",
+          "line": 53
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_edit_reach_contract.py": [
+        {
+          "call": "__import__('sys')",
+          "line": 69
+        },
+        {
+          "call": "__import__('sys')",
+          "line": 70
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_feature_replay_review.py": [
+        {
+          "call": "importlib.import_module('cadcore.docmodel')",
+          "line": 57
+        },
+        {
+          "call": "importlib.import_module('cadcore.kernel.features_registry')",
+          "line": 59
+        },
+        {
+          "call": "importlib.import_module('cadcore.kernel.subproc')",
+          "line": 60
+        },
+        {
+          "call": "importlib.import_module('cadcore.sketch.commands')",
+          "line": 61
+        },
+        {
+          "call": "importlib.import_module('cadcore.errors')",
+          "line": 58
+        },
+        {
+          "call": "importlib.util.spec_from_file_location('review_namespaces', path)",
+          "line": 633
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_features_live.py": [
+        {
+          "call": "importlib.util.spec_from_file_location(name, path)",
+          "line": 1544
+        },
+        {
+          "call": "importlib.util.spec_from_file_location('no_relax_control_slice', path)",
+          "line": 2278
+        },
+        {
+          "call": "importlib.util.spec_from_file_location('tests_l1_fixture', _L1_FIXTURE)",
+          "line": 199
+        },
+        {
+          "call": "importlib.import_module('cadcore.ops.sw_drawings')",
+          "line": 2286
+        },
+        {
+          "call": "importlib.util.spec_from_file_location('dead_display_fixture', path)",
+          "line": 2345
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_i18n_catalog.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('cadcore_i18n_catalog_standalone', _CATALOG_FILE)",
+          "line": 47
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_i18n_new_language.py": [
+        {
+          "call": "importlib.util.spec_from_file_location(name, Path(path))",
+          "line": 60
+        },
+        {
+          "call": "importlib.import_module('cadcore.i18n.catalog')",
+          "line": 74
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_no_source_tree_pollution.py": [
+        {
+          "call": "importlib.util.spec_from_file_location(name, path)",
+          "line": 60
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_organization_ops.py": [
+        {
+          "call": "importlib.import_module(FAMILY_MODULE)",
+          "line": 91
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_output_registered_ops.py": [
+        {
+          "call": "importlib.util.spec_from_file_location(name, path)",
+          "line": 155
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_partials_batch3_ops.py": [
+        {
+          "call": "importlib.import_module('cadcore.ops.' + Path(module_rel).stem)",
+          "line": 79
+        },
+        {
+          "call": "importlib.import_module('cadcore.ops.organization')",
+          "line": 157
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_roundtrip_extension_namespaces.py": [
+        {
+          "call": "importlib.import_module('cadcore.kernel.features_' + name)",
+          "line": 216
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_sketch.py": [
+        {
+          "call": "importlib.util.spec_from_file_location(f'cadcore.sketch.{name}', _SKETCH_DIR / f'{name}.py')",
+          "line": 67
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_store.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('cadcore_store_standalone', _STORE_FILE)",
+          "line": 71
+        }
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_subproc_step.py": [
+        {
+          "call": "importlib.import_module(dotted)",
+          "line": 52
+        },
+        {
+          "call": "importlib.util.spec_from_file_location(fallback_name, path)",
+          "line": 54
+        }
+      ],
+      "oss-alternatives/packages/dxf/dxf/__init__.py": [
+        {
+          "call": "importlib.import_module(target[0])",
+          "line": 100
+        }
+      ],
+      "oss-alternatives/packages/dxf/tests/test_dxf.py": [
+        {
+          "call": "__import__('dxf')",
+          "line": 188
+        }
+      ],
+      "oss-alternatives/tools/cad/i18n_gate.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('cadcore_i18n_catalog_for_gate', catalog_file)",
+          "line": 178
+        },
+        {
+          "call": "importlib.import_module('cadcore.i18n.catalog')",
+          "line": 171
+        }
+      ],
+      "oss-alternatives/tools/cad/i18n_newlang_gate.py": [
+        {
+          "call": "importlib.util.spec_from_file_location(name, Path(path))",
+          "line": 71
+        },
+        {
+          "call": "importlib.import_module('cadcore.i18n.catalog')",
+          "line": 86
+        }
+      ],
+      "oss-alternatives/tools/cad/param_boundary_gate.py": [
+        {
+          "call": "importlib.import_module('server')",
+          "line": 631
+        }
+      ],
+      "oss-alternatives/tools/cad/parity_output_gate.py": [
+        {
+          "call": "importlib.import_module('cadcore.docmodel')",
+          "line": 382
+        },
+        {
+          "call": "importlib.import_module('cadcore.ops')",
+          "line": 407
+        },
+        {
+          "call": "importlib.import_module('cadcore.errors')",
+          "line": 1437
+        },
+        {
+          "call": "importlib.import_module(name)",
+          "line": 467
+        }
+      ],
+      "oss-alternatives/tools/cad/ui_gate.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('cad_live_render', renderer)",
+          "line": 983
+        }
+      ],
+      "oss-alternatives/tools/cad3d/advanced_browser_check.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('advanced_cdp', APP / 'tests/legacy_browser_compat_gate.py')",
+          "line": 36
+        }
+      ],
+      "oss-alternatives/tools/cad3d/browser_render.py": [
+        {
+          "call": "importlib.util.spec_from_file_location('cad_ui_cdp', helper)",
+          "line": 17
+        }
+      ],
+      "oss-alternatives/tools/cad3d/viewer_controls_check.py": [
+        {
+          "call": "importlib.util.spec_from_file_location(name, path)",
+          "line": 43
+        }
+      ],
+      "oss-alternatives/tools/cad3d/web3d_browser_check.py": [
+        {
+          "call": "importlib.util.spec_from_file_location(name, path)",
+          "line": 32
+        }
+      ]
+    },
+    "legacy_debt": [
+      "test_edit_reach_contract and test_partials_batch3_ops read historical cad-parity/status evidence; not migrated.",
+      "test_no_source_tree_pollution/test_b6_round2_secondary_writers read excluded ops/oss-alt-web or desktop build tools.",
+      "Old cad3d acceptance gates/numeric orchestration reference wider infra tools; use tools/acceptance.py.",
+      "Desktop packaging and full historical Web profile are not an independent repository release gate."
+    ],
+    "mathcore": "No CAD runtime import; not migrated.",
+    "static": {
+      "oss-alternatives/apps/opencad/release_state.py": [
+        "__future__",
+        "hashlib",
+        "json",
+        "os",
+        "pathlib",
+        "tempfile",
+        "uuid"
+      ],
+      "oss-alternatives/apps/opencad/selfcheck.py": [
+        "__future__",
+        "dxf",
+        "json",
+        "os",
+        "pathlib",
+        "shutil",
+        "socket",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "time",
+        "urllib.request"
+      ],
+      "oss-alternatives/apps/opencad/server.py": [
+        "__future__",
+        "argparse",
+        "cadcore",
+        "cadcore.draw",
+        "cadcore.errors",
+        "cadcore.i18n",
+        "cadcore.io",
+        "cadcore.io.write_guard",
+        "cadcore.kernel.features_clearance",
+        "cadcore.kernel.features_pattern",
+        "cadcore.kernel.subproc",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "copy",
+        "hashlib",
+        "http.server",
+        "importlib",
+        "json",
+        "os",
+        "release_state",
+        "signal",
+        "solid_commands",
+        "sys",
+        "tempfile",
+        "threading",
+        "time",
+        "typing",
+        "urllib.parse",
+        "urllib.request",
+        "uuid",
+        "viewer3d_page"
+      ],
+      "oss-alternatives/apps/opencad/solid_commands.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.kernel.features_registry",
+        "cadcore.kernel.subproc",
+        "collections.abc",
+        "json",
+        "release_state",
+        "uuid"
+      ],
+      "oss-alternatives/apps/opencad/tests/__init__.py": [],
+      "oss-alternatives/apps/opencad/tests/legacy_browser_compat_gate.py": [
+        "__future__",
+        "argparse",
+        "base64",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "shutil",
+        "socket",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "time",
+        "urllib.request"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_a10_doc_command_surface.py": [
+        "__future__",
+        "glob",
+        "http.client",
+        "json",
+        "os",
+        "select",
+        "shutil",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "time",
+        "unittest"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_advanced_solids.py": [
+        "json",
+        "math",
+        "pathlib",
+        "tests.test_server"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_advanced_ui_review.py": [
+        "__future__",
+        "argparse",
+        "base64",
+        "cadcore.kernel.subproc",
+        "datetime",
+        "hashlib",
+        "importlib.util",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "shutil",
+        "signal",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "time",
+        "unittest",
+        "urllib.request",
+        "uuid"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_b6_param_boundary.py": [
+        "__future__",
+        "http.client",
+        "json",
+        "os",
+        "server",
+        "shutil",
+        "sys",
+        "tempfile",
+        "test_b6_product_defects",
+        "tests.test_b6_product_defects",
+        "time",
+        "unittest"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_b6_param_gate_api.py": [
+        "__future__",
+        "http.client",
+        "json",
+        "os",
+        "shutil",
+        "sys",
+        "tempfile",
+        "test_b6_product_defects",
+        "tests.test_b6_product_defects",
+        "unittest",
+        "urllib.parse"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_b6_product_defects.py": [
+        "__future__",
+        "http.client",
+        "json",
+        "os",
+        "select",
+        "shutil",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "time",
+        "unittest"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_g28_dxf_scope_real_paths.py": [
+        "__future__",
+        "cadcore.io",
+        "cadcore.ops",
+        "hashlib",
+        "http",
+        "json",
+        "os",
+        "select",
+        "shutil",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "time",
+        "unittest"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_legacy_browser_compat_gate.py": [
+        "__future__",
+        "importlib.util",
+        "os",
+        "pathlib",
+        "sys"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_release_ack_review.py": [
+        "__future__",
+        "argparse",
+        "datetime",
+        "errno",
+        "hashlib",
+        "importlib",
+        "json",
+        "os",
+        "pathlib",
+        "stat",
+        "sys",
+        "threading",
+        "time",
+        "traceback",
+        "unittest",
+        "unittest.mock",
+        "urllib.error",
+        "urllib.request",
+        "uuid"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_release_output_destinations.py": [
+        "__future__",
+        "argparse",
+        "datetime",
+        "hashlib",
+        "importlib",
+        "json",
+        "pathlib",
+        "sys",
+        "threading",
+        "time",
+        "traceback",
+        "unittest",
+        "urllib.error",
+        "urllib.request",
+        "uuid"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_release_state.py": [
+        "hashlib",
+        "json",
+        "pathlib",
+        "release_state",
+        "server",
+        "tempfile",
+        "unittest"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_server.py": [
+        "__future__",
+        "ast",
+        "dxf.reader",
+        "http",
+        "json",
+        "os",
+        "select",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "time",
+        "unittest",
+        "unittest.mock"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_server_shutdown.py": [
+        "__future__",
+        "argparse",
+        "datetime",
+        "faulthandler",
+        "hashlib",
+        "importlib",
+        "inspect",
+        "json",
+        "os",
+        "pathlib",
+        "select",
+        "signal",
+        "subprocess",
+        "sys",
+        "threading",
+        "time",
+        "traceback",
+        "types",
+        "unittest",
+        "uuid"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_solid_atomic_review.py": [
+        "__future__",
+        "argparse",
+        "contextlib",
+        "copy",
+        "datetime",
+        "hashlib",
+        "http",
+        "importlib",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "threading",
+        "time",
+        "traceback",
+        "unittest",
+        "uuid"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_ui_accessible_i18n.py": [
+        "__future__",
+        "argparse",
+        "base64",
+        "datetime",
+        "hashlib",
+        "importlib.util",
+        "io",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "shutil",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "time",
+        "unittest",
+        "urllib.request"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_ui_gate_contract.py": [
+        "__future__",
+        "contextlib",
+        "importlib.util",
+        "io",
+        "pathlib",
+        "shutil",
+        "sys",
+        "tempfile",
+        "unittest",
+        "unittest.mock"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_viewer3d_controls.py": [
+        "contextlib",
+        "datetime",
+        "importlib.util",
+        "json",
+        "math",
+        "pathlib",
+        "time",
+        "unittest"
+      ],
+      "oss-alternatives/apps/opencad/tests/test_web3d.py": [
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "shutil",
+        "subprocess",
+        "tempfile",
+        "tests.test_server",
+        "unittest",
+        "viewer3d_page"
+      ],
+      "oss-alternatives/apps/opencad/tools/staged_probe_20260930.py": [
+        "__future__",
+        "argparse",
+        "cadcore",
+        "cadcore.ops.features",
+        "hashlib",
+        "importlib.util",
+        "json",
+        "os",
+        "subprocess",
+        "sys",
+        "time",
+        "traceback",
+        "urllib.request"
+      ],
+      "oss-alternatives/apps/opencad/viewer3d_page.py": [
+        "datetime",
+        "pathlib"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/__init__.py": [
+        "__future__"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/docmodel.py": [
+        ".errors",
+        ".i18n.keys",
+        ".kernel.base",
+        ".sketch.constraints",
+        ".units",
+        "__future__",
+        "cadcore.errors",
+        "cadcore.i18n.keys",
+        "cadcore.sketch.constraints",
+        "cadcore.units",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "json",
+        "math",
+        "os",
+        "re",
+        "sys",
+        "tempfile",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/draw/sheet.py": [
+        "..docmodel",
+        "..errors",
+        "__future__",
+        "cadcore.io.write_guard",
+        "dataclasses",
+        "decimal",
+        "importlib",
+        "json",
+        "logging",
+        "math",
+        "os",
+        "pathlib",
+        "re",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/draw/titleblock.py": [
+        ".sheet",
+        "__future__",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/edit/modify.py": [
+        "..errors",
+        "..sketch.constraints",
+        "..units",
+        "__future__",
+        "fractions",
+        "math",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/errors.py": [
+        "__future__",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/geom/__init__.py": [
+        "__future__"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/geom/fillet.py": [
+        "..edit",
+        "..errors",
+        "..kernel",
+        "__future__",
+        "copy",
+        "dataclasses",
+        "math",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/i18n/aliases.py": [
+        "__future__",
+        "cadcore.i18n",
+        "collections.abc",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/i18n/catalog.py": [
+        "__future__",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "json",
+        "logging",
+        "os",
+        "pathlib",
+        "re",
+        "string",
+        "sys",
+        "threading",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/i18n/keys.py": [
+        "__future__",
+        "re",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/i18n/standards.py": [
+        "..errors",
+        "__future__",
+        "dataclasses",
+        "json",
+        "logging",
+        "pathlib",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/io/dwg_bridge.py": [
+        "__future__",
+        "collections",
+        "hashlib",
+        "json",
+        "pathlib",
+        "shutil",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/io/dxf_bridge.py": [
+        "..docmodel",
+        "..draw",
+        "..errors",
+        "__future__",
+        "dataclasses",
+        "decimal",
+        "dxf",
+        "hashlib",
+        "importlib.util",
+        "itertools",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/io/plot_config.py": [
+        "..errors",
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "struct",
+        "typing",
+        "zlib"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/io/step.py": [
+        "..errors",
+        "..i18n",
+        "__future__",
+        "argparse",
+        "json",
+        "logging",
+        "os",
+        "pathlib",
+        "re",
+        "shutil",
+        "tempfile",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/io/write_guard.py": [
+        "contextlib",
+        "contextvars"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/base.py": [
+        "..errors",
+        "__future__",
+        "importlib",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/features_clearance.py": [
+        ".subproc",
+        "__future__",
+        "collections.abc",
+        "inspect",
+        "math",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/features_edges.py": [
+        "..errors",
+        "__future__",
+        "inspect",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/features_loft.py": [
+        "__future__",
+        "inspect",
+        "json",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/features_pattern.py": [
+        "..errors",
+        "__future__",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/features_registry.py": [
+        "__future__",
+        "cadcore.errors",
+        "collections.abc",
+        "importlib"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/features_shell.py": [
+        "__future__"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/features_step.py": [
+        "__future__",
+        "inspect",
+        "re"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/features_sweep.py": [
+        "__future__",
+        "collections.abc",
+        "inspect",
+        "math",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/nano.py": [
+        ".",
+        "..errors",
+        ".base",
+        "__future__",
+        "dataclasses",
+        "math",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/occt.py": [
+        ".",
+        "..errors",
+        ".base",
+        "OCP",
+        "OCP.BRep",
+        "OCP.BRepAdaptor",
+        "OCP.BRepAlgoAPI",
+        "OCP.BRepBndLib",
+        "OCP.BRepBuilderAPI",
+        "OCP.BRepGProp",
+        "OCP.BRepPrimAPI",
+        "OCP.Bnd",
+        "OCP.GC",
+        "OCP.GCPnts",
+        "OCP.GProp",
+        "OCP.HLRAlgo",
+        "OCP.HLRBRep",
+        "OCP.STEPControl",
+        "OCP.ShapeAnalysis",
+        "OCP.Standard",
+        "OCP.StlAPI",
+        "OCP.TopAbs",
+        "OCP.TopExp",
+        "OCP.TopTools",
+        "OCP.TopoDS",
+        "OCP.gp",
+        "__future__",
+        "dataclasses",
+        "math",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/kernel/subproc.py": [
+        "..errors",
+        ".base",
+        ".features_registry",
+        "__future__",
+        "argparse",
+        "atexit",
+        "cadcore.i18n",
+        "cadcore.kernel",
+        "dataclasses",
+        "json",
+        "logging",
+        "math",
+        "os",
+        "pathlib",
+        "shutil",
+        "signal",
+        "subprocess",
+        "tempfile",
+        "threading",
+        "time",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/annotation.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "math",
+        "re",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/annotation_extra.py": [
+        "..errors",
+        "..sketch.constraints",
+        "__future__",
+        "collections.abc",
+        "inspect",
+        "os",
+        "re",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/draw_extra.py": [
+        "..",
+        "..edit",
+        "..errors",
+        "..precision",
+        "..sketch",
+        "__future__",
+        "fractions",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/draw_extra_extra.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.sketch",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/draw_ops.py": [
+        "..edit",
+        "..errors",
+        "..sketch",
+        "__future__",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/draw_ops_extra.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.sketch",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/edit_ops.py": [
+        "..edit",
+        "..errors",
+        "..precision",
+        "..sketch",
+        "..sketch.constraints",
+        "__future__",
+        "copy",
+        "math",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/__init__.py": [
+        "__future__",
+        "collections.abc",
+        "copy",
+        "importlib",
+        "importlib.util",
+        "inspect",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "shutil",
+        "sys",
+        "tempfile",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/_seat_merge_release_tool.py": [
+        "__future__",
+        "argparse",
+        "cadcore.ops",
+        "datetime",
+        "os",
+        "pathlib",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "tests"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/_seat_release_tool.py": [
+        "__future__",
+        "argparse",
+        "cadcore.ops",
+        "datetime",
+        "os",
+        "pathlib",
+        "subprocess",
+        "sys",
+        "tests"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/_seat_release_tool_v8.py": [
+        "__future__",
+        "argparse",
+        "cadcore.ops",
+        "datetime",
+        "os",
+        "pathlib",
+        "subprocess",
+        "sys",
+        "tests"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/annotation__w28.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "math",
+        "os",
+        "re",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/draw_extra__w16.py": [
+        "__future__",
+        "cadcore.errors",
+        "collections.abc",
+        "math",
+        "pathlib",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/draw_ops__w11.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "fractions",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/draw_ops__w16.py": [
+        "..draw_ops",
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops.draw_ops",
+        "cadcore.sketch",
+        "collections.abc",
+        "copy",
+        "importlib",
+        "math",
+        "os",
+        "re",
+        "sys",
+        "types",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/draw_ops__w17.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "collections.abc",
+        "importlib",
+        "json",
+        "os",
+        "sys",
+        "types",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/draw_ops__w27.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.sketch",
+        "cadcore.sketch.commands",
+        "math",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/edit_ops__w10.py": [
+        "__future__",
+        "cadcore.edit",
+        "cadcore.errors",
+        "cadcore.precision",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/edit_ops__w24.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.edit",
+        "cadcore.errors",
+        "cadcore.ops",
+        "collections.abc",
+        "copy",
+        "fractions",
+        "math",
+        "numbers",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/output__w21.py": [
+        "__future__",
+        "cadcore.draw",
+        "cadcore.errors",
+        "cadcore.ops",
+        "os",
+        "sys",
+        "tempfile",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/precision_ops__w12.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "json",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/precision_ops__w16.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "collections.abc",
+        "dataclasses",
+        "math",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_assembly__w10.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.i18n.aliases",
+        "json",
+        "types",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_assembly__w28.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_drawings__w11.py": [
+        "__future__",
+        "cadcore.errors",
+        "collections.abc",
+        "copy",
+        "decimal",
+        "json",
+        "pathlib",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_drawings__w12.py": [
+        "__future__",
+        "cadcore.draw",
+        "cadcore.errors",
+        "collections.abc",
+        "json",
+        "pathlib",
+        "re",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_drawings__w19.py": [
+        "__future__",
+        "cadcore.draw",
+        "cadcore.errors",
+        "cadcore.ops",
+        "collections.abc",
+        "math",
+        "pathlib",
+        "re",
+        "sys",
+        "traceback",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_features__w14.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "collections.abc",
+        "json",
+        "math",
+        "pathlib",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_features__w17.py": [
+        "__future__",
+        "cadcore.errors",
+        "math",
+        "pathlib",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_features__w18.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "json",
+        "math",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_features__w25.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.sketch.constraints",
+        "math",
+        "pathlib",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_pattern_refgeom__w13.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.sketch.constraints",
+        "copy",
+        "fractions",
+        "os",
+        "re",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_pattern_refgeom__w18.py": [
+        "..",
+        "__future__",
+        "cadcore.errors",
+        "importlib",
+        "inspect",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_pattern_refgeom__w21.py": [
+        "__future__",
+        "cadcore.errors",
+        "copy",
+        "fractions",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_pattern_refgeom__w23.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "copy",
+        "json",
+        "math",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/_quarantine/sw_pattern_refgeom__w26.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "collections.abc",
+        "copy",
+        "json",
+        "pathlib",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/annotation__w16.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "math",
+        "os",
+        "re",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/annotation__w22.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops.annotation",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/annotation__w25.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "math",
+        "os",
+        "re",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/annotation__w27.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "collections.abc",
+        "hashlib",
+        "inspect",
+        "json",
+        "os",
+        "re",
+        "sys",
+        "typing",
+        "unicodedata",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/draw_extra__w22.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "collections.abc",
+        "inspect",
+        "pathlib",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/draw_extra__w9.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.sketch",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/draw_ops__w19.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.sketch.constraints",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/draw_ops__w20.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.ops",
+        "math",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/draw_ops__w26.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.sketch",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/edit_ops__w13.py": [
+        "__future__",
+        "cadcore.errors",
+        "collections.abc",
+        "copy",
+        "json",
+        "pathlib",
+        "sys",
+        "types",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/edit_ops__w16.py": [
+        "__future__",
+        "cadcore.edit",
+        "cadcore.errors",
+        "cadcore.sketch",
+        "copy",
+        "json",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/edit_ops__w9.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "collections.abc",
+        "copy",
+        "fractions",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w11.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops.hatch_measure",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w12.py": [
+        "__future__",
+        "cadcore.errors",
+        "json",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w13.py": [
+        "..hatch_measure",
+        "__future__",
+        "cadcore.edit.modify",
+        "cadcore.errors",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "fractions",
+        "math",
+        "pathlib",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w14.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops.hatch_measure",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w19.py": [
+        "__future__",
+        "cadcore.edit.modify",
+        "cadcore.errors",
+        "cadcore.sketch.constraints",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w20.py": [
+        "__future__",
+        "cadcore.edit.modify",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/hatch_measure__w24.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops.hatch_measure",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/organization__w10.py": [
+        "__future__",
+        "cadcore.errors",
+        "collections.abc",
+        "json",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/organization__w19.py": [
+        "__future__",
+        "cadcore.errors",
+        "collections.abc",
+        "os",
+        "posixpath",
+        "re",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/organization__w23.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/organization__w26.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "cadcore.ops.organization",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/organization__w9.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "cadcore.sketch.commands",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/output__w10.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "collections.abc",
+        "hashlib",
+        "json",
+        "math",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/output__w11.py": [
+        "__future__",
+        "cadcore.errors",
+        "collections.abc",
+        "fractions",
+        "json",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/output__w14.py": [
+        "__future__",
+        "cadcore.errors",
+        "hashlib",
+        "json",
+        "math",
+        "os",
+        "sys",
+        "tempfile",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/output__w18.py": [
+        "__future__",
+        "cadcore.errors",
+        "collections.abc",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/precision_ops__w20.py": [
+        "..precision_ops",
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.ops.precision_ops",
+        "cadcore.precision",
+        "collections.abc",
+        "math",
+        "pathlib",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/precision_ops__w24.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.units",
+        "math",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/precision_ops__w26.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.precision.osnap",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "traceback",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/precision_ops__w28.py": [
+        "..precision_ops",
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.precision.osnap",
+        "cadcore.sketch.constraints",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/precision_ops__w9.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.i18n.aliases",
+        "cadcore.ops",
+        "cadcore.precision.osnap",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_assembly__w12.py": [
+        "cadcore.errors",
+        "cadcore.i18n.aliases",
+        "cadcore.ops",
+        "cadcore.ops.sw_assembly",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_assembly__w15.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.ops",
+        "json",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_assembly__w19.py": [
+        "..",
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "cadcore.sketch.constraints",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_assembly__w22.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.ops.sw_assembly",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_assembly__w27.py": [
+        "..sw_assembly",
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.ops.sw_assembly",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_assembly__w9.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.ops.sw_assembly",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w10.py": [
+        "..",
+        "__future__",
+        "cadcore.draw",
+        "cadcore.errors",
+        "inspect",
+        "math",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w15.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.draw",
+        "cadcore.ops",
+        "collections.abc",
+        "dataclasses",
+        "math",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w16.py": [
+        "..",
+        "__future__",
+        "cadcore.draw",
+        "cadcore.errors",
+        "cadcore.sketch",
+        "collections.abc",
+        "copy",
+        "hashlib",
+        "json",
+        "pathlib",
+        "re",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w20.py": [
+        "..",
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "json",
+        "math",
+        "pathlib",
+        "re",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w24.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.draw",
+        "cadcore.errors",
+        "cadcore.ops",
+        "collections.abc",
+        "json",
+        "math",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w25.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.draw",
+        "cadcore.errors",
+        "cadcore.ops",
+        "os",
+        "re",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_drawings__w27.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.i18n.aliases",
+        "collections.abc",
+        "copy",
+        "pathlib",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_features__w15.py": [
+        "__future__",
+        "cadcore.errors",
+        "math",
+        "pathlib",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/features/sw_features__w20.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "collections.abc",
+        "importlib",
+        "json",
+        "pathlib",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/hatch_measure.py": [
+        "..edit.modify",
+        "..errors",
+        "..sketch.constraints",
+        "__future__",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/hatch_measure_extra.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops",
+        "collections.abc",
+        "copy",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/organization.py": [
+        "..",
+        "..edit.modify",
+        "..errors",
+        "..sketch.constraints",
+        ".features.organization__w10",
+        "__future__",
+        "collections.abc",
+        "copy",
+        "os",
+        "re",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/output.py": [
+        "__future__",
+        "argparse",
+        "cadcore",
+        "cadcore.draw",
+        "cadcore.errors",
+        "cadcore.io",
+        "cadcore.io.write_guard",
+        "cadcore.kernel",
+        "collections.abc",
+        "copy",
+        "decimal",
+        "hashlib",
+        "json",
+        "math",
+        "pathlib",
+        "re",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/output_extra.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "collections.abc",
+        "hashlib",
+        "math",
+        "os",
+        "sys",
+        "tempfile",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/precision_ops.py": [
+        "..",
+        "..edit.modify",
+        "..errors",
+        "..precision.osnap",
+        "..sketch.constraints",
+        "..units",
+        "__future__",
+        "collections.abc",
+        "math",
+        "os",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/sw_assembly.py": [
+        "..",
+        "..edit.modify",
+        "..errors",
+        "..sketch.constraints",
+        "__future__",
+        "collections.abc",
+        "copy",
+        "math",
+        "os",
+        "re",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/sw_drawings.py": [
+        "..docmodel",
+        "..draw",
+        "..errors",
+        "..kernel.base",
+        "..sketch",
+        "__future__",
+        "math",
+        "os",
+        "re",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/sw_drawings_extra.py": [
+        ".",
+        "..draw",
+        "..errors",
+        "..sketch",
+        "__future__",
+        "base64",
+        "collections.abc",
+        "hashlib",
+        "math",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/sw_features.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "cadcore.geom",
+        "cadcore.sketch.constraints",
+        "importlib.util",
+        "math",
+        "pathlib",
+        "sys",
+        "types",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/ops/sw_pattern_refgeom.py": [
+        "..edit",
+        "..sketch.constraints",
+        "__future__",
+        "math",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/precision/__init__.py": [
+        ".osnap",
+        "__future__"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/precision/osnap.py": [
+        "..units",
+        "__future__",
+        "dataclasses",
+        "math",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/sketch/commands.py": [
+        "..i18n.keys",
+        "..units",
+        ".constraints",
+        "__future__",
+        "collections.abc",
+        "copy",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/sketch/constraints.py": [
+        "..i18n",
+        "__future__",
+        "dataclasses",
+        "math",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/sketch/editing.py": [
+        "..edit.modify",
+        ".commands",
+        ".constraints",
+        "__future__",
+        "collections.abc",
+        "math",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/sketch/primitives.py": [
+        ".commands",
+        ".constraints",
+        "__future__",
+        "collections.abc",
+        "math",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/sketch/rebuild.py": [
+        ".",
+        "..",
+        "..errors",
+        "__future__",
+        "collections.abc",
+        "os",
+        "sys"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/sketch/session.py": [
+        "..errors",
+        "__future__",
+        "collections.abc",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/store.py": [
+        "__future__",
+        "contextlib",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "importlib",
+        "json",
+        "os",
+        "sqlite3",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/topo.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "dataclasses",
+        "json",
+        "pathlib",
+        "sys",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/cadcore/units.py": [
+        ".errors",
+        "__future__",
+        "math",
+        "typing"
+      ],
+      "oss-alternatives/packages/cadcore/tests/__init__.py": [],
+      "oss-alternatives/packages/cadcore/tests/l1_fixture.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.draw.sheet",
+        "cadcore.errors",
+        "cadcore.kernel.nano",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "dataclasses",
+        "os",
+        "sys",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_a9_fillet_geometry.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "cadcore.geom",
+        "cadcore.kernel.nano",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "copy",
+        "math",
+        "pathlib",
+        "sys",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_annotation_extra.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "contextlib",
+        "inspect",
+        "io",
+        "pathlib",
+        "subprocess",
+        "sys",
+        "unittest",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_annotation_ops.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.edit",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "inspect",
+        "pathlib",
+        "subprocess",
+        "sys",
+        "unittest",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_assembly_pattern_measure.py": [
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.ops.features.organization__w10",
+        "copy",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_b6_assembly_atomic_store.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.ops.features",
+        "json",
+        "pathlib",
+        "sys",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_b6_param_boundary_gate.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.draw",
+        "cadcore.edit",
+        "cadcore.errors",
+        "cadcore.i18n.keys",
+        "cadcore.io",
+        "cadcore.ops",
+        "cadcore.precision",
+        "cadcore.sketch",
+        "cadcore.units",
+        "json",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_b6_param_boundary_limits.py": [
+        "__future__",
+        "cadcore.edit",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "time",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_b6_product_defects.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.edit",
+        "cadcore.errors",
+        "cadcore.io",
+        "cadcore.sketch",
+        "cadcore.sketch.constraints",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_b6_round2_secondary_writers.py": [
+        "__future__",
+        "cadcore.draw",
+        "cadcore.errors",
+        "cadcore.kernel",
+        "cadcore.ops",
+        "decimal",
+        "fractions",
+        "importlib.util",
+        "json",
+        "os",
+        "sys",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_b6_style_consumption.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.draw",
+        "cadcore.io",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_b6_view_projection_dedup.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.draw",
+        "cadcore.kernel",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "json",
+        "os",
+        "pathlib",
+        "sys",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_clearance_http.py": [
+        "__future__",
+        "argparse",
+        "cadcore",
+        "cadcore.kernel.subproc",
+        "cadcore.ops.sw_drawings",
+        "copy",
+        "datetime",
+        "hashlib",
+        "http.client",
+        "importlib.util",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "threading",
+        "time",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_constraints_ext.py": [
+        "__future__",
+        "cadcore.sketch",
+        "math",
+        "pathlib",
+        "sys",
+        "typing",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_docmodel.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.errors",
+        "cadcore.kernel.base",
+        "copy",
+        "hashlib",
+        "json",
+        "math",
+        "os",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_draw.py": [
+        "__future__",
+        "ast",
+        "cadcore.draw",
+        "cadcore.kernel",
+        "dxf",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest",
+        "xml.etree.ElementTree"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_draw_extra_extra.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "inspect",
+        "math",
+        "pathlib",
+        "statistics",
+        "subprocess",
+        "sys",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_draw_extra_ops.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "contextlib",
+        "inspect",
+        "io",
+        "pathlib",
+        "re",
+        "sys",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_draw_ops_extra.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "contextlib",
+        "inspect",
+        "io",
+        "pathlib",
+        "subprocess",
+        "sys",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_draw_ops_ops.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.sketch",
+        "collections.abc",
+        "contextlib",
+        "importlib.util",
+        "inspect",
+        "io",
+        "math",
+        "pathlib",
+        "re",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_draw_ops_parity_new.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.io.dxf_bridge",
+        "cadcore.sketch",
+        "importlib",
+        "importlib.util",
+        "math",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_dwg_bridge.py": [
+        "__future__",
+        "ast",
+        "cadcore",
+        "cadcore.io",
+        "cadcore.ops",
+        "contextlib",
+        "hashlib",
+        "json",
+        "os",
+        "pathlib",
+        "shutil",
+        "stat",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_dxf_bridge.py": [
+        "__future__",
+        "cadcore.draw",
+        "cadcore.errors",
+        "cadcore.io",
+        "cadcore.kernel",
+        "dxf",
+        "hashlib",
+        "json",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "types",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_edit_ops_ops.py": [
+        "__future__",
+        "cadcore.edit",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "copy",
+        "importlib.util",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_edit_reach_contract.py": [
+        "__future__",
+        "cadcore.edit",
+        "inspect",
+        "json",
+        "pathlib",
+        "re",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_feature_replay_review.py": [
+        "__future__",
+        "argparse",
+        "copy",
+        "datetime",
+        "hashlib",
+        "importlib",
+        "importlib.util",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "shutil",
+        "subprocess",
+        "sys",
+        "time",
+        "traceback",
+        "unittest",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_features_clearance.py": [
+        "__future__",
+        "argparse",
+        "cadcore.kernel.features_clearance",
+        "cadcore.kernel.subproc",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "inspect",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "time",
+        "types",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_features_edges.py": [
+        "__future__",
+        "argparse",
+        "cadcore.errors",
+        "cadcore.kernel",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "html",
+        "io",
+        "json",
+        "math",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_features_live.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.errors",
+        "cadcore.ops",
+        "collections",
+        "copy",
+        "dataclasses",
+        "hashlib",
+        "importlib.util",
+        "inspect",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "sys",
+        "tempfile",
+        "tests.l1_fixture",
+        "types",
+        "typing",
+        "unittest",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_features_loft.py": [
+        "__future__",
+        "argparse",
+        "cadcore.kernel.features_loft",
+        "cadcore.kernel.subproc",
+        "copy",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "inspect",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "shutil",
+        "subprocess",
+        "sys",
+        "time",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_features_pattern.py": [
+        "__future__",
+        "argparse",
+        "cadcore.errors",
+        "cadcore.kernel",
+        "cadcore.kernel.features_pattern",
+        "cadcore.kernel.subproc",
+        "copy",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_features_query_declare.py": [
+        "__future__",
+        "argparse",
+        "cadcore.ops",
+        "json",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "tests"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_features_shell.py": [
+        "__future__",
+        "argparse",
+        "cadcore.kernel.features_shell",
+        "cadcore.kernel.subproc",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "time",
+        "traceback",
+        "unittest",
+        "urllib.request"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_features_smoke.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops",
+        "copy",
+        "inspect",
+        "os",
+        "pathlib",
+        "shutil",
+        "sys",
+        "tempfile",
+        "types",
+        "typing",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_features_step.py": [
+        "__future__",
+        "argparse",
+        "cadcore.kernel",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "inspect",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "re",
+        "shutil",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_features_sweep.py": [
+        "__future__",
+        "argparse",
+        "ast",
+        "cadcore.kernel.features_sweep",
+        "cadcore.kernel.subproc",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "inspect",
+        "io",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "sys",
+        "time",
+        "types",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_fixtures.py": [
+        "__future__",
+        "ast",
+        "cadcore",
+        "cadcore.draw",
+        "cadcore.sketch",
+        "dxf.model",
+        "dxf.reader",
+        "dxf.writer",
+        "hashlib",
+        "json",
+        "math",
+        "pathlib",
+        "re",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_hatch_measure_extra.py": [
+        "__future__",
+        "ast",
+        "cadcore.errors",
+        "cadcore.ops",
+        "copy",
+        "inspect",
+        "math",
+        "os",
+        "pathlib",
+        "subprocess",
+        "sys",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_hatch_measure_ops.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops",
+        "copy",
+        "inspect",
+        "math",
+        "os",
+        "pathlib",
+        "sys",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_i18n_catalog.py": [
+        "__future__",
+        "ast",
+        "cadcore.i18n",
+        "importlib",
+        "importlib.util",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_i18n_new_language.py": [
+        "__future__",
+        "hashlib",
+        "importlib",
+        "importlib.util",
+        "json",
+        "pathlib",
+        "shutil",
+        "sys",
+        "tempfile",
+        "typing",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_kernel_nano.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.kernel",
+        "cadcore.kernel.nano",
+        "cadcore.units",
+        "json",
+        "pathlib",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_kernel_occt.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.kernel",
+        "json",
+        "pathlib",
+        "tempfile",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_l1_fixture.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.draw.sheet",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "os",
+        "re",
+        "sys",
+        "tests",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_no_source_tree_pollution.py": [
+        "cadcore.draw",
+        "cadcore.errors",
+        "cadcore.ops",
+        "hashlib",
+        "importlib.util",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_organization_ops.py": [
+        "__future__",
+        "cadcore.edit",
+        "cadcore.errors",
+        "cadcore.sketch",
+        "copy",
+        "importlib",
+        "inspect",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_osnap.py": [
+        "__future__",
+        "cadcore.precision",
+        "cadcore.precision.osnap",
+        "cadcore.sketch.commands",
+        "copy",
+        "json",
+        "pathlib",
+        "sys",
+        "typing",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_output_extra.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops",
+        "hashlib",
+        "inspect",
+        "json",
+        "pathlib",
+        "re",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "unittest",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_output_ops.py": [
+        "__future__",
+        "cadcore.draw",
+        "cadcore.errors",
+        "cadcore.ops",
+        "glob",
+        "importlib.util",
+        "json",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_output_registered_ops.py": [
+        "cadcore",
+        "cadcore.errors",
+        "cadcore.io",
+        "cadcore.ops",
+        "importlib.util",
+        "json",
+        "pathlib",
+        "shutil",
+        "sys",
+        "tempfile",
+        "types",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_partials_batch3_ops.py": [
+        "__future__",
+        "cadcore.ops",
+        "importlib",
+        "inspect",
+        "json",
+        "pathlib",
+        "sys",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_plot_config.py": [
+        "__future__",
+        "cadcore.io",
+        "pathlib",
+        "struct",
+        "sys",
+        "tempfile",
+        "unittest",
+        "zlib"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_precision_ops_ops.py": [
+        "__future__",
+        "ast",
+        "cadcore",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.sketch.constraints",
+        "contextlib",
+        "copy",
+        "inspect",
+        "io",
+        "math",
+        "os",
+        "re",
+        "sys",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_primitives.py": [
+        "__future__",
+        "cadcore.sketch",
+        "math",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_roundtrip_extension_namespaces.py": [
+        "__future__",
+        "argparse",
+        "cadcore",
+        "cadcore.kernel.subproc",
+        "cadcore.ops",
+        "cadcore.ops.features",
+        "cadcore.sketch",
+        "dataclasses",
+        "importlib",
+        "json",
+        "os",
+        "pathlib",
+        "shutil",
+        "sys",
+        "typing",
+        "unittest",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_sketch.py": [
+        "__future__",
+        "ast",
+        "cadcore.i18n",
+        "cadcore.sketch",
+        "dataclasses",
+        "importlib.util",
+        "inspect",
+        "json",
+        "math",
+        "pathlib",
+        "re",
+        "shutil",
+        "sys",
+        "tempfile",
+        "types",
+        "typing",
+        "unittest",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_sketch_parity_new.py": [
+        "__future__",
+        "cadcore",
+        "cadcore.sketch",
+        "copy",
+        "json",
+        "math",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_sketch_partials_impl.py": [
+        "__future__",
+        "cadcore.sketch",
+        "copy",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_standards.py": [
+        "__future__",
+        "ast",
+        "cadcore.draw",
+        "cadcore.errors",
+        "cadcore.i18n",
+        "json",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_store.py": [
+        "__future__",
+        "ast",
+        "cadcore",
+        "cadcore.docmodel",
+        "collections.abc",
+        "copy",
+        "dataclasses",
+        "datetime",
+        "freechat_vault",
+        "hashlib",
+        "importlib.util",
+        "inspect",
+        "json",
+        "os",
+        "pathlib",
+        "sqlite3",
+        "sys",
+        "tempfile",
+        "types",
+        "unittest",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_subproc_geometry.py": [
+        "cadcore.errors",
+        "cadcore.kernel.subproc",
+        "cadcore.ops",
+        "copy",
+        "json",
+        "math",
+        "pathlib",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_subproc_step.py": [
+        "__future__",
+        "ast",
+        "importlib",
+        "importlib.util",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "shutil",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "types",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_sw_assembly_ops.py": [
+        "__future__",
+        "cadcore.docmodel",
+        "cadcore.edit",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.precision",
+        "cadcore.sketch",
+        "pathlib",
+        "sys",
+        "typing",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_sw_drawings_annotation_ops.py": [
+        "cadcore",
+        "cadcore.ops",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_sw_drawings_extra.py": [
+        "__future__",
+        "base64",
+        "cadcore.draw",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.sketch",
+        "hashlib",
+        "inspect",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest",
+        "uuid"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_sw_drawings_ops.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.ops",
+        "inspect",
+        "pathlib",
+        "re",
+        "sys",
+        "time",
+        "typing",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_sw_features_ops.py": [
+        "__future__",
+        "cadcore.errors",
+        "cadcore.kernel.nano",
+        "cadcore.ops",
+        "copy",
+        "pathlib",
+        "sys",
+        "typing",
+        "unittest"
+      ],
+      "oss-alternatives/packages/cadcore/tests/test_sw_pattern_refgeom_ops.py": [
+        "__future__",
+        "cadcore.edit",
+        "cadcore.errors",
+        "cadcore.ops",
+        "cadcore.precision",
+        "cadcore.sketch",
+        "math",
+        "pathlib",
+        "sys",
+        "typing",
+        "unittest"
+      ],
+      "oss-alternatives/packages/dxf/dxf/__init__.py": [
+        "__future__",
+        "importlib",
+        "typing"
+      ],
+      "oss-alternatives/packages/dxf/dxf/index.py": [
+        "__future__",
+        "dataclasses",
+        "datetime",
+        "dxf.model",
+        "dxf.reader",
+        "freechat_vault.fcx",
+        "os",
+        "posixpath",
+        "re",
+        "sys"
+      ],
+      "oss-alternatives/packages/dxf/dxf/model.py": [
+        "__future__",
+        "dataclasses",
+        "hashlib",
+        "json",
+        "typing"
+      ],
+      "oss-alternatives/packages/dxf/dxf/reader.py": [
+        "__future__",
+        "dxf.model",
+        "os"
+      ],
+      "oss-alternatives/packages/dxf/dxf/writer.py": [
+        "__future__",
+        "contextlib",
+        "dxf.model",
+        "os",
+        "tempfile",
+        "typing"
+      ],
+      "oss-alternatives/packages/dxf/tests/__init__.py": [],
+      "oss-alternatives/packages/dxf/tests/test_dxf.py": [
+        "__future__",
+        "ast",
+        "dxf",
+        "freechat_vault",
+        "freechat_vault.fcx",
+        "freechat_vault.store",
+        "inspect",
+        "json",
+        "os",
+        "shutil",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "oss-alternatives/packages/vault/freechat_vault/__init__.py": [
+        "__future__"
+      ],
+      "oss-alternatives/packages/vault/freechat_vault/fcx.py": [
+        "__future__",
+        "contextlib",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "json",
+        "os",
+        "stat",
+        "tempfile",
+        "typing",
+        "uuid",
+        "zipfile"
+      ],
+      "oss-alternatives/packages/vault/freechat_vault/store.py": [
+        "__future__",
+        "contextlib",
+        "hashlib",
+        "json",
+        "os",
+        "re",
+        "sqlite3",
+        "tempfile",
+        "typing"
+      ],
+      "oss-alternatives/tools/cad/i18n_gate.py": [
+        "__future__",
+        "argparse",
+        "ast",
+        "dataclasses",
+        "hashlib",
+        "importlib",
+        "importlib.util",
+        "json",
+        "pathlib",
+        "re",
+        "shutil",
+        "sys",
+        "tempfile",
+        "typing"
+      ],
+      "oss-alternatives/tools/cad/i18n_newlang_gate.py": [
+        "__future__",
+        "argparse",
+        "dataclasses",
+        "hashlib",
+        "importlib",
+        "importlib.util",
+        "json",
+        "pathlib",
+        "shutil",
+        "sys",
+        "tempfile",
+        "typing"
+      ],
+      "oss-alternatives/tools/cad/param_boundary_gate.py": [
+        "__future__",
+        "argparse",
+        "dataclasses",
+        "datetime",
+        "http.client",
+        "importlib",
+        "json",
+        "pathlib",
+        "shutil",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "threading",
+        "time",
+        "typing",
+        "urllib.parse"
+      ],
+      "oss-alternatives/tools/cad/parity_output_gate.py": [
+        "__future__",
+        "argparse",
+        "dataclasses",
+        "hashlib",
+        "importlib",
+        "json",
+        "pathlib",
+        "re",
+        "shutil",
+        "sys",
+        "tempfile",
+        "types",
+        "typing",
+        "uuid"
+      ],
+      "oss-alternatives/tools/cad/ui_gate.py": [
+        "__future__",
+        "argparse",
+        "dataclasses",
+        "dxf",
+        "hashlib",
+        "importlib.util",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "shutil",
+        "signal",
+        "socket",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "threading",
+        "time",
+        "typing",
+        "urllib.error",
+        "urllib.request"
+      ],
+      "oss-alternatives/tools/cad3d/advanced_browser_check.py": [
+        "argparse",
+        "base64",
+        "datetime",
+        "importlib.util",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "server",
+        "signal",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "threading",
+        "time",
+        "urllib.request",
+        "web3d_browser_check"
+      ],
+      "oss-alternatives/tools/cad3d/browser_render.py": [
+        "base64",
+        "importlib.util",
+        "json",
+        "os",
+        "pathlib",
+        "signal",
+        "subprocess",
+        "tempfile",
+        "time",
+        "urllib.request"
+      ],
+      "oss-alternatives/tools/cad3d/numeric-gate-kernel.py": [
+        "__future__",
+        "argparse",
+        "cadcore.kernel",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "shutil",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "time"
+      ],
+      "oss-alternatives/tools/cad3d/opencad_acceptance.py": [
+        "__future__",
+        "argparse",
+        "datetime",
+        "hashlib",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "shutil",
+        "subprocess",
+        "sys",
+        "time"
+      ],
+      "oss-alternatives/tools/cad3d/viewer_controls_check.py": [
+        "PIL",
+        "__future__",
+        "argparse",
+        "base64",
+        "contextlib",
+        "datetime",
+        "difflib",
+        "hashlib",
+        "importlib.util",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "re",
+        "signal",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "threading",
+        "time",
+        "traceback",
+        "unittest",
+        "urllib.request"
+      ],
+      "oss-alternatives/tools/cad3d/web3d_browser_check.py": [
+        "__future__",
+        "argparse",
+        "base64",
+        "datetime",
+        "hashlib",
+        "importlib.util",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "signal",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "threading",
+        "time",
+        "urllib.request"
+      ]
+    },
+    "vault": "cadcore.store -> freechat_vault.store/fcx; three source files only."
+  },
+  "license": {
+    "bytes": 11358,
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "source": "/usr/share/common-licenses/Apache-2.0"
+  },
+  "schema": 1,
+  "source_head": "7d55845618697f752e01512474d3d1490dcf40a5",
+  "source_root": "/data/dev/infra",
+  "source_state": "Current working-tree bytes, not an infra HEAD-only snapshot."
+}

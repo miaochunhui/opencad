@@ -1,0 +1,76 @@
+{
+  "_doc": "Purpose: drafting-standard profile for the GB/T (China) system, consumed by cadcore.i18n.standards (projection angle plus sheet/line/lettering/title-block conventions). Background: standard-dependent values must live in data rather than code branches, and any field whose standard text was not obtained stays null and is listed in na_fields, so 'not fetched' can never masquerade as a real value; no standard text is reproduced here (R3).",
+  "projection_angle": "first",
+  "sheet_sizes": null,
+  "line_widths": null,
+  "text_height_series": null,
+  "default_font_family": null,
+  "decimal_separator": null,
+  "title_block_template": null,
+  "dimension_terminator": null,
+  "gdt_symbol_set": null,
+  "units": null,
+  "tolerance": null,
+  "na_fields": [
+    "sheet_sizes",
+    "line_widths",
+    "text_height_series",
+    "default_font_family",
+    "decimal_separator",
+    "title_block_template",
+    "dimension_terminator",
+    "gdt_symbol_set",
+    "units",
+    "tolerance"
+  ],
+  "source": {
+    "standard_id": "gbt",
+    "standard_numbers": [
+      "GB/T 14692-2008"
+    ],
+    "retrieved_at": "2026-09-29",
+    "retrieval_method": "read-only fetch of public web pages (HTTP status recorded per URL); standard bodies are paywalled and none of their text is copied into this file",
+    "projection_angle_evidence": [
+      {
+        "url": "https://openstd.samr.gov.cn/bzgk/std/newGbInfo?hcno=1072044E4F129FBC0423C354C2D6FE51",
+        "publisher": "SAMR national standards full-text system (openstd.samr.gov.cn), official",
+        "http_status": 200,
+        "shows": "GB/T 14692-2008, Chinese title 'Technical drawings - Projection methods', status current, issued 2008-06-26, effective 2009-01-01; this is the GB standard that governs projection methods, so the field is anchored to an official register entry before any value is written.",
+        "grade": "official register (metadata only, no clause text read)"
+      },
+      {
+        "url": "https://www.jlc-jdgf.com/mcbook/new02009.htm",
+        "publisher": "JLC FA mechanical design handbook (public Chinese engineering handbook)",
+        "http_status": 200,
+        "shows": "States that drawing representation follows GB/T 14692 and that the first-angle method is the preferred one in that system (paraphrase; the clause wording is not copied here).",
+        "grade": "public secondary source, paraphrased"
+      },
+      {
+        "url": "https://wiki.cnki.com.cn/HotWord/26490.htm",
+        "publisher": "CNKI academic encyclopedia (journal abstract page)",
+        "http_status": 200,
+        "shows": "Journal abstract: China and many other countries mainly use first-angle projection, while some countries mainly use third-angle projection (paraphrase).",
+        "grade": "public academic abstract, paraphrased"
+      }
+    ],
+    "field_status": {
+      "projection_angle": "verified_public_sources",
+      "sheet_sizes": "not_fetched",
+      "line_widths": "not_fetched",
+      "text_height_series": "not_fetched",
+      "default_font_family": "not_fetched",
+      "decimal_separator": "not_fetched",
+      "title_block_template": "not_fetched",
+      "dimension_terminator": "not_fetched",
+      "gdt_symbol_set": "not_fetched",
+      "units": "not_fetched",
+      "tolerance": "not_fetched"
+    },
+    "na_policy": "null means not fetched (-1), never 'zero' and never 'not applicable' unless a note says so; every null field is listed in na_fields, and no unverified field is given a guessed value.",
+    "notes": [
+      "na_fields lists exactly the null-valued fields, in contract order: a gate can assert set(na_fields) == {k for k, v in profile.items() if v is None}.",
+      "All numeric tables (sheet sizes, line-width series, lettering heights, tolerance grades) live in paywalled GB/T bodies (GB/T 14689, GB/T 17450, GB/T 14691, GB/T 10609.1, GB/T 1800 series) that were not read, so they stay null instead of being filled from memory.",
+      "projection_angle is the only field with public evidence for this profile; the evidence grade is recorded per URL so a reviewer can see it is a public-register plus secondary-source chain, not clause-level verification."
+    ]
+  }
+}

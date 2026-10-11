@@ -1,0 +1,761 @@
+/*
+  OpenCAD web shell stylesheet.
+  Colour / spacing / radius / motion custom properties use the SAME names as
+  packages/ui-kit/src/tokens/tokens.json (token_prefix "--fc-"): raw scales keep their
+  token names (--fc-gray-7, --fc-primary-6) and semantic roles keep theirs
+  (--fc-bg-canvas, --fc-text-primary, --fc-line-strong, ...).
+  Light values live in :root, the dark set overrides them under prefers-color-scheme: dark.
+  No external font, image or stylesheet is referenced.
+
+  Web 服务加固（2026-10-06）：本外壳要挂公网当线上 Web 服务，故在既有令牌面上补三件事：
+  ① [hidden] 兜底（作者样式的 display 不许压过 hidden 属性）；
+  ② 主交互控件命中区下限抬到 44px —— tokens.json 的 hit-min=32 是「桌面指针最小值」
+     （docs/design/ui-tokens.md:78「触控屏抬到 44」），本外壳取更严的一档；
+     这是本文件对 tokens.json 唯一的取值偏离，只发生在 --fc-hit-min 上；
+  ③ 宽度断点与打印样式（原先只有 prefers-color-scheme / prefers-reduced-motion 两个媒体查询）。
+*/
+
+:root {
+  /* raw scale: gray 0..13 (tokens.json raw) */
+  --fc-gray-0: #FCFCFC;
+  --fc-gray-1: #F6F6F6;
+  --fc-gray-2: #EEEEEE;
+  --fc-gray-3: #E2E2E2;
+  --fc-gray-4: #D1D1D1;
+  --fc-gray-5: #BBBBBB;
+  --fc-gray-6: #A0A0A0;
+  --fc-gray-7: #868686;
+  --fc-gray-8: #6D6D6D;
+  --fc-gray-9: #555555;
+  --fc-gray-10: #3E3E3E;
+  --fc-gray-11: #303030;
+  --fc-gray-12: #222222;
+  --fc-gray-13: #181818;
+  /* raw scale: primary 0..9 (tokens.json raw) */
+  --fc-primary-0: #F7F5FE;
+  --fc-primary-3: #CBBFF9;
+  --fc-primary-4: #AEA0F7;
+  --fc-primary-5: #8F81F4;
+  --fc-primary-6: #5F5EF0;
+  --fc-primary-7: #2F46E5;
+  --fc-primary-9: #1B2B95;
+
+  /* semantic_light */
+  --fc-bg-canvas: #F6F6F6;
+  --fc-bg-surface: #FCFCFC;
+  --fc-bg-sunken: #EEEEEE;
+  --fc-bg-hover: #EEEEEE;
+  --fc-bg-selected: #E5E0F4;
+  --fc-line-subtle: #D1D1D1;
+  --fc-line-strong: #868686;
+  --fc-text-primary: #303030;
+  --fc-text-secondary: #555555;
+  --fc-text-tertiary: #6D6D6D;
+  --fc-text-disabled: #A0A0A0;
+  --fc-text-on-brand: #FFFFFF;
+  --fc-text-brand: #5F5EF0;
+  --fc-brand-solid: #5F5EF0;
+  --fc-brand-hover: #2F46E5;
+  --fc-focus-ring: #8F81F4;
+  --fc-danger: #DA2742;
+  --fc-warning: #9A6815;
+  /* 存量漂移订正：HEAD 里是 #20824A，而 tokens.json 与 ui-tokens.md:194/238 都是 #208247
+     （freechat tokens.css 也是 #208247）。1 字符对齐，视觉不可辨，对比度 4.83:1 不变。 */
+  --fc-success: #208247;
+
+  /* space / radius / size / motion (tokens.json) */
+  --fc-space-4: 4px;
+  --fc-space-8: 8px;
+  --fc-space-12: 12px;
+  --fc-space-16: 16px;
+  --fc-space-24: 24px;
+  --fc-space-32: 32px;
+  --fc-radius-none: 0;
+  --fc-radius-sm: 4px;
+  --fc-radius-md: 8px;
+  --fc-radius-lg: 12px;
+  --fc-radius-full: 999px;
+  --fc-titlebar-h: 40px;
+  --fc-item-h: 64px;
+  /* 命中区：tokens.json hit-min=32 是「桌面指针最小值」（docs/design/ui-tokens.md:78
+     「触控屏抬到 44」）。公网服务要同时服务触控与键盘用户，故取 44（WCAG 2.5.5 AAA 口径）。
+     密集的设置面板内部另按 WCAG 2.5.8 AA 的 24px 处理，见文件末尾。 */
+  --fc-hit-min: 44px;
+  --fc-motion-fast: 120ms;
+  --fc-motion-base: 180ms;
+  --fc-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* typography (tokens.json typography.font-*.size) */
+  --fc-font-body: 15px;
+  --fc-font-heading: 17px;
+  --fc-font-title: 20px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* semantic_dark */
+    --fc-bg-canvas: #222222;
+    --fc-bg-surface: #303030;
+    --fc-bg-sunken: #181818;
+    --fc-bg-hover: #3E3E3E;
+    --fc-bg-selected: #38347E;
+    --fc-line-subtle: #3E3E3E;
+    --fc-line-strong: #868686;
+    --fc-text-primary: #F6F6F6;
+    --fc-text-secondary: #E2E2E2;
+    --fc-text-tertiary: #A0A0A0;
+    --fc-text-disabled: #6D6D6D;
+    --fc-text-on-brand: #FFFFFF;
+    --fc-text-brand: #CBBFF9;
+    --fc-brand-solid: #5F5EF0;
+    --fc-brand-hover: #8F81F4;
+    --fc-focus-ring: #AEA0F7;
+    --fc-danger: #F88D8B;
+    --fc-warning: #E59D25;
+    --fc-success: #35C36D;
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* hidden 属性必须赢过任何作者样式的 display：UA 样式表的 [hidden]{display:none} 会被类选择器
+   压过（实测：.dyn-input{display:flex} 让带 hidden 的动态输入框常显在画布上，可点可聚焦）。 */
+[hidden] { display: none !important; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  /* 隐式列轨默认 minmax(auto, auto)：轨道下限 = 内容的 min-content，工具栏再会换行也压不下去
+     （实测 390px 视口下整页被顶到 2427px）。显式 minmax(0,1fr) 才允许轨道收缩到视口宽。 */
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--fc-bg-canvas);
+  color: var(--fc-text-primary);
+  font-family: system-ui, -apple-system, "Noto Sans", "DejaVu Sans", sans-serif;
+  font-size: var(--fc-font-body);
+}
+
+#topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fc-space-16);
+  min-height: var(--fc-titlebar-h);
+  padding: var(--fc-space-8) var(--fc-space-12);
+  background: var(--fc-bg-surface);
+  border-bottom: 1px solid var(--fc-line-subtle);
+}
+
+.brand {
+  font-size: var(--fc-font-heading);
+  font-weight: 600;
+  color: var(--fc-text-primary);
+  white-space: nowrap;
+}
+
+#toolbar,
+#actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fc-space-4);
+  min-width: 0;
+  max-width: 100%;
+}
+
+#toolbar {
+  padding: var(--fc-space-4);
+  border: 1px solid var(--fc-line-subtle);
+  border-radius: var(--fc-radius-md);
+  background: var(--fc-bg-sunken);
+}
+
+#selectors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fc-space-12);
+  margin-left: auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: var(--fc-space-8);
+  color: var(--fc-text-secondary);
+}
+
+.field__label { white-space: nowrap; }
+
+select,
+input[type="text"],
+button {
+  font: inherit;
+  color: var(--fc-text-primary);
+  background: var(--fc-bg-surface);
+  border: 1px solid var(--fc-line-subtle);
+  border-radius: var(--fc-radius-sm);
+}
+
+select {
+  padding: var(--fc-space-4) var(--fc-space-8);
+  min-height: var(--fc-hit-min);
+}
+
+button { cursor: pointer; }
+
+button:hover { background: var(--fc-bg-hover); }
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--fc-focus-ring);
+  outline-offset: 1px;
+}
+
+.tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 图标态 = 44x44（min-width/height 吃 --fc-hit-min）；若被 i18n 回填成文字，则按内容加宽，
+     不把文字塞进固定 32px 方框里溢出到画布上。 */
+  min-width: var(--fc-hit-min);
+  min-height: var(--fc-hit-min);
+  padding: 0 var(--fc-space-4);
+  white-space: nowrap;
+  border-color: transparent;
+  background: transparent;
+  transition: background var(--fc-motion-fast) var(--fc-ease-standard);
+}
+
+.tool__glyph {
+  width: 20px;
+  height: 20px;
+}
+
+/* 选中态对比度：浅色下 --fc-text-brand(#5F5EF0) on --fc-bg-selected(#E5E0F4) = 3.75:1（<4.5），
+   换 --fc-primary-7(#2F46E5) = 5.21:1；深色档 --fc-text-brand on --fc-bg-selected = 6.30:1 已达标。 */
+.tool[aria-pressed="true"] {
+  background: var(--fc-bg-selected);
+  border-color: var(--fc-brand-solid);
+  color: var(--fc-primary-7);
+}
+
+@media (prefers-color-scheme: dark) {
+  .tool[aria-pressed="true"] { color: var(--fc-text-brand); }
+}
+
+.action {
+  min-height: var(--fc-hit-min);
+  padding: var(--fc-space-4) var(--fc-space-12);
+  white-space: nowrap;
+}
+
+#workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  min-height: 0;
+}
+
+#canvas-pane {
+  position: relative;
+  min-width: 0;
+  /* 画布越界必须被裁掉：app.js:440-441 仍按"面板当时高度"写行内 px 高，桌面 1280×800 实测
+     画布比自己的网格行高 82px，命中测试 elementFromPoint(状态栏) 返回 canvas（点状态栏=在图上取点）。 */
+  overflow: hidden;
+  background: var(--fc-bg-canvas);
+  border-right: 1px solid var(--fc-line-subtle);
+}
+
+/* 画布脱离常规流：它的高度不再参与 #canvas-pane 的内容高度 ⇒ 断掉
+   "画布撑高面板 → ResizeObserver 再 resize() → 再撑高" 的自涨回路（两个方向的坏结果都来自它）。
+   app.js 写的行内 width/height(px) 仍在，但 min/max 尺寸**对行内 height/width 永远占先**
+   （CSS 尺寸规则：min-* 胜 height，max-* 胜 height，与选择器优先级无关），故不需要 !important。 */
+#canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 100%;
+  max-width: 100%;
+  min-height: 100%;
+  max-height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+#canvas[data-tool="select"] { cursor: default; }
+
+/* 捕捉提示浮标：#snap-indicator 的定位与上色由 app.js 内联样式给出（app.js:1452-1464），
+   这里补的是**类本身的定义**（无 JS / JS 未跑到时的兜底外观）。不设 display，hidden 属性照旧生效。 */
+.snap-indicator {
+  padding: 1px var(--fc-space-4);
+  border: 1px solid var(--fc-line-strong);
+  border-radius: var(--fc-radius-sm);
+  background: var(--fc-bg-surface);
+  color: var(--fc-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+#side-pane {
+  padding: var(--fc-space-12);
+  background: var(--fc-bg-surface);
+  overflow: auto;
+}
+
+.pane__title {
+  margin: 0 0 var(--fc-space-8);
+  font-size: var(--fc-font-body);
+  font-weight: 600;
+  color: var(--fc-text-secondary);
+}
+
+#layers {
+  margin: 0 0 var(--fc-space-16);
+  padding: 0;
+  list-style: none;
+}
+
+#layers li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--fc-space-8);
+  padding: var(--fc-space-4) var(--fc-space-8);
+  border-radius: var(--fc-radius-sm);
+}
+
+#layers li:hover { background: var(--fc-bg-hover); }
+
+#layers .layer__name {
+  font-family: ui-monospace, "DejaVu Sans Mono", monospace;
+  font-size: var(--fc-font-body);
+}
+
+#layers .layer__count { color: var(--fc-text-tertiary); }
+
+#profile {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--fc-space-4) var(--fc-space-8);
+  margin: 0;
+  font-size: var(--fc-font-body);
+}
+
+#profile dt { color: var(--fc-text-tertiary); }
+
+#profile dd {
+  margin: 0;
+  text-align: right;
+  color: var(--fc-text-secondary);
+}
+
+#bottom {
+  display: flex;
+  align-items: center;
+  gap: var(--fc-space-12);
+  padding: var(--fc-space-8) var(--fc-space-12);
+  background: var(--fc-bg-surface);
+  border-top: 1px solid var(--fc-line-subtle);
+}
+
+#status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fc-space-4) var(--fc-space-16);
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fc-font-body);
+}
+
+.seg {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--fc-space-4);
+  white-space: nowrap;
+}
+
+.seg__label { color: var(--fc-text-tertiary); }
+
+.seg__value { color: var(--fc-text-primary); }
+
+.seg--message { flex: 1 1 100%; }
+
+.seg--message .seg__value {
+  color: var(--fc-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#status[data-message-kind="error"] .seg--message .seg__value { color: var(--fc-danger); }
+
+#status[data-message-kind="ok"] .seg--message .seg__value { color: var(--fc-success); }
+
+#cmd-line {
+  flex: 0 0 280px;
+  min-height: var(--fc-hit-min);
+  padding: var(--fc-space-4) var(--fc-space-8);
+  font-family: ui-monospace, "DejaVu Sans Mono", monospace;
+  font-size: var(--fc-font-body);
+}
+
+[data-i18n-missing="1"] { color: var(--fc-text-disabled); }
+
+/* ------------------------------------------------------------------------------------
+   用户面接线 v2 的样式：精度设置面板（DSETTINGS 口径）、动态输入框。
+   只加类，不改既有选择器的行为；配色一律走既有 --fc-* 变量（暗色主题自动跟随）。
+   ------------------------------------------------------------------------------------ */
+.precision {
+  margin-top: var(--fc-space-8);
+  border: 1px solid var(--fc-line-subtle);
+  border-radius: 4px;
+  padding: var(--fc-space-4) var(--fc-space-8);
+}
+
+.precision > summary {
+  display: block;
+  min-height: 24px;
+  cursor: pointer;
+  color: var(--fc-text-primary);
+  font-size: var(--fc-font-body);
+}
+
+/* 这里原有一条 .precision[data-store="-1"] > summary::after { content: " (-1)" }：把裸哨兵 -1 打进
+   界面。该状态位由 #precision-store 承载，而页内没有这个元素（app.js:1880-1881 的 setAttribute
+   恒为空操作）⇒ data-store 永远停在 -1，真读数下这条装饰会说谎。裸哨兵进界面本身也是缺陷
+   （r8 §4.10），故移除；真状态标语应由 HTML/JS 侧按语言给出（本席写面外）。 */
+
+.precision__block { margin: var(--fc-space-8) 0 0; }
+
+.precision__title {
+  margin: 0 0 var(--fc-space-4);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fc-text-secondary);
+}
+
+.precision__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.precision__row {
+  display: flex;
+  align-items: center;
+  gap: var(--fc-space-4);
+  padding: 1px 0;
+  font-size: 12px;
+  color: var(--fc-text-primary);
+}
+
+.precision__name { flex: 1 1 auto; }
+
+/* 捕捉类型复选框实测 13x13、行距 21px：不满足 WCAG 2.2 SC 2.5.8（AA，目标 >=24x24 或足够间距）。 */
+.precision__row input[type="checkbox"] {
+  inline-size: 24px;
+  block-size: 24px;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.precision__move,
+.precision__apply {
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0 var(--fc-space-4);
+  border: 1px solid var(--fc-line-subtle);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fc-text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.precision__field {
+  display: flex;
+  align-items: center;
+  gap: var(--fc-space-4);
+  font-size: 12px;
+  color: var(--fc-text-secondary);
+}
+
+.precision__field input,
+.precision__field select {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 24px;
+  padding: 0 var(--fc-space-4);
+  font-family: ui-monospace, "DejaVu Sans Mono", monospace;
+  font-size: 12px;
+}
+
+.dyn-input {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  gap: var(--fc-space-4);
+  padding: 2px var(--fc-space-4);
+  border: 1px solid var(--fc-brand-solid);
+  border-radius: 4px;
+  background: var(--fc-bg-canvas);
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+.dyn-input__field {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--fc-text-secondary);
+}
+
+.dyn-input__field input {
+  width: 68px;
+  min-height: 24px;
+  padding: 0 2px;
+  font-family: ui-monospace, "DejaVu Sans Mono", monospace;
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+
+/* ------------------------------------------------------------------------------------
+   公网 Web 服务加固（2026-10-06）：命中区下限、换行/断点、打印。
+   只加规则，不改既有选择器的行为；配色仍走既有 --fc-* 变量。
+   ------------------------------------------------------------------------------------ */
+
+/* 主交互控件命中区下限 44px（= --fc-hit-min 的取值；此处写死字面量，便于静态判据与 grep 复核）。 */
+#toolbar .tool,
+#actions .action,
+#selectors select,
+#cmd-line {
+  min-height: 44px;
+}
+
+/* 顶栏与底栏允许换行：37 个工具的工具栏在窄屏 / 大字号下必须折行，
+   不许把右侧面板与命令行推出视口（实测 1400px 宽下横向溢出 919px）。 */
+#topbar,
+#bottom {
+  flex-wrap: wrap;
+}
+
+/* 极窄屏：画布与侧栏改上下排（原先固定 1fr 240px，240px 侧栏在手机上挤掉整块画布）。 */
+@media (max-width: 720px) {
+  #workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  #canvas-pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--fc-line-subtle);
+  }
+  #side-pane { max-height: 40vh; }
+  #cmd-line { flex: 1 1 100%; }
+  /* 手机上工具栏改为单行横滚，而不是折成七八行把画布挤没。 */
+  #toolbar {
+    flex-wrap: nowrap;
+    width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+}
+
+/* ------------------------------------------------------------------------------------
+   画布布局 / 小屏（≤360px）/ 视图呈现 加固（2026-10-06，x5-m5 席）。
+
+   本条只碰三件事，全部落在 CSS 写面内（app.js / index.html 是别人的写面，一律不碰）：
+   ① 画布盒：见上方 #canvas-pane / #canvas 的改写；
+   ② 断点：721–1099px 工具栏单行横滚；≤720px 画布保底高度 + 状态/选择器单行横滚 + 16px 输入字号；
+   ③ 视图呈现契约：三视口网格 + 视图角标 + 面板说明（标记由 index.html 提供才生效，见下）。
+
+   实测口径（x5-m5 探针，真 Chromium 151/CDP，每次读数带 css md5）：
+     /hf3fs-jd/data/tmp/x5-m5/scripts/probe-layout.mjs  → evidence/*.json
+   ------------------------------------------------------------------------------------ */
+
+/* ① 721–1099px：工具栏必须单行横滚。
+   原先"单行横滚"只写在 ≤720px 里，721px 以上是 flex-wrap:wrap，而工具栏 min-content ≈1.8k px
+   ⇒ 平板竖屏 / 小笔记本 / 分屏窗口折成 2–4 行，折行高度由 body 的 auto 行从画布那一行扣掉。 */
+@media (min-width: 721px) and (max-width: 1099px) {
+  #toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    max-width: 100%;
+    /* 工具栏吃掉第 1 行剩下的宽度（brand 之后），文件动作与语言/标准档顺势折到第 2 行并排一行：
+       实测顶栏 250px → 约 130px，省下的高度全给画布。 */
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+/* ② ≤720px 小屏：绘图区保底 + 非绘图内容不许占掉大半个视口。
+   实测（改前，360×640）：顶栏 354px + 底栏 273px，画布被挤成 1px。 */
+@media (max-width: 720px) {
+  /* 画布保底 46vh：宁可整页纵向可滚，也不把绘图区让没。
+     #workspace 的 min-height 改回 auto，是为了让 body 的 1fr 行**跟着内容长高**——
+     否则越界的工作区会把底栏盖住（网格项溢出不会推开兄弟行）。 */
+  #workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(46vh, 1fr) auto;
+    min-height: auto;
+  }
+  #canvas-pane { min-height: 46vh; }
+  #side-pane { max-height: 24vh; }
+  /* 状态读数 / 选择器：单行横滚，别折成 7–9 行（实测折行各占 175px / 100px）。 */
+  #status {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+  .seg--message { flex: 0 0 auto; max-width: 62vw; }
+  #selectors {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    margin-left: 0;
+  }
+  /* 横滚提示（纯 CSS，不违 CSP style-src 'self'）：右端渐隐，用户看得出"还能往右滑"。 */
+  #toolbar {
+    background-image: linear-gradient(to right, transparent, var(--fc-bg-sunken) 92%);
+    background-repeat: no-repeat;
+    background-position: right center;
+    background-size: 24px 100%;
+  }
+  #toolbar .tool:focus-visible { scroll-margin-inline: 48px; }
+  /* iOS 聚焦自动放大阈值：所有输入控件字号 < 16px 时 Safari 会放大整页，
+     而本页画布是 touch-action:none，用户很难缩回去（CAD 坐标会跟着错位）。 */
+  #cmd-line,
+  .precision__field input,
+  .precision__field select,
+  .dyn-input__field input,
+  #osnap-tolerance,
+  #grid-spacing,
+  #polar-increments,
+  #hatch-spacing {
+    font-size: 16px;
+  }
+}
+
+/* ③ ≤360px：极窄屏再压一轮非绘图内容的固定开销（只压间距/内边距，不藏功能、不降命中区 44px）。 */
+@media (max-width: 360px) {
+  #topbar {
+    gap: var(--fc-space-8);
+    padding: var(--fc-space-4) var(--fc-space-8);
+  }
+  .brand { font-size: var(--fc-font-body); }
+  #bottom {
+    gap: var(--fc-space-8);
+    padding: var(--fc-space-4) var(--fc-space-8);
+    padding-bottom: max(var(--fc-space-4), env(safe-area-inset-bottom));
+  }
+  #status { gap: var(--fc-space-4) var(--fc-space-8); }
+  #actions .action { padding: 0 var(--fc-space-8); }
+  #cmd-line { flex: 1 1 100%; min-width: 0; }
+}
+
+/* ④ 安全区：iPhone 的 home indicator / 刘海。env() 在未声明 viewport-fit=cover 时解析为 0，
+   max() 兜住既有内边距 ⇒ 这条在普通浏览器上是恒等变换，不会改任何现测尺寸。
+   （meta viewport 的 viewport-fit=cover 在 index.html 写面，见 x5-m5 REPORT 的交接项。） */
+#topbar {
+  padding-left: max(var(--fc-space-12), env(safe-area-inset-left));
+  padding-right: max(var(--fc-space-12), env(safe-area-inset-right));
+}
+#bottom {
+  padding-left: max(var(--fc-space-12), env(safe-area-inset-left));
+  padding-right: max(var(--fc-space-12), env(safe-area-inset-right));
+}
+
+/* ⑤ 视图呈现契约（三视口 / 视图角标 / 面板说明）。
+   index.html 当前**没有**这些标记，故这段在现页面里不生效——它是给视图呈现留的落点，
+   不是"假装有"：本页是 2D 制图外壳，/api 无三视图投影命令、app.js 无接线（同一口径见
+   index.html:22-24 的注释与 README「已知限制」）。契约标记（供 index.html 席照抄）：
+
+     <div id="views" data-views="3">
+       <figure class="view" data-view="front">
+         <canvas class="view__canvas"></canvas>
+         <figcaption class="view__label" data-i18n="cmd.view.front"></figcaption>
+       </figure>
+       …top / right（语言包已有 cmd.view.front/top/right/iso，三语齐全）…
+     </div>
+
+   或者单视口外壳只在 #canvas-pane 上加一个角标：
+     <span class="view-badge" data-i18n="cmd.view.front"></span> */
+#views {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--fc-space-8);
+  min-width: 0;
+}
+#views[data-views="1"] { grid-template-columns: minmax(0, 1fr); }
+#views[data-views="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.view {
+  position: relative;
+  margin: 0;
+  min-width: 0;
+  min-height: 32vh;
+  overflow: hidden;
+  background: var(--fc-bg-canvas);
+  border: 1px solid var(--fc-line-subtle);
+  border-radius: var(--fc-radius-sm);
+}
+.view > canvas,
+.view__canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.view__label,
+.view-badge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  padding: 2px var(--fc-space-8);
+  background: var(--fc-bg-surface);
+  color: var(--fc-text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  border-right: 1px solid var(--fc-line-subtle);
+  border-bottom: 1px solid var(--fc-line-subtle);
+  border-bottom-right-radius: var(--fc-radius-sm);
+  pointer-events: none;
+}
+.pane__note {
+  margin: var(--fc-space-4) 0 0;
+  color: var(--fc-text-tertiary);
+  font-size: 12px;
+}
+@media (max-width: 1099px) {
+  #views { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  #views { grid-template-columns: minmax(0, 1fr); }
+  .view { min-height: 30vh; }
+}
+
+/* 打印：只印图，不印工具条 / 状态条 / 侧栏与浮层。 */
+@media print {
+  html, body { height: auto; background: #fff; color: #000; }
+  body { display: block; }
+  #topbar, #bottom, #side-pane, .dyn-input, .snap-indicator { display: none !important; }
+  #workspace { display: block; }
+  #canvas-pane { border: 0; break-inside: avoid; }
+  #canvas { height: 85vh; }
+}

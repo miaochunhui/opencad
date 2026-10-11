@@ -1,0 +1,449 @@
+{
+  "schema_version": 1,
+  "meta": {
+    "doc_uuid": "a11ce000-0000-4000-8000-000000000001",
+    "created_at": "2026-09-29T08:00:00Z",
+    "app_version": "0.1.0",
+    "title_key": "doc.untitled"
+  },
+  "unit": "mm",
+  "standard_profile": "gbt",
+  "projection_angle": "first",
+  "sketches": [
+    {
+      "uuid": "a11ce000-0000-4000-8000-000000000010",
+      "plane": "XY",
+      "entities": [
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000101",
+          "kind": "line",
+          "layer": "0",
+          "construction": false,
+          "geom": {
+            "x1": -50000000,
+            "y1": -40000000,
+            "x2": 50000000,
+            "y2": -40000000
+          }
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000102",
+          "kind": "line",
+          "layer": "0",
+          "construction": false,
+          "geom": {
+            "x1": 60000000,
+            "y1": -30000000,
+            "x2": 60000000,
+            "y2": 30000000
+          }
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000103",
+          "kind": "line",
+          "layer": "0",
+          "construction": false,
+          "geom": {
+            "x1": 50000000,
+            "y1": 40000000,
+            "x2": -50000000,
+            "y2": 40000000
+          }
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000104",
+          "kind": "line",
+          "layer": "0",
+          "construction": false,
+          "geom": {
+            "x1": -60000000,
+            "y1": 30000000,
+            "x2": -60000000,
+            "y2": -30000000
+          }
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000201",
+          "kind": "arc",
+          "layer": "0",
+          "construction": false,
+          "geom": {
+            "cx": 50000000,
+            "cy": -30000000,
+            "r": 10000000,
+            "start_deg": 270.0,
+            "end_deg": 0.0
+          }
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000202",
+          "kind": "arc",
+          "layer": "0",
+          "construction": false,
+          "geom": {
+            "cx": 50000000,
+            "cy": 30000000,
+            "r": 10000000,
+            "start_deg": 0.0,
+            "end_deg": 90.0
+          }
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000203",
+          "kind": "arc",
+          "layer": "0",
+          "construction": false,
+          "geom": {
+            "cx": -50000000,
+            "cy": 30000000,
+            "r": 10000000,
+            "start_deg": 90.0,
+            "end_deg": 180.0
+          }
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000204",
+          "kind": "arc",
+          "layer": "0",
+          "construction": false,
+          "geom": {
+            "cx": -50000000,
+            "cy": -30000000,
+            "r": 10000000,
+            "start_deg": 180.0,
+            "end_deg": 270.0
+          }
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000301",
+          "kind": "circle",
+          "layer": "0",
+          "construction": false,
+          "geom": {
+            "cx": 40000000,
+            "cy": 24000000,
+            "r": 4000000
+          }
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000302",
+          "kind": "circle",
+          "layer": "0",
+          "construction": false,
+          "geom": {
+            "cx": -40000000,
+            "cy": 24000000,
+            "r": 4000000
+          }
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000303",
+          "kind": "circle",
+          "layer": "0",
+          "construction": false,
+          "geom": {
+            "cx": -40000000,
+            "cy": -24000000,
+            "r": 4000000
+          }
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000304",
+          "kind": "circle",
+          "layer": "0",
+          "construction": false,
+          "geom": {
+            "cx": 40000000,
+            "cy": -24000000,
+            "r": 4000000
+          }
+        }
+      ],
+      "constraints": [
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000401",
+          "kind": "horizontal",
+          "refs": [["a11ce000-0000-4000-8000-000000000101", "edge"]],
+          "value_nm": null
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000402",
+          "kind": "horizontal",
+          "refs": [["a11ce000-0000-4000-8000-000000000103", "edge"]],
+          "value_nm": null
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000403",
+          "kind": "vertical",
+          "refs": [["a11ce000-0000-4000-8000-000000000102", "edge"]],
+          "value_nm": null
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000404",
+          "kind": "vertical",
+          "refs": [["a11ce000-0000-4000-8000-000000000104", "edge"]],
+          "value_nm": null
+        }
+      ],
+      "dimensions": [
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000501",
+          "kind": "linear",
+          "refs": [["a11ce000-0000-4000-8000-000000000104", "start"], ["a11ce000-0000-4000-8000-000000000102", "end"]],
+          "value_nm": 120000000,
+          "text_key": "cmd.dimension.linear"
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000502",
+          "kind": "linear",
+          "refs": [["a11ce000-0000-4000-8000-000000000101", "start"], ["a11ce000-0000-4000-8000-000000000103", "end"]],
+          "value_nm": 80000000,
+          "text_key": "cmd.dimension.linear"
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000503",
+          "kind": "diameter",
+          "refs": [["a11ce000-0000-4000-8000-000000000301", "radius"]],
+          "value_nm": 8000000,
+          "text_key": "cmd.dimension.diameter"
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000504",
+          "kind": "diameter",
+          "refs": [["a11ce000-0000-4000-8000-000000000302", "radius"]],
+          "value_nm": 8000000,
+          "text_key": "cmd.dimension.diameter"
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000505",
+          "kind": "diameter",
+          "refs": [["a11ce000-0000-4000-8000-000000000303", "radius"]],
+          "value_nm": 8000000,
+          "text_key": "cmd.dimension.diameter"
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000506",
+          "kind": "diameter",
+          "refs": [["a11ce000-0000-4000-8000-000000000304", "radius"]],
+          "value_nm": 8000000,
+          "text_key": "cmd.dimension.diameter"
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000507",
+          "kind": "radial",
+          "refs": [["a11ce000-0000-4000-8000-000000000201", "radius"]],
+          "value_nm": 10000000,
+          "text_key": "cmd.dimension.radial"
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000508",
+          "kind": "radial",
+          "refs": [["a11ce000-0000-4000-8000-000000000202", "radius"]],
+          "value_nm": 10000000,
+          "text_key": "cmd.dimension.radial"
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000509",
+          "kind": "radial",
+          "refs": [["a11ce000-0000-4000-8000-000000000203", "radius"]],
+          "value_nm": 10000000,
+          "text_key": "cmd.dimension.radial"
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-00000000050a",
+          "kind": "radial",
+          "refs": [["a11ce000-0000-4000-8000-000000000204", "radius"]],
+          "value_nm": 10000000,
+          "text_key": "cmd.dimension.radial"
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-00000000050b",
+          "kind": "linear",
+          "refs": [["a11ce000-0000-4000-8000-000000000302", "center"], ["a11ce000-0000-4000-8000-000000000301", "center"]],
+          "value_nm": 80000000,
+          "text_key": "cmd.dimension.linear"
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-00000000050c",
+          "kind": "linear",
+          "refs": [["a11ce000-0000-4000-8000-000000000303", "center"], ["a11ce000-0000-4000-8000-000000000302", "center"]],
+          "value_nm": 48000000,
+          "text_key": "cmd.dimension.linear"
+        }
+      ],
+      "solved": {
+        "dof": -1,
+        "converged": false,
+        "cache": true
+      }
+    }
+  ],
+  "features": [
+    {
+      "uuid": "a11ce000-0000-4000-8000-000000000601",
+      "kind": "extrude",
+      "inputs": ["a11ce000-0000-4000-8000-000000000010"],
+      "params": {
+        "distance_nm": 6000000,
+        "symmetric": false,
+        "angle_deg": "0",
+        "op": "new"
+      },
+      "suppressed": false
+    }
+  ],
+  "annotations": [
+    {
+      "uuid": "a11ce000-0000-4000-8000-000000000501",
+      "target": ["a11ce000-0000-4000-8000-000000000601", "edge.outer.width"],
+      "kind": "dimension",
+      "value_nm": 120000000,
+      "text_key": "cmd.dimension.linear",
+      "literal": false,
+      "args": {}
+    },
+    {
+      "uuid": "a11ce000-0000-4000-8000-000000000502",
+      "target": ["a11ce000-0000-4000-8000-000000000601", "edge.outer.height"],
+      "kind": "dimension",
+      "value_nm": 80000000,
+      "text_key": "cmd.dimension.linear",
+      "literal": false,
+      "args": {}
+    },
+    {
+      "uuid": "a11ce000-0000-4000-8000-000000000503",
+      "target": ["a11ce000-0000-4000-8000-000000000601", "hole.1.diameter"],
+      "kind": "dimension",
+      "value_nm": 8000000,
+      "text_key": "cmd.dimension.diameter",
+      "literal": false,
+      "args": {}
+    },
+    {
+      "uuid": "a11ce000-0000-4000-8000-000000000504",
+      "target": ["a11ce000-0000-4000-8000-000000000601", "hole.2.diameter"],
+      "kind": "dimension",
+      "value_nm": 8000000,
+      "text_key": "cmd.dimension.diameter",
+      "literal": false,
+      "args": {}
+    },
+    {
+      "uuid": "a11ce000-0000-4000-8000-000000000505",
+      "target": ["a11ce000-0000-4000-8000-000000000601", "hole.3.diameter"],
+      "kind": "dimension",
+      "value_nm": 8000000,
+      "text_key": "cmd.dimension.diameter",
+      "literal": false,
+      "args": {}
+    },
+    {
+      "uuid": "a11ce000-0000-4000-8000-000000000506",
+      "target": ["a11ce000-0000-4000-8000-000000000601", "hole.4.diameter"],
+      "kind": "dimension",
+      "value_nm": 8000000,
+      "text_key": "cmd.dimension.diameter",
+      "literal": false,
+      "args": {}
+    },
+    {
+      "uuid": "a11ce000-0000-4000-8000-000000000507",
+      "target": ["a11ce000-0000-4000-8000-000000000601", "fillet.1.radius"],
+      "kind": "dimension",
+      "value_nm": 10000000,
+      "text_key": "cmd.dimension.radial",
+      "literal": false,
+      "args": {}
+    },
+    {
+      "uuid": "a11ce000-0000-4000-8000-000000000508",
+      "target": ["a11ce000-0000-4000-8000-000000000601", "fillet.2.radius"],
+      "kind": "dimension",
+      "value_nm": 10000000,
+      "text_key": "cmd.dimension.radial",
+      "literal": false,
+      "args": {}
+    },
+    {
+      "uuid": "a11ce000-0000-4000-8000-000000000509",
+      "target": ["a11ce000-0000-4000-8000-000000000601", "fillet.3.radius"],
+      "kind": "dimension",
+      "value_nm": 10000000,
+      "text_key": "cmd.dimension.radial",
+      "literal": false,
+      "args": {}
+    },
+    {
+      "uuid": "a11ce000-0000-4000-8000-00000000050a",
+      "target": ["a11ce000-0000-4000-8000-000000000601", "fillet.4.radius"],
+      "kind": "dimension",
+      "value_nm": 10000000,
+      "text_key": "cmd.dimension.radial",
+      "literal": false,
+      "args": {}
+    },
+    {
+      "uuid": "a11ce000-0000-4000-8000-00000000050b",
+      "target": ["a11ce000-0000-4000-8000-000000000601", "hole.axis.spacing.x"],
+      "kind": "dimension",
+      "value_nm": 80000000,
+      "text_key": "cmd.dimension.linear",
+      "literal": false,
+      "args": {}
+    },
+    {
+      "uuid": "a11ce000-0000-4000-8000-00000000050c",
+      "target": ["a11ce000-0000-4000-8000-000000000601", "hole.axis.spacing.y"],
+      "kind": "dimension",
+      "value_nm": 48000000,
+      "text_key": "cmd.dimension.linear",
+      "literal": false,
+      "args": {}
+    }
+  ],
+  "sheets": [
+    {
+      "uuid": "a11ce000-0000-4000-8000-000000000701",
+      "standard_profile": "gbt",
+      "size": "A3",
+      "scale": "1:1",
+      "views": [
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000801",
+          "direction": [0, 0, 1],
+          "at_nm": [0, 0],
+          "hidden": true,
+          "cache": true
+        },
+        {
+          "uuid": "a11ce000-0000-4000-8000-000000000802",
+          "direction": [0, -1, 0],
+          "at_nm": [0, -120000000],
+          "hidden": true,
+          "cache": true
+        }
+      ],
+      "dimensions": [
+        "a11ce000-0000-4000-8000-000000000501",
+        "a11ce000-0000-4000-8000-000000000502",
+        "a11ce000-0000-4000-8000-000000000503",
+        "a11ce000-0000-4000-8000-000000000504",
+        "a11ce000-0000-4000-8000-000000000505",
+        "a11ce000-0000-4000-8000-000000000506",
+        "a11ce000-0000-4000-8000-000000000507",
+        "a11ce000-0000-4000-8000-000000000508",
+        "a11ce000-0000-4000-8000-000000000509",
+        "a11ce000-0000-4000-8000-00000000050a",
+        "a11ce000-0000-4000-8000-00000000050b",
+        "a11ce000-0000-4000-8000-00000000050c"
+      ],
+      "title_block": {
+        "title": "doc.untitled",
+        "standard": "std.gbt",
+        "projection": "std.projection.first",
+        "unit": "unit.mm"
+      }
+    }
+  ]
+}

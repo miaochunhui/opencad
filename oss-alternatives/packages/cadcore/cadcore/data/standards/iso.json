@@ -1,0 +1,78 @@
+{
+  "_doc": "Purpose: drafting-standard profile for the ISO system, consumed by cadcore.i18n.standards (projection angle plus sheet/line/lettering/title-block conventions). Background: standard-dependent values must live in data rather than code branches, and any field whose standard text was not obtained stays null and is listed in na_fields, so 'not fetched' can never masquerade as a real value; no standard text is reproduced here (R3).",
+  "projection_angle": null,
+  "sheet_sizes": null,
+  "line_widths": null,
+  "text_height_series": null,
+  "default_font_family": null,
+  "decimal_separator": null,
+  "title_block_template": null,
+  "dimension_terminator": null,
+  "gdt_symbol_set": null,
+  "units": null,
+  "tolerance": null,
+  "na_fields": [
+    "projection_angle",
+    "sheet_sizes",
+    "line_widths",
+    "text_height_series",
+    "default_font_family",
+    "decimal_separator",
+    "title_block_template",
+    "dimension_terminator",
+    "gdt_symbol_set",
+    "units",
+    "tolerance"
+  ],
+  "source": {
+    "standard_id": "iso",
+    "standard_numbers": [
+      "ISO 5456-2 (orthographic representations)",
+      "ISO 128-3 (views, sections and cuts)"
+    ],
+    "retrieved_at": "2026-09-29",
+    "retrieval_method": "read-only fetch of public web pages (HTTP status recorded per URL); standard bodies are paywalled and none of their text is copied into this file",
+    "projection_angle_evidence": [
+      {
+        "url": "https://www.iso.org/standard/28643.html",
+        "publisher": "ISO official standards catalogue (iso.org)",
+        "http_status": 403,
+        "shows": "Not readable from this network on the retrieval date (bot protection), so the ISO standard body could not be checked at clause level at all.",
+        "grade": "unreachable, recorded as not fetched"
+      },
+      {
+        "url": "https://www.iim.maschinenbau.tu-darmstadt.de/CAD-Tutorial/CAD-Norminfo/2_basics_for_standardcompliant_design_of_technical_drawings/2_view_cuts_and_hatching/index.en.html",
+        "publisher": "TU Darmstadt, Institute for Machine Elements and Machine Design (public German technical university tutorial)",
+        "http_status": 200,
+        "shows": "States that the ISO/DIN-family projection standard offers two methods and that the sheet carries the symbol that declares which one applies; the page assigns method 1 to Germany and most of Europe and method 3 to the USA, i.e. the ISO family itself is not presented as mandating a single default (paraphrase).",
+        "grade": "public university teaching source, paraphrased"
+      },
+      {
+        "url": "https://ideagroupvn.com/jis-drawing-projection-methods/",
+        "publisher": "IDEA Technology (Japanese engineering firm), JIS drawing-standards article series",
+        "http_status": 500,
+        "shows": "Conflicting public secondary account: the same page calls third-angle standard for ISO in one section and first-angle standard in Europe in another, so it cannot settle the ISO default either way. The server answered HTTP 500 while still serving the article.",
+        "grade": "public secondary source, low-grade and self-contradicting on this point"
+      }
+    ],
+    "field_status": {
+      "projection_angle": "not_fetched",
+      "sheet_sizes": "not_fetched",
+      "line_widths": "not_fetched",
+      "text_height_series": "not_fetched",
+      "default_font_family": "not_fetched",
+      "decimal_separator": "not_fetched",
+      "title_block_template": "not_fetched",
+      "dimension_terminator": "not_fetched",
+      "gdt_symbol_set": "not_fetched",
+      "units": "not_fetched",
+      "tolerance": "not_fetched"
+    },
+    "na_policy": "null means not fetched (-1), never 'zero'; here projection_angle is null because the reachable public evidence says the ISO family permits both first-angle and third-angle and lets the projection symbol on the sheet decide, while the official catalogue page was unreadable (403). Guessing a default would be worse than reporting NA, because callers must show the ambiguity rather than silently mirror a drawing.",
+    "notes": [
+      "na_fields lists exactly the null-valued fields, in contract order: a gate can assert set(na_fields) == {k for k, v in profile.items() if v is None}.",
+      "This is the only profile whose projection_angle is null: cadcore.i18n.standards.projection_angle_for('iso') therefore returns None and the caller has to handle the NA case explicitly, which is the intended contract behaviour.",
+      "All numeric tables remain null because ISO bodies are paywalled; no value is copied from memory or from the DIN profile."
+    ]
+  }
+}

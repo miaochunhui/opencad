@@ -1,0 +1,70 @@
+{
+  "_doc": "Purpose: drafting-standard profile for the JIS (Japan) system, consumed by cadcore.i18n.standards (projection angle plus sheet/line/lettering/title-block conventions). Background: standard-dependent values must live in data rather than code branches, and any field whose standard text was not obtained stays null and is listed in na_fields, so 'not fetched' can never masquerade as a real value; no standard text is reproduced here (R3).",
+  "projection_angle": null,
+  "sheet_sizes": null,
+  "line_widths": null,
+  "text_height_series": null,
+  "default_font_family": null,
+  "decimal_separator": null,
+  "title_block_template": null,
+  "dimension_terminator": null,
+  "gdt_symbol_set": null,
+  "units": null,
+  "tolerance": null,
+  "na_fields": [
+    "projection_angle",
+    "sheet_sizes",
+    "line_widths",
+    "text_height_series",
+    "default_font_family",
+    "decimal_separator",
+    "title_block_template",
+    "dimension_terminator",
+    "gdt_symbol_set",
+    "units",
+    "tolerance"
+  ],
+  "source": {
+    "standard_id": "jis",
+    "standard_numbers": [
+      "JIS B 0001 (general principles of mechanical drawing; number as cited by the evidence page, not independently verified against a JSA register)"
+    ],
+    "retrieved_at": "2026-09-29",
+    "retrieval_method": "read-only fetch of public web pages and public PDFs (HTTP status recorded per URL); standard bodies are paywalled and none of their text is copied into this file",
+    "projection_angle_evidence": [
+      {
+        "url": "https://webdesk.jsa.or.jp/preview/pre_jis_b_00001_000_000_2019_e_ed10_ch.pdf",
+        "publisher": "JSA Webdesk, official JIS preview (Japanese Standards Association)",
+        "http_status": "unreachable (connection timeout from this network on the retrieval date)",
+        "shows": "Could not be read, so neither the edition nor the projection clause of JIS B 0001 was verified from a standards-body source.",
+        "grade": "unreachable, recorded as not fetched"
+      },
+      {
+        "url": "https://ideagroupvn.com/jis-drawing-projection-methods/",
+        "publisher": "IDEA Technology (Japanese engineering firm), JIS drawing-standards article series",
+        "http_status": 500,
+        "shows": "Public secondary article stating that JIS B 0001 practice is third-angle projection and that first-angle is not used in principle in Japan. The server answered HTTP 500 while still serving the article, the publisher is a commercial vendor rather than a standards or academic institution, and the same page is self-contradicting about ISO in another section, so this single low-grade source was judged insufficient to fix a value.",
+        "grade": "public secondary source, low-grade (non-200 response, no institutional or academic corroboration reachable)"
+      }
+    ],
+    "field_status": {
+      "projection_angle": "not_fetched",
+      "sheet_sizes": "not_fetched",
+      "line_widths": "not_fetched",
+      "text_height_series": "not_fetched",
+      "default_font_family": "not_fetched",
+      "decimal_separator": "not_fetched",
+      "title_block_template": "not_fetched",
+      "dimension_terminator": "not_fetched",
+      "gdt_symbol_set": "not_fetched",
+      "units": "not_fetched",
+      "tolerance": "not_fetched"
+    },
+    "na_policy": "null means not fetched (-1), never 'zero'; every null field is listed in na_fields, and no unverified field is given a guessed value.",
+    "notes": [
+      "na_fields lists exactly the null-valued fields, in contract order: a gate can assert set(na_fields) == {k for k, v in profile.items() if v is None}.",
+      "The widespread engineering convention that Japan draws in third angle was deliberately NOT entered as a value: the JSA preview and the Japanese academic pages tried on the retrieval date were unreachable (timeout, DNS failure, HTTP 403), so the entry would rest on a single non-institutional source. Reporting NA is the honest state; a JSA-register check is the action needed to fill it.",
+      "All numeric tables remain null because JIS bodies are paywalled; no value is copied from the ISO or GB/T profile."
+    ]
+  }
+}

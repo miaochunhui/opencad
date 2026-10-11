@@ -1,0 +1,76 @@
+{
+  "_doc": "Purpose: drafting-standard profile for the ANSI/ASME (United States) system, consumed by cadcore.i18n.standards (projection angle plus sheet/line/lettering/title-block conventions). Background: standard-dependent values must live in data rather than code branches, and any field whose standard text was not obtained stays null and is listed in na_fields, so 'not fetched' can never masquerade as a real value; no standard text is reproduced here (R3).",
+  "projection_angle": "third",
+  "sheet_sizes": null,
+  "line_widths": null,
+  "text_height_series": null,
+  "default_font_family": null,
+  "decimal_separator": null,
+  "title_block_template": null,
+  "dimension_terminator": null,
+  "gdt_symbol_set": null,
+  "units": null,
+  "tolerance": null,
+  "na_fields": [
+    "sheet_sizes",
+    "line_widths",
+    "text_height_series",
+    "default_font_family",
+    "decimal_separator",
+    "title_block_template",
+    "dimension_terminator",
+    "gdt_symbol_set",
+    "units",
+    "tolerance"
+  ],
+  "source": {
+    "standard_id": "ansi",
+    "standard_numbers": [
+      "ASME Y14.3-2012 (R2024)"
+    ],
+    "retrieved_at": "2026-09-29",
+    "retrieval_method": "read-only fetch of public web pages and public PDFs (HTTP status recorded per URL); standard bodies are paywalled and none of their text is copied into this file",
+    "projection_angle_evidence": [
+      {
+        "url": "https://www.asme.org/codes-standards/find-codes-standards/y14-3-orthographic-pictorial-views",
+        "publisher": "ASME (American Society of Mechanical Engineers), official standards catalogue page",
+        "http_status": 200,
+        "shows": "ASME Y14.3-2012 (R2024) 'Orthographic and Pictorial Views' is the current ASME standard for orthographic views on engineering drawing sheets; anchors the field to the US standard that governs view projection.",
+        "grade": "official standards-developer page (scope text only, no clause text read)"
+      },
+      {
+        "url": "https://www.isbe.net/CTEDocuments/TEE-L600027.pdf",
+        "publisher": "Illinois State Board of Education (US state government agency), career and technical education curriculum",
+        "http_status": 200,
+        "shows": "Public US curriculum document stating that the United States adopted third-angle projection as its standard method on technical drawings (around 1890) while first-angle projection is primarily used in Europe and Asia (paraphrase; the document's wording is not copied here).",
+        "grade": "US government agency publication, paraphrased"
+      },
+      {
+        "url": "https://www.iim.maschinenbau.tu-darmstadt.de/CAD-Tutorial/CAD-Norminfo/2_basics_for_standardcompliant_design_of_technical_drawings/2_view_cuts_and_hatching/index.en.html",
+        "publisher": "TU Darmstadt, Institute for Machine Elements and Machine Design (public German technical university tutorial)",
+        "http_status": 200,
+        "shows": "States that of the two projection methods in the ISO/DIN family, method 1 is usual in Germany and most European countries while method 3 is usually applied in the USA (paraphrase).",
+        "grade": "public university teaching source, paraphrased"
+      }
+    ],
+    "field_status": {
+      "projection_angle": "verified_public_sources",
+      "sheet_sizes": "not_fetched",
+      "line_widths": "not_fetched",
+      "text_height_series": "not_fetched",
+      "default_font_family": "not_fetched",
+      "decimal_separator": "not_fetched",
+      "title_block_template": "not_fetched",
+      "dimension_terminator": "not_fetched",
+      "gdt_symbol_set": "not_fetched",
+      "units": "not_fetched",
+      "tolerance": "not_fetched"
+    },
+    "na_policy": "null means not fetched (-1), never 'zero'; every null field is listed in na_fields, and no unverified field is given a guessed value.",
+    "notes": [
+      "na_fields lists exactly the null-valued fields, in contract order: a gate can assert set(na_fields) == {k for k, v in profile.items() if v is None}.",
+      "ANSI/ASME sheet sizes (ASME Y14.1 series, inch based) are deliberately null: the values were not read, and they must not be conflated with ISO 216 A-series sizes.",
+      "projection_angle must differ from the GB/T profile so that the G2 drawing smoke can detect a standard switch actually changing the projection; this file carries third_angle while gbt.json carries first_angle."
+    ]
+  }
+}

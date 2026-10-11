@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 版本 / 构建戳（WEB_PAGE_AUDIT 的 version 两腿）：读者手里这页是不是当前版。改本文件时同批刷新；
+     时间戳形态 = 站级口径 YYYY-MM-DDTHH:MM:SS+08:00（ops/web-footer-timestamp）。 -->
+<meta name="app-version" content="2026.10.06">
+<meta name="build-stamp" content="2026-10-06T16:10:00+08:00">
+<!-- 页签标题：静态兜底 = 三语词典 app.title 的 en 值，boot 后由 app.js fillI18n 按 strings["app.title"]
+     覆盖。标题元素上的 i18n 绑定是承重的：裸字面量会被 CAD_UI_VERDICT 的 human_literals 腿计入
+     （判据 ui_gate.py `_html_literals`：带 i18n 绑定的元素不计字面量），而空 <title> 顶红
+     WEB_PAGE_AUDIT 的 aria.doc_title 腿（判据 page_audit.py:1206）—— 两条腿同时绿只此一形。 -->
+<title data-i18n="app.title">Open Engineering CAD</title>
+<!-- 页面级元信息：description + Open Graph（社交/搜索卡片用；页内可见文案那份在 body，两者互不覆盖）。
+     三态纪律（"没有"不许写成"有"）：og:url / og:image 要**线上绝对地址**，本服务线上地址还没定，
+     且本文件不许出现 http(s) 字面量（tests/test_server.py 的静态面判据 + ui_gate 的 external_refs
+     腿都禁外链）⇒ 这两条**不写**，不编地址；线上地址定了再加。
+     description 只此一份英文：页内文案由 app.js 按语言重填，而 meta 不参与那套重刷
+     —— 这里不假装它是三语的。 -->
+<meta name="description" content="Open Engineering CAD — browser 2D drafting shell: draw, dimension and snap on the canvas, export DXF / PDF, and run fully offline on local assets only.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OpenCAD">
+<meta property="og:title" content="Open Engineering CAD">
+<meta property="og:description" content="Browser 2D drafting shell: draw, dimension and snap on the canvas, export DXF / PDF, fully offline on local assets only.">
+<meta property="og:locale" content="en">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:locale:alternate" content="ja_JP">
+<!-- Self-drawn inline SVG favicon carried as a percent-encoded data: URI (no network reference).
+     'http%3A//www.w3.org/2000/svg' is the XML namespace, percent-encoded so the source keeps zero
+     http(s) literals; browsers decode the data URI before parsing the SVG document. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20viewBox='0%200%2032%2032'%20xmlns='http%3A//www.w3.org/2000/svg'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%235F5EF0'/%3E%3Cpath%20d='M7%2023%20L7%209%20L23%209%20M7%2016%20h9'%20fill='none'%20stroke='%23fff'%20stroke-width='2'%20stroke-linecap='round'/%3E%3Ccircle%20cx='23'%20cy='23'%20r='4'%20fill='none'%20stroke='%23fff'%20stroke-width='2'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="web/css/app.css">
+</head>
+<body>
+<!--
+  OpenCAD 线上 Web 外壳的静态骨架（原生 HTML/CSS/JS：无框架、无 CDN、无任何外部资源）。
+  区域地图（本页真实具备的能力，按区域给可访问名；三态纪律：没有的能力不假装有）：
+    #topbar   顶栏：h1 应用名 + #toolbar 工具栏 + #actions 文件与导出 + #selectors 语言/标准档
+    #workspace 工作区： #canvas-pane 画布（#canvas + 捕捉指示 + 动态输入）
+                        #side-pane  参数面板（图层 / 标准档与投影角 / 精度设置 DSETTINGS）
+    #bottom   命令与状态： #status 状态读数（其中 .seg--message 是唯一的 live region）+ #cmd-line 命令行
+  三视图（主视/俯视/右视/轴测的交互式切换）**不在本外壳能力面内**：本页是 2D 制图外壳，
+  /api 无对应命令、app.js 无对应接线；语言包里的 cmd.view.* 是 cadcore.draw.sheet 的**出图方向**
+  （packages/cadcore/cadcore/draw/sheet.py:156-159），不是本页的视图开关。故本页不摆死按钮。
+  文本策略：每个面向用户的文本节点都带 data-i18n="<key>"（含 <title>：静态兜底文本与键同批出现），
+  由 app.js 从 /api/state strings 填充、切语言时整页重填。只留裸字面量会顶红 CAD_UI_VERDICT 的
+  human_literals 腿（ui_gate 的 _html_literals 跳过带 i18n 绑定的元素），只留空壳则顶红
+  WEB_PAGE_AUDIT 的 aria.doc_title 腿 —— 两条腿同时绿只有"绑定 + 兜底文本"这一形。
+  可访问名策略：图标/无文字控件用 data-i18n-title="<key>"（app.js:143 写 title 属性）。
+  唯一例外 #cmd-line 用静态 aria-label="Command line"：WEB_PAGE_AUDIT 的 aria.control_name 腿只认
+  文本/aria-label/labelledby/i18n 键（title 属性在 accname 里只算描述），三语词典没有"命令行"词条、
+  也没有可当名字的现成元素，且它落在页脚 flex 行里（加可见 <label> 会动布局）
+  ⇒ 先落静态名把门修绿；等词典补键或 app.js 支持键驱动的 aria-label 填充后再换。
+  服务外壳（待接线，不是遗漏）：d6 的 /web/js/shell.js 注入 infra 级顶栏（服务互链 + 回主页），
+  它自述"不会自己被加载"，必须由本页接线；但该文件当前自带 5 个 https 字面量与 198 个 CJK 字符，
+  会顶红 CAD_UI_VERDICT 的 external_refs / human_literals 两条承重腿（逐文件量化见 d1 REPORT），
+  故先回滚这一行，等它改件或门改腿后由 s14_wire_shell.py 一条命令重放。
+-->
+<header id="topbar">
+  <h1 id="app-title" class="brand" data-i18n="app.title"></h1>
+
+  <div id="toolbar" role="toolbar" data-i18n-title="toolbar.label">
+    <button class="tool" type="button" data-tool="select" data-i18n="tool.select" data-i18n-title="tool.select" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 18 12l-5.2 1.3L10.4 19Z"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="line" data-i18n="tool.line" data-i18n-title="tool.line" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 19.5 19.5 4.5"></path><circle cx="4.5" cy="19.5" r="1.6"></circle><circle cx="19.5" cy="4.5" r="1.6"></circle></svg>
+    </button>
+    <button class="tool" type="button" data-tool="circle" data-i18n="tool.circle" data-i18n-title="tool.circle" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.5"></circle><circle cx="12" cy="12" r="1.2"></circle></svg>
+    </button>
+    <button class="tool" type="button" data-tool="arc" data-i18n="tool.arc" data-i18n-title="tool.arc" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 17.5A9 9 0 0 1 19.5 8.5"></path><circle cx="4.5" cy="17.5" r="1.5"></circle><circle cx="19.5" cy="8.5" r="1.5"></circle></svg>
+    </button>
+    <button class="tool" type="button" data-tool="dimension" data-i18n="tool.dimension" data-i18n-title="tool.dimension" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6v12M20 6v12M4 12h16M7 9.5 4 12l3 2.5M17 9.5 20 12l-3 2.5"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="delete" data-i18n="tool.delete" data-i18n-title="tool.delete" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M9.5 7V5h5v2M7 7l1 12h8l1-12M10.5 10.5v5M13.5 10.5v5"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="rectangle" data-i18n="cmd.rectangle" data-i18n-title="cmd.rectangle" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="7" width="15" height="10" rx="1"></rect><circle cx="4.5" cy="7" r="1.5"></circle><circle cx="19.5" cy="17" r="1.5"></circle></svg>
+    </button>
+    <button class="tool" type="button" data-tool="polygon" data-i18n="cmd.polygon" data-i18n-title="cmd.polygon" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5 19.5 9.6 16.6 19.5H7.4L4.5 9.6Z"></path><circle cx="12" cy="4.5" r="1.4"></circle></svg>
+    </button>
+    <button class="tool" type="button" data-tool="slot" data-i18n="cmd.slot" data-i18n-title="cmd.slot" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8h8a4 4 0 0 1 0 8H8a4 4 0 0 1 0-8Z"></path><path d="M8 8v8M16 8v8"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="move" data-i18n="cmd.move" data-i18n-title="cmd.move" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M4 12h16M12 4 9.5 6.5M12 4l2.5 2.5M12 20l-2.5-2.5M12 20l2.5-2.5M4 12l2.5-2.5M4 12l2.5 2.5M20 12l-2.5-2.5M20 12l-2.5 2.5"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="copy" data-i18n="cmd.copy" data-i18n-title="cmd.copy" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="10" height="10" rx="1"></rect><rect x="9.5" y="9.5" width="10" height="10" rx="1"></rect></svg>
+    </button>
+    <button class="tool" type="button" data-tool="rotate" data-i18n="cmd.rotate" data-i18n-title="cmd.rotate" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12a7 7 0 1 1-2.6-5.4"></path><path d="M19.5 4.5v4h-4"></path><circle cx="12" cy="12" r="1.3"></circle></svg>
+    </button>
+    <button class="tool" type="button" data-tool="scale" data-i18n="cmd.scale" data-i18n-title="cmd.scale" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10" width="9.5" height="9.5" rx="1"></rect><path d="M14 10 20 4M20 4h-4.5M20 4v4.5"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="mirror" data-i18n="cmd.mirror" data-i18n-title="cmd.mirror" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18" stroke-dasharray="2.5 2.5"></path><path d="M9 6 4.5 12 9 18Z"></path><path d="M15 6l4.5 6L15 18Z"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="offset" data-i18n="cmd.offset" data-i18n-title="cmd.offset" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 18.5 12 5l7.5 13.5"></path><path d="M8 18.5 12 11l4 7.5"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="trim" data-i18n="cmd.trim" data-i18n-title="cmd.trim" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l7 7M20 4l-7 7"></path><circle cx="6" cy="18" r="2.4"></circle><circle cx="18" cy="18" r="2.4"></circle></svg>
+    </button>
+    <button class="tool" type="button" data-tool="extend" data-i18n="cmd.extend" data-i18n-title="cmd.extend" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h9M13 12l-3-3M13 12l-3 3"></path><path d="M20 5v14"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="fillet" data-i18n="cmd.fillet" data-i18n-title="cmd.fillet" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v9a7 7 0 0 0 7 7h9"></path><path d="M4 20h4M20 4v4"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="chamfer" data-i18n="cmd.chamfer" data-i18n-title="cmd.chamfer" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v9l7 7h9"></path><path d="M11 13l4-4"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="array_linear" data-i18n="cmd.array_linear" data-i18n-title="cmd.array_linear" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="8.5" width="5" height="7" rx="1"></rect><rect x="10" y="8.5" width="5" height="7" rx="1"></rect><rect x="16.5" y="8.5" width="4" height="7" rx="1"></rect></svg>
+    </button>
+    <button class="tool" type="button" data-tool="delete_constraint" data-i18n="cmd.delete_constraint" data-i18n-title="cmd.delete_constraint" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12h6M14.5 12h6"></path><rect x="9.5" y="8.5" width="5" height="7" rx="1"></rect></svg>
+    </button>
+    <button class="tool" type="button" data-tool="snap_query" data-i18n="cmd.snap_query" data-i18n-title="cmd.snap_query" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v5M12 16v5M3 12h5M16 12h5"></path><circle cx="12" cy="12" r="3"></circle></svg>
+    </button>
+    <button class="tool" type="button" data-tool="ortho" data-i18n="cmd.ortho" data-i18n-title="cmd.ortho" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19V5M5 19h14"></path><path d="M5 12h7v7"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="polar" data-i18n="cmd.polar" data-i18n-title="cmd.polar" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.5" stroke-dasharray="2.5 3"></circle><path d="M12 12 19 5"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="polyline" data-i18n="cmd.polyline" data-i18n-title="cmd.polyline" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 9 8l5 6 6-9"></path><circle cx="4" cy="18" r="1.4"></circle><circle cx="9" cy="8" r="1.4"></circle><circle cx="14" cy="14" r="1.4"></circle><circle cx="20" cy="5" r="1.4"></circle></svg>
+    </button>
+    <button class="tool" type="button" data-tool="point" data-i18n="cmd.point" data-i18n-title="cmd.point" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.2"></circle><path d="M12 3v4M12 17v4M3 12h4M17 12h4"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="hatch" data-i18n="cmd.hatch" data-i18n-title="cmd.hatch" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="15" height="15" rx="1"></rect><path d="M4.5 12h15M4.5 8.2h15M4.5 15.8h15M8.2 4.5v15M12 4.5v15M15.8 4.5v15"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="boundary" data-i18n="cmd.boundary" data-i18n-title="cmd.boundary" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6h6v6H6z"></path><path d="M6 18h12V6" stroke-dasharray="3 2.5"></path><circle cx="15" cy="15" r="1.6"></circle></svg>
+    </button>
+    <button class="tool" type="button" data-tool="revcloud" data-i18n="cmd.revcloud" data-i18n-title="cmd.revcloud" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 14a2.4 2.4 0 1 1 2-3.8 2.4 2.4 0 1 1 3.6-2.6 2.4 2.4 0 1 1 4 .8 2.4 2.4 0 1 1 2.2 3.9 2.4 2.4 0 1 1-1.6 3.4 2.4 2.4 0 1 1-4.2 1.2 2.4 2.4 0 1 1-4.2-1.1A2.4 2.4 0 0 1 5 14Z"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="measure" data-i18n="cmd.measure" data-i18n-title="cmd.measure" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 14.5 14.5 3.5l6 6-11 11z"></path><path d="M7 11l1.6 1.6M9.6 8.4l1.6 1.6M12.2 5.8l1.6 1.6"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="stretch" data-i18n="cmd.stretch" data-i18n-title="cmd.stretch" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h7M13 12h7"></path><path d="M4 9v6M20 9v6" stroke-dasharray="2 2"></path><path d="M9 9.5 11.5 12 9 14.5M15 9.5 12.5 12 15 14.5"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="explode" data-i18n="cmd.explode" data-i18n-title="cmd.explode" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.6 2.6M15.4 15.4 18 18M18 6l-2.6 2.6M8.6 15.4 6 18"></path><circle cx="12" cy="12" r="2"></circle></svg>
+    </button>
+    <button class="tool" type="button" data-tool="matchprop" data-i18n="cmd.matchprop" data-i18n-title="cmd.matchprop" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16c0-6 4-10 8-10"></path><path d="M20 8c0 6-4 10-8 10"></path><circle cx="12" cy="12" r="1.5"></circle></svg>
+    </button>
+    <button class="tool" type="button" data-tool="osnap" data-i18n="cmd.osnap" data-i18n-title="cmd.osnap" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v3M12 17v3M4 12h3M17 12h3"></path><rect x="8.5" y="8.5" width="7" height="7" rx="1"></rect></svg>
+    </button>
+    <button class="tool" type="button" data-tool="snap" data-i18n="cmd.snap" data-i18n-title="cmd.snap" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z" stroke-dasharray="2.5 2.5"></path><path d="M9 9h6v6H9z"></path><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="dyn" data-i18n="cmd.dyn" data-i18n-title="cmd.dyn" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="8" width="17" height="8" rx="1.5"></rect><path d="M7 12h10"></path><path d="M9 10.5v3M15 10.5v3"></path></svg>
+    </button>
+    <button class="tool" type="button" data-tool="otrack" data-i18n="cmd.otrack" data-i18n-title="cmd.otrack" aria-pressed="false">
+      <svg class="tool__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16" stroke-dasharray="3 2.5"></path><path d="M12 4v16" stroke-dasharray="3 2.5"></path><circle cx="12" cy="12" r="2"></circle><circle cx="4" cy="12" r="1.2"></circle><circle cx="12" cy="4" r="1.2"></circle></svg>
+    </button>
+  </div>
+
+  <div id="actions" role="group" data-i18n-title="menu.file">
+    <button class="action" type="button" data-action="open" data-i18n="cmd.open" data-i18n-title="cmd.open"></button>
+    <button class="action" type="button" data-action="save" data-i18n="cmd.save" data-i18n-title="cmd.save"></button>
+    <button class="action" type="button" data-action="export-dxf" data-i18n="cmd.export.dxf" data-i18n-title="cmd.export.dxf"></button>
+    <button class="action" type="button" data-action="export-pdf" data-tool="export_pdf" data-i18n="cmd.export.pdf" data-i18n-title="cmd.export.pdf"></button>
+    <button class="action" type="button" data-action="zoom-fit" data-i18n="cmd.zoom_fit" data-i18n-title="cmd.zoom_fit"></button>
+  </div>
+
+  <div id="selectors">
+    <label class="field" for="lang-select">
+      <span class="field__label" data-i18n="dlg.field.language"></span>
+      <select id="lang-select"></select>
+    </label>
+    <label class="field" for="standard-select">
+      <span class="field__label" data-i18n="dlg.field.standard"></span>
+      <select id="standard-select"></select>
+    </label>
+  </div>
+</header>
+
+<main id="workspace">
+  <section id="canvas-pane">
+    <canvas id="canvas" data-i18n-title="canvas.label"></canvas>
+    <div id="snap-indicator" class="snap-indicator" aria-hidden="true" hidden></div>
+    <div id="dyn-input" class="dyn-input" hidden>
+      <label class="dyn-input__field"><span data-i18n="dyn.length"></span>
+        <input id="dyn-length" type="text" inputmode="decimal" autocomplete="off"></label>
+      <label class="dyn-input__field"><span data-i18n="dyn.angle"></span>
+        <input id="dyn-angle" type="text" inputmode="decimal" autocomplete="off"></label>
+    </div>
+  </section>
+  <aside id="side-pane" aria-labelledby="side-pane-title">
+    <h2 class="pane__title" id="side-pane-title" data-i18n="panel.layers"></h2>
+    <ul id="layers"></ul>
+    <dl id="profile">
+      <dt data-i18n="tb.standard"></dt>
+      <dd id="profile-standard"></dd>
+      <dt data-i18n="tb.projection"></dt>
+      <dd id="profile-projection"></dd>
+    </dl>
+    <details id="precision-panel" class="precision">
+      <summary id="precision-store" data-i18n="panel.drafting"></summary>
+      <div class="precision__block">
+        <h3 class="precision__title" data-i18n="panel.osnap_kinds"></h3>
+        <ul id="osnap-kinds" class="precision__list"></ul>
+      </div>
+      <div class="precision__block">
+        <h3 class="precision__title" data-i18n="panel.priority"></h3>
+        <ul id="osnap-priority" class="precision__list"></ul>
+      </div>
+      <div class="precision__block">
+        <label class="precision__field" for="osnap-tolerance">
+          <span data-i18n="panel.tolerance"></span>
+          <input id="osnap-tolerance" type="text" inputmode="decimal" autocomplete="off">
+        </label>
+        <button class="precision__apply" type="button" data-precision-apply="tolerance" data-i18n="panel.apply"></button>
+      </div>
+      <div class="precision__block">
+        <label class="precision__field" for="grid-spacing">
+          <span data-i18n="panel.grid_step"></span>
+          <input id="grid-spacing" type="text" inputmode="decimal" autocomplete="off">
+        </label>
+        <button class="precision__apply" type="button" data-precision-apply="spacing" data-i18n="panel.apply"></button>
+      </div>
+      <div class="precision__block">
+        <label class="precision__field" for="polar-increments">
+          <span data-i18n="panel.polar_increments"></span>
+          <input id="polar-increments" type="text" autocomplete="off">
+        </label>
+        <button class="precision__apply" type="button" data-precision-apply="increments" data-i18n="panel.apply"></button>
+      </div>
+      <div class="precision__block">
+        <label class="precision__field" for="ignore-hatch">
+          <span data-i18n="panel.ignore_hatch"></span>
+          <input id="ignore-hatch" type="checkbox">
+        </label>
+      </div>
+      <div class="precision__block">
+        <label class="precision__field" for="hatch-pattern">
+          <span data-i18n="panel.pattern"></span>
+          <select id="hatch-pattern"></select>
+        </label>
+        <label class="precision__field" for="hatch-spacing">
+          <span data-i18n="panel.hatch_spacing"></span>
+          <input id="hatch-spacing" type="text" inputmode="decimal" autocomplete="off">
+        </label>
+        <button class="precision__apply" type="button" data-precision-apply="hatch" data-i18n="panel.apply"></button>
+      </div>
+    </details>
+  </aside>
+</main>
+
+<footer id="bottom">
+  <div id="status">
+    <span class="seg" data-seg="language">
+      <span class="seg__label" data-i18n="dlg.field.language"></span>
+      <span class="seg__value" id="status-language"></span>
+    </span>
+    <span class="seg" data-seg="standard">
+      <span class="seg__label" data-i18n="tb.standard"></span>
+      <span class="seg__value" id="status-standard"></span>
+    </span>
+    <span class="seg" data-seg="projection">
+      <span class="seg__label" data-i18n="tb.projection"></span>
+      <span class="seg__value" id="status-projection"></span>
+    </span>
+    <span class="seg" data-seg="entities">
+      <span class="seg__label" data-i18n="status.entities"></span>
+      <span class="seg__value" id="status-entities"></span>
+    </span>
+    <span class="seg" data-seg="cursor">
+      <span class="seg__label" data-i18n="status.cursor"></span>
+      <span class="seg__value" id="status-cursor"></span>
+    </span>
+    <span class="seg" data-seg="tool">
+      <span class="seg__label" data-i18n="status.tool"></span>
+      <span class="seg__value" id="status-tool"></span>
+    </span>
+    <span class="seg" data-seg="snap">
+      <span class="seg__label" data-i18n="status.snap"></span>
+      <span class="seg__value" id="status-snap"></span>
+    </span>
+    <span class="seg" data-seg="ortho">
+      <span class="seg__label" data-i18n="status.ortho"></span>
+      <span class="seg__value" id="status-ortho"></span>
+    </span>
+    <span class="seg" data-seg="polar">
+      <span class="seg__label" data-i18n="status.polar"></span>
+      <span class="seg__value" id="status-polar"></span>
+    </span>
+    <span class="seg" data-seg="osnap">
+      <span class="seg__label" data-i18n="status.osnap"></span>
+      <span class="seg__value" id="status-osnap"></span>
+    </span>
+    <span class="seg" data-seg="dyn">
+      <span class="seg__label" data-i18n="status.dyn"></span>
+      <span class="seg__value" id="status-dyn"></span>
+    </span>
+    <span class="seg" data-seg="grid">
+      <span class="seg__label" data-i18n="status.grid"></span>
+      <span class="seg__value" id="status-grid"></span>
+    </span>
+    <span class="seg" data-seg="readout">
+      <span class="seg__label" data-i18n="status.readout"></span>
+      <span class="seg__value" id="status-readout"></span>
+    </span>
+    <span class="seg" data-seg="measure">
+      <span class="seg__label" data-i18n="status.measure"></span>
+      <span class="seg__value" id="status-measure"></span>
+    </span>
+    <span class="seg seg--message" data-seg="message" role="status" aria-live="polite">
+      <span class="seg__value" id="status-message"></span>
+    </span>
+  </div>
+  <input id="cmd-line" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+         aria-label="Command line" data-i18n-placeholder="cmd.line" data-i18n-title="cmd.hint">
+</footer>
+
+<script src="web/js/app.js"></script>
+</body>
+</html>

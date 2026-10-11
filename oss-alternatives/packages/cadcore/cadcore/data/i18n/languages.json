@@ -1,0 +1,40 @@
+[
+  {
+    "code": "en",
+    "native_name": "English",
+    "file": "en.json",
+    "font_fallback": [
+      "Noto Sans",
+      "DejaVu Sans",
+      "Liberation Sans",
+      "sans-serif"
+    ],
+    "default_standard": "iso"
+  },
+  {
+    "code": "zh-CN",
+    "native_name": "简体中文",
+    "file": "zh-CN.json",
+    "font_fallback": [
+      "Noto Sans CJK SC",
+      "Source Han Sans SC",
+      "Microsoft YaHei",
+      "PingFang SC",
+      "sans-serif"
+    ],
+    "default_standard": "gbt"
+  },
+  {
+    "code": "ja",
+    "native_name": "日本語",
+    "file": "ja.json",
+    "font_fallback": [
+      "Noto Sans CJK JP",
+      "Source Han Sans JP",
+      "Yu Gothic",
+      "Hiragino Kaku Gothic ProN",
+      "sans-serif"
+    ],
+    "default_standard": "jis"
+  }
+]

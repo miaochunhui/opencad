@@ -1,0 +1,69 @@
+{
+  "_doc": "Purpose: drafting-standard profile for the DIN (Germany) system, consumed by cadcore.i18n.standards (projection angle plus sheet/line/lettering/title-block conventions). Background: standard-dependent values must live in data rather than code branches, and any field whose standard text was not obtained stays null and is listed in na_fields, so 'not fetched' can never masquerade as a real value; no standard text is reproduced here (R3).",
+  "projection_angle": "first",
+  "sheet_sizes": null,
+  "line_widths": null,
+  "text_height_series": null,
+  "default_font_family": null,
+  "decimal_separator": null,
+  "title_block_template": null,
+  "dimension_terminator": null,
+  "gdt_symbol_set": null,
+  "units": null,
+  "tolerance": null,
+  "na_fields": [
+    "sheet_sizes",
+    "line_widths",
+    "text_height_series",
+    "default_font_family",
+    "decimal_separator",
+    "title_block_template",
+    "dimension_terminator",
+    "gdt_symbol_set",
+    "units",
+    "tolerance"
+  ],
+  "source": {
+    "standard_id": "din",
+    "standard_numbers": [
+      "DIN ISO 128-3 (number as cited by the evidence page; not independently verified against a DIN register)"
+    ],
+    "retrieved_at": "2026-09-29",
+    "retrieval_method": "read-only fetch of public web pages (HTTP status recorded per URL); standard bodies are paywalled and none of their text is copied into this file",
+    "projection_angle_evidence": [
+      {
+        "url": "https://www.iim.maschinenbau.tu-darmstadt.de/CAD-Tutorial/CAD-Norminfo/2_basics_for_standardcompliant_design_of_technical_drawings/2_view_cuts_and_hatching/index.en.html",
+        "publisher": "TU Darmstadt, Institute for Machine Elements and Machine Design (public German technical university tutorial)",
+        "http_status": 200,
+        "shows": "States that the two projection methods come from DIN ISO 128-3 and that the usual method for display in Germany and most European countries is projection method 1, i.e. first-angle; method 3 is described as the method usually applied in the USA (paraphrase).",
+        "grade": "public university teaching source explicitly citing the DIN standard, paraphrased"
+      },
+      {
+        "url": "https://ideagroupvn.com/jis-drawing-projection-methods/",
+        "publisher": "IDEA Technology (Japanese engineering firm), JIS drawing-standards article series",
+        "http_status": 500,
+        "shows": "Independent public source listing Germany and France among the countries using the first-angle method (paraphrase). The server answered with HTTP 500 while still serving the article, so this URL is treated as low-grade corroboration only, never as the sole basis for a value.",
+        "grade": "public secondary source, low-grade (non-200 response)"
+      }
+    ],
+    "field_status": {
+      "projection_angle": "verified_public_sources",
+      "sheet_sizes": "not_fetched",
+      "line_widths": "not_fetched",
+      "text_height_series": "not_fetched",
+      "default_font_family": "not_fetched",
+      "decimal_separator": "not_fetched",
+      "title_block_template": "not_fetched",
+      "dimension_terminator": "not_fetched",
+      "gdt_symbol_set": "not_fetched",
+      "units": "not_fetched",
+      "tolerance": "not_fetched"
+    },
+    "na_policy": "null means not fetched (-1), never 'zero'; every null field is listed in na_fields, and no unverified field is given a guessed value.",
+    "notes": [
+      "na_fields lists exactly the null-valued fields, in contract order: a gate can assert set(na_fields) == {k for k, v in profile.items() if v is None}.",
+      "decimal_separator stays null on purpose even though German locale text uses a comma: this profile is drawing-standard data, and the locale-derived separator belongs to the i18n catalog / format layer, not to a value invented here.",
+      "DIN is largely harmonised with ISO for sheets and lettering, so ISO and DIN values are expected to converge later; until the bodies are read, both profiles keep the same unverified fields null rather than copying one set into the other."
+    ]
+  }
+}
