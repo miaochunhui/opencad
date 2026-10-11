@@ -437,7 +437,8 @@ class Workspace:
                 "strings_missing": missing,
                 "entities": self.entity_count(),
                 "dimensions": self.dimension_count(),
-                "sketch_uuid": self.sketch.get("uuid"),
+                "sketch_uuid": (self.doc.sketches[0].get("uuid")
+                                if self.doc.sketches else None),
                 "locale_resolved": getattr(change, "resolved", None),
                 "locale_degraded": bool(getattr(change, "degraded", False)),
             }
@@ -1279,7 +1280,6 @@ class Workspace:
                                command=verb, cadcore_key=key) from exc
 
     def _command_locked(self, verb: str, args: Mapping[str, Any]) -> dict[str, Any]:
-        sketch = self.sketch
         from solid_commands import COMMANDS as SOLID_COMMANDS, EDIT_COMMANDS, execute as solid_execute
 
         if verb in SOLID_COMMANDS or verb in EDIT_COMMANDS:
@@ -1301,7 +1301,7 @@ class Workspace:
             uuid = self._mutate(solid_action)
         elif verb == "add_line":
             uuid = self._mutate(lambda: self.commands.add_line(
-                sketch,
+                self.sketch,
                 p1=self._arg(args, "p1"),
                 p2=self._arg(args, "p2"),
                 layer=str(args.get("layer", "0")),
@@ -1309,7 +1309,7 @@ class Workspace:
             ))
         elif verb == "add_circle":
             uuid = self._mutate(lambda: self.commands.add_circle(
-                sketch,
+                self.sketch,
                 center=self._arg(args, "center"),
                 radius_nm=self._arg(args, "radius_nm"),
                 layer=str(args.get("layer", "0")),
@@ -1317,7 +1317,7 @@ class Workspace:
             ))
         elif verb == "add_arc":
             uuid = self._mutate(lambda: self.commands.add_arc(
-                sketch,
+                self.sketch,
                 center=self._arg(args, "center"),
                 radius_nm=self._arg(args, "radius_nm"),
                 start_deg=self._arg(args, "start_deg"),
@@ -1327,7 +1327,7 @@ class Workspace:
             ))
         elif verb == "add_dimension":
             uuid = self._mutate(lambda: self.commands.add_dimension(
-                sketch,
+                self.sketch,
                 kind=str(self._arg(args, "kind")),
                 refs=self._arg(args, "refs"),
                 value_nm=args.get("value_nm"),
@@ -1336,7 +1336,7 @@ class Workspace:
         elif verb in self._PASSTHROUGH:
             # 直通 cadcore：几何规则、入参校验、退化判定全在那边，本文件只接线。
             module = self._cadcore_module(self._PASSTHROUGH[verb])
-            result = self._mutate(lambda: getattr(module, verb)(sketch, **dict(args)))
+            result = self._mutate(lambda: getattr(module, verb)(self.sketch, **dict(args)))
             uuids = self._uuid_list(result)
             return self._command_result(verb, uuids[0] if uuids else "",
                                         uuids=uuids, created=len(uuids))
@@ -1369,7 +1369,7 @@ class Workspace:
         elif verb == "delete_constraint":
             constraint_uuid = str(self._arg(args, "constraint_uuid"))
             result = self._mutate(
-                lambda: self.constraints.delete_constraint(sketch, constraint_uuid))
+                lambda: self.constraints.delete_constraint(self.sketch, constraint_uuid))
             return self._command_result(verb, constraint_uuid,
                                         constraints=self.constraint_count(),
                                         solve=self._solve_payload(result))
@@ -1389,7 +1389,7 @@ class Workspace:
             # 追加直通（族里已实现、只差用户面入口的那些命令）：几何规则全在 cadcore，本层只接线。
             module_name, function_name = self._PASSTHROUGH_EXTRA[verb]
             module = self._cadcore_module(module_name)
-            result = self._mutate(lambda: getattr(module, function_name)(sketch, **dict(args)))
+            result = self._mutate(lambda: getattr(module, function_name)(self.sketch, **dict(args)))
             uuids = self._uuid_list(result)
             return self._command_result(verb, uuids[0] if uuids else "",
                                         uuids=uuids, created=len(uuids))

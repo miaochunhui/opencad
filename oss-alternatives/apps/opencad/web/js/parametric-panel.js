@@ -3,6 +3,7 @@
   "use strict";
   let panel, form, fields, dimensions, configurations, result, notice, current = null;
   let busy = false, reads = 0, dirty = false;
+  let bindingUpdate = Promise.resolve(), bindingError = null;
   const inputs = new Map(), dimensionInputs = new Map();
 
   function report(error) {
@@ -45,6 +46,7 @@
 
   function render(value) {
     current = value;
+    bindingError = null;
     dirty = false;
     fields.replaceChildren(node("legend", "参数表达式"));
     dimensions.replaceChildren(node("legend", "驱动尺寸")); configurations.replaceChildren();
@@ -99,6 +101,8 @@
   }
 
   async function submit(action) {
+    await bindingUpdate;
+    if (bindingError) { report(bindingError); throw bindingError; }
     if (!current || busy) {
       const error = new Error("parametric_operation_in_progress"); report(error); throw error;
     }
@@ -187,6 +191,43 @@
   }
 
   window.opencadParametric = {mount: mount, refresh: refresh, submit: submit};
+  function parameterState(value) {
+    return JSON.stringify({
+      enabled: value.enabled, can_create_plate: value.can_create_plate,
+      parameters: value.parameters, configuration: value.configuration,
+      configurations: value.configurations, driving_dimensions: value.driving_dimensions
+    });
+  }
+  window.addEventListener("opencad:project-commit", function (event) {
+    const detail = event.detail;
+    if (!panel || !current || !detail || detail.path !== "/api/drawing") return;
+    ++reads;
+    bindingUpdate = bindingUpdate.then(async function () {
+      const before = current, receipt = detail.receipt, base = detail.base;
+      try {
+        if (!base || !receipt || base.project_id !== before.project_id ||
+            base.expected_revision !== before.revision || base.expected_sha !== before.sha256 ||
+            typeof base.request_id !== "string" || !base.request_id ||
+            receipt.revision !== base.expected_revision + 1) {
+          throw new Error("parametric_commit_receipt_conflict");
+        }
+        const value = await request();
+        if (value.project_id !== before.project_id || value.project_id !== receipt.project_id ||
+            value.revision !== receipt.revision || value.sha256 !== receipt.sha256 ||
+            value.document_sha256 !== receipt.source_document_sha256 ||
+            parameterState(value) !== parameterState(before)) {
+          throw new Error("parametric_commit_receipt_conflict");
+        }
+        if (current !== before) return;
+        // Only our confirmed drawing metadata changed. Preserve unsaved inputs.
+        current = value;
+        panel.dataset.documentSha = value.document_sha256;
+        bindingError = null;
+      } catch (error) {
+        if (current === before) { bindingError = error; report(error); }
+      }
+    });
+  });
   window.addEventListener("opencad:state", function () { if (panel && !busy) refresh().catch(report); });
   function boot() {
     const target = document.querySelector("[data-parametric-host]") || document.querySelector("main > aside");

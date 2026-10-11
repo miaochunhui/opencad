@@ -36,6 +36,7 @@
     });
     var latest = features[features.length - 1];
     if (latest && latest.kind === "extrude" && latest.params &&
+        document.getElementById("depth").dataset.dirty !== "true" &&
         Number.isFinite(latest.params.distance_nm)) {
       document.getElementById("depth").value = latest.params.distance_nm / 1000000;
     }
@@ -53,6 +54,9 @@
     var select = document.getElementById("locale");
     select.value = s.locale;
   }
+  document.getElementById("depth").addEventListener("input", function (event) {
+    event.target.dataset.dirty = "true";
+  });
   function shader(type, source) {
     var sh = gl.createShader(type); gl.shaderSource(sh, source); gl.compileShader(sh);
     if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
@@ -155,6 +159,9 @@
     model.error = "";
     return request("/api/state").then(function (s) {
       return request("/api/mesh").then(function (r) {
+        if (s.project_id !== undefined &&
+            (s.project_id !== r.project_id || s.revision !== r.revision ||
+             s.sha256 !== r.sha256)) throw new Error("project_snapshot_conflict");
         return crypto.subtle.digest("SHA-256", new TextEncoder().encode(s.doc)).then(function (digest) {
           var expected = Array.from(new Uint8Array(digest)).map(function (value) {
             return value.toString(16).padStart(2, "0");

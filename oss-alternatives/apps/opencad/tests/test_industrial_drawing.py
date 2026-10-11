@@ -93,6 +93,7 @@ class FixtureApplication:
         self.svg_mutation = False
         self.export_mutation = False
         self.read_barrier = None
+        self.save_barrier = None
 
     @contextmanager
     def workspace(self, head):
@@ -152,6 +153,12 @@ class FixtureApplication:
                     head["project_id"], expected_revision=payload["expected_revision"],
                     expected_sha=payload["expected_sha"], request_id=payload["request_id"],
                     request_payload=request, payload=snapshot, response=candidate.response)
+            if self.save_barrier is not None:
+                started, release = self.save_barrier
+                self.save_barrier = None
+                started.set()
+                if not release.wait(15):
+                    raise RuntimeError("Isolated save response barrier was not released")
             return 200, {**receipt["response"], **self.metadata(receipt)}, {}
         if method != "GET":
             raise drawing.DrawingWebError("method_not_allowed", "Unknown fixture route", 405)
@@ -706,6 +713,54 @@ class IndustrialDrawingTests(unittest.TestCase):
             self.assertIn("Model version 3", value)
             self.assertEqual(new_head["revision"], 3)
             browser.screenshot("state-rebuilt")
+
+    def test_browser_save_response_does_not_overwrite_later_draft(self):
+        helper = load("drawing_save_draft_helper",
+                      ROOT / "oss-alternatives/tools/cad3d/viewer_controls_check.py")
+        with self.browser(helper, 1440) as browser:
+            browser.call("Page.navigate", {"url": self.base + "/"})
+            browser.wait("document.querySelector('.drawing-definition') && "
+                         "!document.querySelector('.drawing-panel').matches('[aria-busy=true]')")
+
+            def fill(text):
+                browser.click(".drawing-definition")
+                browser.wait("document.activeElement===document.querySelector('.drawing-definition')")
+                for kind in ("keyDown", "keyUp"):
+                    browser.call("Input.dispatchKeyEvent", {
+                        "type": kind, "key": "a", "code": "KeyA", "modifiers": 2,
+                        "windowsVirtualKeyCode": 65})
+                browser.call("Input.insertText", {"text": text})
+                self.assertEqual(browser.evaluate(
+                    "document.querySelector('.drawing-definition').value"), text)
+
+            submitted = json.dumps(self.spec)
+            fill(submitted)
+            started, release = threading.Event(), threading.Event()
+            self.addCleanup(release.set)
+            self.app.save_barrier = (started, release)
+            browser.click(".drawing-panel-form button[type=submit]")
+            try:
+                self.assertTrue(started.wait(10), "Real store commit was not reached")
+                confirmed = self.store.read_head(self.head["project_id"])
+                self.assertEqual(confirmed["revision"], self.head["revision"] + 1)
+                self.assertEqual(json.loads(confirmed["snapshot"]["doc"])[drawing.KEY]
+                                 ["definition"], self.spec)
+                self.assertEqual(browser.evaluate(
+                    "document.querySelector('.drawing-panel').getAttribute('aria-busy')"), "true")
+                draft = json.dumps({**self.spec, "title": "Unsaved later title"})
+                fill(draft)
+            finally:
+                release.set()
+            browser.wait("!!document.querySelector('.drawing-panel-preview svg') && "
+                         "!document.querySelector('.drawing-panel').matches('[aria-busy=true]')")
+            self.assertEqual(browser.evaluate(
+                "document.querySelector('.drawing-definition').value"), draft)
+            browser.click("[data-drawing-refresh]")
+            browser.wait("!document.querySelector('.drawing-panel').matches('[aria-busy=true]')")
+            self.assertEqual(browser.evaluate(
+                "document.querySelector('.drawing-definition').value"), draft)
+            self.assertEqual(self.store.read_head(self.head["project_id"]), confirmed)
+            browser.screenshot("later-draft-preserved")
 
     def test_browser_rejects_svg_mutation_and_mismatched_export(self):
         self.assertEqual(self.save()[0], 200)

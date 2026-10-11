@@ -157,11 +157,12 @@
       ++generation;
       clear("保存结果尚未确认");
       controls(true);
+      const submittedText = editor.value;
       try {
-        const definition = JSON.parse(editor.value);
+        const definition = JSON.parse(submittedText);
         await json("/api/drawing", {definition: definition});
         if (disposed) { return; }
-        dirty = false;
+        dirty = editor.value !== submittedText;
         controls(false);
         await refresh();
       } catch (error) {
@@ -228,6 +229,7 @@
       }
     }
     window.addEventListener("opencad:state", changed);
+    window.addEventListener("opencad:parametric", changed);
     controls(false);
     refresh();
     return {
@@ -236,6 +238,7 @@
         disposed = true;
         ++generation;
         window.removeEventListener("opencad:state", changed);
+        window.removeEventListener("opencad:parametric", changed);
         panel.remove();
       }
     };

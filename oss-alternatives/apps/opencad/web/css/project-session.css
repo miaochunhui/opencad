@@ -1,0 +1,55 @@
+/* Private project controls inherit the existing CAD workspace palette. */
+.project-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem;
+  padding: .45rem .8rem;
+  border-bottom: 1px solid var(--line, var(--border, #465260));
+  background: var(--paper, var(--panel, #202a34));
+  color: var(--ink, var(--text, #e8edf2));
+}
+.project-status output {
+  position: static;
+  flex: 1;
+  min-width: 12rem;
+  padding: .25rem;
+  background: transparent;
+}
+.project-status button { min-height: 2rem; }
+.project-status [hidden] { display: none; }
+dialog {
+  width: min(32rem, calc(100vw - 3rem));
+  padding: 1.5rem;
+  color: var(--ink, var(--text, #e8edf2));
+  background: var(--paper, var(--panel, #202a34));
+  border: 1px solid var(--line, var(--border, #465260));
+  border-radius: .5rem;
+}
+dialog::backdrop { background: rgb(0 0 0 / 65%); }
+dialog form { display: grid; gap: .7rem; }
+dialog input, dialog select, dialog button {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.5rem;
+}
+dialog [role="alert"] { color: var(--error, #a53420); overflow-wrap: anywhere; }
+.industrial-workbench {
+  padding: 1rem;
+  display: grid;
+  gap: .8rem;
+  min-width: 0;
+}
+.industrial-workbench > details {
+  min-width: 0;
+  border: 1px solid var(--line, #465260);
+  padding: .7rem;
+}
+.industrial-workbench > details > summary { cursor: pointer; min-height: 2rem; }
+.industrial-workbench output { position: static; }
+.industrial-workbench canvas { position: static; }
+.industrial-workbench .drawing-panel header { display: block; height: auto; }
+@media (max-width: 640px) {
+  .project-status { padding: .35rem; }
+  .project-status output { flex-basis: 100%; }
+}

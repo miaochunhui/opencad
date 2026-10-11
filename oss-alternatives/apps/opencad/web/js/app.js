@@ -800,7 +800,9 @@
     const body = await api(API.state);
     applyState(body);
     renderAll();
+    return body;
   }
+  window.OpenCADWorkspace = Object.freeze({refresh: refreshState});
 
   function applyState(body) {
     S.strings = body.strings && typeof body.strings === "object" ? body.strings : {};

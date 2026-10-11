@@ -670,9 +670,11 @@ class GatewayBoundaryTests(unittest.TestCase):
                                           {"doc": self.model.document_to_l1(doc)})
 
     def test_gateway_malformed_single_industrial_domain_open_refused(self):
-        for key, value in (
-            ("x_industrial_surfaces", {"schema": 1, "recipe": {"op": "nurbs"}}),
-            ("industrial_assembly_v1", {"schema": 1, "parts": [], "components": []}),
+        for key, value, expected_status, expected_error in (
+            ("x_industrial_surfaces", {"schema": 1, "recipe": {"op": "nurbs"}},
+             400, "bad_surface_arguments"),
+            ("industrial_assembly_v1", {"schema": 1, "parts": [], "components": []},
+             422, "bad_assembly_input"),
         ):
             with self.subTest(namespace=key):
                 head = self.create()
@@ -686,7 +688,10 @@ class GatewayBoundaryTests(unittest.TestCase):
                 observe(self.id(), namespace=key, status=status,
                         error=response.get("error"), before_revision=before["revision"],
                         after_revision=after["revision"], head_unchanged=after == before)
-                self.assertEqual(status, 422, "malformed recognized domain accepted: %s" % response)
+                self.assertEqual(status, expected_status,
+                                 "malformed domain rejection status differs: %s" % response)
+                self.assertIs(response.get("ok"), False)
+                self.assertEqual(response.get("error"), expected_error)
                 self.assertEqual(after, before)
                 self.assertIsNone(self.store.read_receipt(head["project_id"], body["request_id"],
                     request_payload={**body, "route": "/api/open"}))
@@ -916,7 +921,8 @@ def main():
             with (RUN_DIR / "tests.log").open("x", encoding="utf-8") as log, (
                     RUN_DIR / "http-server.log").open("x", encoding="utf-8") as server_log:
                 with redirect_stderr(server_log):
-                    result = unittest.TextTestRunner(stream=log, verbosity=2).run(suite)
+                    result = unittest.TextTestRunner(
+                        stream=log, verbosity=2, failfast=True).run(suite)
             summary.update(tests=result.testsRun, failures=len(result.failures),
                            errors=len(result.errors), skipped=len(result.skipped),
                            verdict=("GATEWAY_BOUNDARIES_PASS" if args.scope == "gateway" else

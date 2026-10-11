@@ -376,9 +376,10 @@ class Review:
                 "const drawingReviewFetch=window.fetch.bind(window);"
                 "window.fetch=async function(input,options){"
                 "const path=new URL(typeof input==='string'?input:input.url,location.href).pathname;"
+                "const method=options?.method||(input instanceof Request?input.method:'GET');"
                 "const r=await drawingReviewFetch(input,options);"
                 "if(path.startsWith('/api/'))window.__drawingReviewRequests.push("
-                "{path,status:r.status});return r;};"})
+                "{path,method,status:r.status});return r;};"})
             browser.call("Page.navigate", {"url": self.origin + "/web/3d.html"})
             browser.wait("!!document.querySelector('dialog[open] input[name=username]')")
             browser.click("input[name=username]")
@@ -402,6 +403,14 @@ class Review:
             browser.wait("!window.opencad3d.busy", timeout=120)
             state = browser.evaluate("fetch('/api/state').then(r=>r.json())")
             spec = review.definition(json.loads(state["doc"]))
+            browser.click("input[data-parameter=width]")
+            browser.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": "a",
+                                                     "code": "KeyA", "modifiers": 2,
+                                                     "windowsVirtualKeyCode": 65})
+            browser.call("Input.dispatchKeyEvent", {"type": "keyUp", "key": "a",
+                                                     "code": "KeyA", "modifiers": 2,
+                                                     "windowsVirtualKeyCode": 65})
+            browser.call("Input.insertText", {"text": "60 * mm"})
             browser.click(".industrial-workbench details:nth-of-type(4) summary")
             browser.wait("!!document.querySelector('.drawing-definition')")
             browser.wait("!document.querySelector('.drawing-panel button[type=submit]').disabled")
@@ -421,18 +430,16 @@ class Review:
                 "text:document.querySelector('.drawing-panel tbody').textContent,"
                 "svg:document.querySelector('.drawing-panel-preview').innerHTML})")
             self.check("browser-real-form-save", "40 mm" in initial["text"] and "8 mm" in initial["text"])
+            self.check("browser-drawing-save-preserves-dirty-parameter", browser.evaluate(
+                "document.querySelector('input[data-parameter=width]').value === '60 * mm'"))
+            base_result = browser.evaluate(
+                "document.querySelector('.parametric-result').dataset.documentSha")
             browser.click(".drawing-panel-preview")
             browser.screenshot("base-associated")
-            browser.click("input[data-parameter=width]")
-            browser.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": "a",
-                                                     "code": "KeyA", "modifiers": 2,
-                                                     "windowsVirtualKeyCode": 65})
-            browser.call("Input.dispatchKeyEvent", {"type": "keyUp", "key": "a",
-                                                     "code": "KeyA", "modifiers": 2,
-                                                     "windowsVirtualKeyCode": 65})
-            browser.call("Input.insertText", {"text": "60 * mm"})
             browser.click("[data-parametric-rebuild]")
-            browser.wait("document.querySelector('.parametric-result').textContent.includes('重建已保存')",
+            browser.wait("document.querySelector('.parametric-result').dataset.documentSha !== " +
+                         json.dumps(base_result) +
+                         " && document.querySelector('.parametric-result').textContent.includes('重建已保存')",
                          timeout=120)
             browser.wait("document.querySelector('.drawing-panel tbody').textContent.includes('60 mm')",
                          timeout=120)
@@ -449,6 +456,47 @@ class Review:
                 browser.wait("document.querySelector('.drawing-panel-status').textContent"
                              ".includes('已下载同版本 " + fmt.upper() + "')", timeout=120)
                 self.check("browser-real-download-" + fmt, True)
+            panel_sha = browser.evaluate(
+                "document.querySelector('#parametric-panel').dataset.documentSha")
+            browser.click("input[data-parameter=width]")
+            browser.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": "a",
+                                                     "code": "KeyA", "modifiers": 2,
+                                                     "windowsVirtualKeyCode": 65})
+            browser.call("Input.dispatchKeyEvent", {"type": "keyUp", "key": "a",
+                                                     "code": "KeyA", "modifiers": 2,
+                                                     "windowsVirtualKeyCode": 65})
+            browser.call("Input.insertText", {"text": "50 * mm"})
+            prior = browser.evaluate("fetch('/api/state').then(r=>r.json())")
+            advanced = browser.evaluate(
+                "fetch('/api/standard',{method:'POST',headers:{'Content-Type':'application/json'},"
+                "body:JSON.stringify({standard:'iso'})}).then(r=>r.json())")
+            self.check("browser-stale-panel-fixture-advances-global-base",
+                       advanced["revision"] == prior["revision"] + 1
+                       and browser.evaluate(
+                           "document.querySelector('#parametric-panel').dataset.documentSha") == panel_sha)
+            browser.click(".drawing-panel button[type=submit]")
+            browser.wait("document.querySelector('.parametric-notice').textContent"
+                         ".includes('parametric_commit_receipt_conflict')", timeout=120)
+            browser.wait("document.querySelector('.drawing-panel-status').textContent.includes('已重算')",
+                         timeout=120)
+            confirmed = browser.evaluate("fetch('/api/state').then(r=>r.json())")
+            posts = browser.evaluate(
+                "window.__drawingReviewRequests.filter(r=>r.path==='/api/parametric'"
+                "&&r.method==='POST').length")
+            browser.click("[data-parametric-rebuild]")
+            browser.wait("document.querySelector('.parametric-notice').textContent"
+                         ".includes('parametric_commit_receipt_conflict')")
+            after = browser.evaluate("fetch('/api/state').then(r=>r.json())")
+            self.check("browser-stale-panel-refuses-rebind-and-post",
+                       browser.evaluate(
+                           "document.querySelector('#parametric-panel').dataset.documentSha") == panel_sha
+                       and browser.evaluate(
+                           "document.querySelector('input[data-parameter=width]').value") == "50 * mm"
+                       and browser.evaluate(
+                           "window.__drawingReviewRequests.filter(r=>r.path==='/api/parametric'"
+                           "&&r.method==='POST').length") == posts
+                       and (after["revision"], after["sha256"], after["doc"]) ==
+                       (confirmed["revision"], confirmed["sha256"], confirmed["doc"]))
             write(self.out / "browser-bindings.json",
                   json.dumps({"base": initial, "wide": latest}, indent=2).encode())
 

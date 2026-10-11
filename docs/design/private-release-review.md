@@ -165,10 +165,12 @@ Code rollback alone is not a data rollback. Auth and project schemas currently
 gate version 1; an older binary may reject a future database. Prove that the
 prior release can read the selected recovery snapshot or define an accepted
 forward recovery path. Do not delete, rewrite or prune real history as a
-workaround. Startup currently constructs storage before listener validation;
-invalid origin/bind/kernel startup can leave initialized external state
-without a READY marker. A future owner-reviewed lifecycle fix/preflight is
-needed; operators must not infer READY or clean rollback from process presence.
+workaround. The earlier startup constructed storage before listener validation.
+The current CLI reserves and validates the listener before opening storage and
+drains admitted requests before closing databases. Actual invalid-origin,
+bind-failure and drain tests are part of the integrated HTTP suite. This does
+not prove physical crash recovery; operators must not infer READY or clean
+rollback from process presence.
 
 No automatic pre-commit/deployment hook is installed by this task. Connecting
 these checks to an approved release gate remains a chair-owned prerequisite,

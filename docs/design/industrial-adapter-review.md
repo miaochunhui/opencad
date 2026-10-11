@@ -279,3 +279,20 @@ Both owned delivery files are credential-scanned before named DCO submission.
 The next product acceptance requires a chair-frozen current source and
 deliberate negative-control revalidation; committing this review does not
 certify combined geometry or unresolved product behavior.
+
+### Rejection Contract Correction, 2026-10-12
+
+The fresh gateway review in
+`/hf3fs-jd/data/tmp/opencad-continuation-s4-gateway-20261011-v1/`
+retains an eight-test FAIL at 00:05:57 +08:00. The malformed surface
+was rejected with HTTP 400, `bad_surface_arguments`, and `ok=false`;
+the complete persisted head stayed unchanged. The reviewer incorrectly
+required 422 for both surface and assembly validation. The surface adapter
+explicitly maps invalid recipe arguments to 400; assembly schema errors
+use 422. This was an acceptance false negative, not accepted bad geometry.
+The original failed surface subtest did not reach its receipt assertion.
+
+The corrected reviewer requires the exact status and error per namespace,
+`ok=false`, an unchanged complete head and no durable receipt. It also
+stops the test suite at its first failure. No product rejection was weakened,
+no old FAIL was promoted, and new evidence is required after this correction.
