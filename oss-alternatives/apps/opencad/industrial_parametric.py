@@ -26,7 +26,7 @@ from cadcore.sketch import commands, primitives, session
 from cadcore.sketch.constraints import SketchError
 
 __all__ = ["ParametricCandidate", "read_parametric", "prepare_parametric",
-           "handler", "make_plate_document"]
+           "handler", "make_plate_document", "validate_document"]
 
 _SCOPE = "Measured single-document sketch/solid rebuild; not industrial CAD parity."
 
@@ -36,38 +36,103 @@ def _fingerprint(value):
                                      allow_nan=False).encode("utf-8")).hexdigest()
 
 
+def _is_document_sha256(value):
+    return isinstance(value, str) and len(value) == 64 \
+        and all(character in "0123456789abcdef" for character in value)
+
+
+def validate_document(document):
+    """Validate persisted parameters and UUID bindings without solving/rebuilding.
+
+    No namespace is valid for an ordinary document. A present namespace must
+    pass the core expression/check/binding rules. Binding edits are exercised on
+    a deep copy only; guard checks inspect stored sketch geometry, not a new BRep.
+    """
+    if not isinstance(document, docmodel.Document):
+        raise parametric.ParametricError("Validation requires a real Document", reason="bad_document")
+    if "parametric" not in document.extra:
+        return
+    try:
+        problems = docmodel.load_blocking_problems(document)
+        if problems:
+            raise parametric.ParametricError("; ".join(problems[:8]), reason="invalid_parametric_document")
+        specification = document.extra["parametric"]
+        if not isinstance(specification, dict) or set(specification) - {
+                "version", "parameters", "configurations", "bindings", "checks",
+                "geometry_guards", "active_configuration", "active_overrides"}:
+            raise parametric.ParametricError("Invalid parametric specification fields",
+                                             reason="bad_parametric_spec")
+        evaluation = parametric.evaluate_parameters(specification)
+        parametric._checks(specification, evaluation.values)
+        candidate = copy.deepcopy(document)
+        # Reuse the core's UUID resolution, driving-dimension and duplicate rules.
+        parametric._bind(candidate, specification, evaluation.values)
+        parametric._geometry_guards(candidate, specification, evaluation.values)
+    except SketchError as exc:
+        raise parametric.ParametricError("Invalid persisted driving-dimension binding: " + str(exc),
+                                         reason="unsupported_binding") from exc
+    except (TypeError, ValueError, KeyError, AttributeError, RecursionError) as exc:
+        raise parametric.ParametricError("Malformed persisted parametric specification",
+                                         reason="bad_parametric_spec") from exc
+
+
 @dataclass(frozen=True)
 class ParametricCandidate:
     before_document_sha256: str
     doc: str
     response: dict
-    _response_sha256: str = field(init=False, repr=False)
+    _envelope_sha256: str | None = field(default=None, repr=False)
+
+    def _envelope(self):
+        return {"before_document_sha256": self.before_document_sha256,
+                "doc": self.doc, "response": self.response}
 
     def __post_init__(self):
-        object.__setattr__(self, "_response_sha256", _fingerprint(self.response))
+        # init=True preserves the original seal during ordinary dataclass replace.
+        if self._envelope_sha256 is None:
+            object.__setattr__(self, "_envelope_sha256", _fingerprint(self._envelope()))
 
     def verify_integrity(self):
         try:
-            intact = _fingerprint(self.response) == self._response_sha256
-        except (ValueError, TypeError) as exc:
-            raise parametric.ParametricError("Candidate response is not bounded JSON",
+            intact = (_is_document_sha256(self._envelope_sha256)
+                      and _fingerprint(self._envelope()) == self._envelope_sha256)
+        except (ValueError, TypeError, RecursionError, UnicodeError) as exc:
+            raise parametric.ParametricError("Candidate envelope is not canonical JSON",
                                              reason="candidate_changed") from exc
         if not intact:
-            raise parametric.ParametricError("Candidate response changed after measurement",
+            raise parametric.ParametricError("Candidate envelope changed after measurement",
                                              reason="candidate_changed")
+        if (not _is_document_sha256(self.before_document_sha256)
+                or not isinstance(self.doc, str) or not isinstance(self.response, dict)):
+            raise parametric.ParametricError("Invalid candidate envelope fields",
+                                             reason="candidate_changed")
+        try:
+            document = docmodel.document_from_l1(self.doc)
+            if docmodel.document_to_l1(document) != self.doc:
+                raise parametric.ParametricError("Candidate document is not canonical L1",
+                                                 reason="candidate_changed")
+            validate_document(document)
+        except (CadError, ValueError, TypeError, UnicodeError, RecursionError) as exc:
+            raise parametric.ParametricError("Candidate document failed persistence validation",
+                                             reason="candidate_changed") from exc
         digest = hashlib.sha256(self.doc.encode("utf-8")).hexdigest()
         if self.response.get("doc") != self.doc or self.response.get("document_sha256") != digest:
             raise parametric.ParametricError("Candidate changed after measurement",
                                              reason="candidate_changed")
         mesh = self.response.get("mesh", {})
-        solids = mesh.get("solids", [])
-        if (mesh.get("document_sha256") != digest or len(solids) != 1
-                or self.response.get("step", {}).get("document_sha256") != digest):
+        step = self.response.get("step", {})
+        if not isinstance(mesh, dict) or not isinstance(step, dict):
+            raise parametric.ParametricError("Candidate artifacts must be JSON objects",
+                                             reason="candidate_changed")
+        solids = mesh.get("solids")
+        if (mesh.get("document_sha256") != digest or not isinstance(solids, list)
+                or len(solids) != 1 or not isinstance(solids[0], dict)
+                or step.get("document_sha256") != digest):
             raise parametric.ParametricError("Candidate artifacts disagree with document",
                                              reason="candidate_changed")
         measured = solids[0]
         fingerprint = _fingerprint({key: value for key, value in measured.items() if key != "mesh_sha256"})
-        if (measured.get("mesh_sha256") != fingerprint
+        if (measured.get("mesh_sha256") != fingerprint or measured.get("document_sha256") != digest
                 or self.response.get("base_document_sha256") != self.before_document_sha256):
             raise parametric.ParametricError("Candidate mesh changed after measurement",
                                              reason="candidate_changed")

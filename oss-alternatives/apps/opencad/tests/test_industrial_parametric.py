@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+from dataclasses import fields, replace
 from datetime import datetime, timezone
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -38,6 +39,7 @@ for directory in (APP, CORE):
 
 import server
 from cadcore import docmodel, parametric
+from cadcore.errors import CadError
 from cadcore.kernel import subproc
 from cadcore.kernel.features_step import make_step
 from cadcore.sketch import commands
@@ -103,6 +105,221 @@ def integrated_volume(mesh):
                                  tuple(round(v, 7) for v in vertices[triangle[j]]))))
             incidence[edge] = incidence.get(edge, 0) + 1
     return abs(math.fsum(terms)), incidence
+
+
+class CandidateSealTests(unittest.TestCase):
+    """Protocol-only mesh fixture; these tests do not measure geometry."""
+
+    def setUp(self):
+        self.document = industrial.make_plate_document(docmodel.new_document())
+        self.text = docmodel.document_to_l1(
+            docmodel.document_from_l1(docmodel.document_to_l1(self.document)))
+        self.base = digest(docmodel.document_to_l1(docmodel.new_document()))
+        measured = {"document_sha256": digest(self.text), "vertices_mm": [[0, 0, 0]],
+                    "triangles": [], "solid_count": 1}
+        measured["mesh_sha256"] = industrial._fingerprint(measured)
+        self.response = {
+            "doc": self.text, "document_sha256": digest(self.text),
+            "base_document_sha256": self.base,
+            "mesh": {"document_sha256": digest(self.text), "solids": [measured]},
+            "step": {"document_sha256": digest(self.text), "sha256": digest(b"protocol STEP")},
+            "metadata": {"scope": "protocol fixture, not measured BRep"}}
+        self.candidate = industrial.ParametricCandidate(self.base, self.text, self.response)
+
+    def assert_changed(self, candidate):
+        with self.assertRaises(parametric.ParametricError) as caught:
+            candidate.verify_integrity()
+        self.assertEqual(caught.exception.reason, "candidate_changed")
+
+    def rebound_response(self, text):
+        response = copy.deepcopy(self.response)
+        response.update(doc=text, document_sha256=digest(text))
+        response["step"]["document_sha256"] = digest(text)
+        response["mesh"]["document_sha256"] = digest(text)
+        measured = response["mesh"]["solids"][0]
+        measured["document_sha256"] = digest(text)
+        measured["mesh_sha256"] = industrial._fingerprint({
+            key: value for key, value in measured.items() if key != "mesh_sha256"})
+        return response
+
+    def test_this_checkout_and_valid_candidate_copy_replace(self):
+        self.assertEqual(Path(industrial.__file__).resolve(), (APP / "industrial_parametric.py").resolve())
+        for candidate in (self.candidate, copy.copy(self.candidate),
+                          copy.deepcopy(self.candidate), replace(self.candidate),
+                          replace(self.candidate, response=copy.deepcopy(self.response))):
+            candidate.verify_integrity()
+        self.assertEqual(docmodel.document_to_l1(docmodel.document_from_l1(self.text)), self.text)
+
+    def test_creation_envelope_has_init_true_optional_seal(self):
+        seal = next((row for row in fields(industrial.ParametricCandidate)
+                     if row.name == "_envelope_sha256"), None)
+        self.assertIsNotNone(seal)
+        self.assertTrue(seal.init)
+        self.assertIsNone(seal.default)
+        expected = industrial._fingerprint({
+            "before_document_sha256": self.base, "doc": self.text, "response": self.response})
+        self.assertEqual(self.candidate._envelope_sha256, expected)
+        self.assertEqual(replace(self.candidate)._envelope_sha256, expected)
+
+    def test_replace_response_rehash_is_rejected(self):
+        response = copy.deepcopy(self.response)
+        response["step"]["sha256"] = digest(b"altered STEP")
+        self.assert_changed(replace(self.candidate, response=response))
+
+    def test_replace_doc_with_all_artifact_bindings_rehashed_is_rejected(self):
+        document = docmodel.document_from_l1(self.text)
+        document.meta["project_label"] = "edited document"
+        text = docmodel.document_to_l1(document)
+        self.assert_changed(replace(self.candidate, doc=text, response=self.rebound_response(text)))
+
+    def test_replace_base_with_response_binding_is_rejected(self):
+        base = digest("different base")
+        response = copy.deepcopy(self.response)
+        response["base_document_sha256"] = base
+        self.assert_changed(replace(self.candidate, before_document_sha256=base, response=response))
+
+    def test_nested_step_mutation_is_rejected(self):
+        self.candidate.response["step"]["sha256"] = digest(b"nested changed STEP")
+        self.assert_changed(self.candidate)
+
+    def test_nested_mesh_self_rehash_is_rejected(self):
+        measured = self.candidate.response["mesh"]["solids"][0]
+        measured["vertices_mm"][0][0] = 1
+        measured["mesh_sha256"] = industrial._fingerprint({
+            key: value for key, value in measured.items() if key != "mesh_sha256"})
+        self.assert_changed(self.candidate)
+
+    def test_nested_metadata_mutation_is_rejected(self):
+        self.candidate.response["metadata"]["scope"] = "misrepresented scope"
+        self.assert_changed(self.candidate)
+
+    def test_equivalent_response_key_order_keeps_envelope(self):
+        response = dict(reversed(list(self.response.items())))
+        replace(self.candidate, response=response).verify_integrity()
+
+    def test_new_candidate_noncanonical_doc_is_rejected(self):
+        text = json.dumps(json.loads(self.text), separators=(",", ":"))
+        self.assert_changed(industrial.ParametricCandidate(
+            self.base, text, self.rebound_response(text)))
+
+    def test_new_candidate_invalid_base_digest_is_rejected(self):
+        response = copy.deepcopy(self.response)
+        response["base_document_sha256"] = "not a digest"
+        self.assert_changed(industrial.ParametricCandidate("not a digest", self.text, response))
+
+    def test_new_candidate_artifact_document_mismatch_is_rejected(self):
+        response = copy.deepcopy(self.response)
+        response["step"]["document_sha256"] = digest("another document")
+        self.assert_changed(industrial.ParametricCandidate(self.base, self.text, response))
+
+    def test_malformed_sealed_response_is_rejected_without_attribute_error(self):
+        malformed = [[]]
+        for key, value in (("mesh", []), ("step", [])):
+            response = copy.deepcopy(self.response)
+            response[key] = value
+            malformed.append(response)
+        for solids in (None, {}, [], [None]):
+            response = copy.deepcopy(self.response)
+            response["mesh"]["solids"] = solids
+            malformed.append(response)
+        for response in malformed:
+            with self.subTest(response=response):
+                self.assert_changed(industrial.ParametricCandidate(self.base, self.text, response))
+
+
+class DocumentValidationTests(unittest.TestCase):
+    def setUp(self):
+        self.document = industrial.make_plate_document(docmodel.new_document())
+
+    def assert_invalid(self, edit, reason):
+        edit(self.document.extra["parametric"])
+        before = docmodel.document_to_l1(self.document)
+        with self.assertRaises(CadError) as caught:
+            industrial.validate_document(self.document)
+        self.assertEqual(caught.exception.reason, reason)
+        self.assertEqual(docmodel.document_to_l1(self.document), before)
+
+    def test_valid_real_document_schema_and_active_configuration_read_only(self):
+        for configuration in (None, "wide"):
+            with self.subTest(configuration=configuration):
+                self.document.extra["parametric"]["active_configuration"] = configuration
+                before = docmodel.document_to_l1(self.document)
+                with patch.object(industrial, "SubprocessKernel",
+                                  side_effect=AssertionError("schema validator started geometry")), \
+                        patch.object(parametric, "solve",
+                                     side_effect=AssertionError("schema validator started solver")):
+                    self.assertIsNone(industrial.validate_document(self.document))
+                self.assertEqual(docmodel.document_to_l1(self.document), before)
+
+    def test_plain_document_has_no_parametric_namespace(self):
+        self.assertIsNone(industrial.validate_document(docmodel.new_document()))
+
+    def test_document_type_and_null_namespace_rejected(self):
+        with self.assertRaises(parametric.ParametricError) as caught:
+            industrial.validate_document(json.loads(docmodel.document_to_l1(self.document)))
+        self.assertEqual(caught.exception.reason, "bad_document")
+        self.document.extra["parametric"] = None
+        with self.assertRaises(parametric.ParametricError) as caught:
+            industrial.validate_document(self.document)
+        self.assertEqual(caught.exception.reason, "bad_parametric_spec")
+
+    def test_unknown_schema_field_rejected(self):
+        self.assert_invalid(lambda spec: spec.update(unknown=1), "bad_parametric_spec")
+
+    def test_cycle_rejected(self):
+        self.assert_invalid(lambda spec: spec["parameters"]["width"].update(expression="hole_x * 2"),
+                            "parameter_cycle")
+
+    def test_unsafe_expression_rejected(self):
+        self.assert_invalid(lambda spec: spec["parameters"]["width"].update(expression="open('x')"),
+                            "unsafe_expression")
+
+    def test_negative_and_wrong_units_rejected(self):
+        for expression, reason in (("-1 * mm", "invalid_parameter"), ("1", "unit_mismatch")):
+            with self.subTest(expression=expression):
+                self.document = industrial.make_plate_document(docmodel.new_document())
+                self.assert_invalid(lambda spec: spec["parameters"]["width"].update(expression=expression),
+                                    reason)
+
+    def test_missing_dimension_binding_target_rejected(self):
+        self.assert_invalid(lambda spec: spec["bindings"]["plate_width"].update(target_uuid=str(uuid4())),
+                            "unknown_binding_target")
+
+    def test_duplicate_binding_target_rejected(self):
+        self.assert_invalid(lambda spec: spec["bindings"].update(
+            duplicate=copy.deepcopy(spec["bindings"]["plate_width"])), "duplicate_binding")
+
+    def test_feature_binding_field_rejected(self):
+        self.assert_invalid(lambda spec: spec["bindings"]["boss_depth"].update(field="op"),
+                            "unsupported_binding")
+
+    def test_unknown_binding_expression_rejected(self):
+        self.assert_invalid(lambda spec: spec["bindings"]["boss_depth"].update(expression="missing"),
+                            "unknown_parameter")
+
+    def test_check_rejected_before_any_geometry(self):
+        self.assert_invalid(lambda spec: spec["parameters"]["radius"].update(expression="11 * mm"),
+                            "design_check_failed")
+
+    def test_guard_unknown_target_and_schema_rejected(self):
+        for changes, reason in (({"circle_uuid": str(uuid4())}, "unknown_binding_target"),
+                                ({"unknown": True}, "bad_parametric_spec")):
+            with self.subTest(changes=changes):
+                self.document = industrial.make_plate_document(docmodel.new_document())
+                self.assert_invalid(lambda spec: spec["geometry_guards"]["interior_hole"].update(changes),
+                                    reason)
+
+    def test_reference_dimension_binding_rejected_without_mutation(self):
+        binding = self.document.extra["parametric"]["bindings"]["plate_width"]
+        sketch = next(row for row in self.document.sketches if row["uuid"] == binding["sketch_uuid"])
+        dimension = next(row for row in sketch["dimensions"] if row["uuid"] == binding["target_uuid"])
+        dimension["value_nm"] = None
+        before = docmodel.document_to_l1(self.document)
+        with self.assertRaises(parametric.ParametricError) as caught:
+            industrial.validate_document(self.document)
+        self.assertEqual(caught.exception.reason, "unsupported_binding")
+        self.assertIsInstance(caught.exception.__cause__, industrial.SketchError)
+        self.assertEqual(docmodel.document_to_l1(self.document), before)
 
 
 class CandidateTests(unittest.TestCase):
@@ -844,9 +1061,13 @@ def main():
     parser.add_argument("--browser", help="Chromium executable; adds real browser tests")
     parser.add_argument("--browser-only", action="store_true", help="only the isolated browser scenario")
     parser.add_argument("--discovery-check", action="store_true", help="also verify unittest discovery")
+    parser.add_argument("--integrity-only", action="store_true",
+                        help="only creation seal and persistent schema tests, no geometry jobs")
     args = parser.parse_args()
     if args.browser_only and not args.browser:
         parser.error("--browser-only requires --browser")
+    if args.integrity_only and (args.browser or args.browser_only or args.discovery_check):
+        parser.error("--integrity-only cannot run browser or full discovery")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     RUN_ROOT = args.evidence_dir / stamp
     RUN_ROOT.mkdir(parents=True, exist_ok=False)
@@ -854,7 +1075,9 @@ def main():
     prior = tempfile.tempdir
     tempfile.tempdir = str(RUN_ROOT.resolve())
     before = sources_now()
-    classes = [] if args.browser_only else [CandidateTests, HttpContractTests]
+    integrity_classes = [CandidateSealTests, DocumentValidationTests]
+    classes = [] if args.browser_only else (
+        integrity_classes if args.integrity_only else integrity_classes + [CandidateTests, HttpContractTests])
     if BROWSER:
         # Do not inherit and double-count the HTTP suite in the browser run.
         classes.append(type("BrowserPanelTests", (_BrowserPanelScenario, HttpContractTests), {}))
@@ -864,6 +1087,7 @@ def main():
             suite.addTest(cls("test_real_inputs_rebuild_viewer_and_saved_reopen"))
         else:
             suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(cls))
+    discovered = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__]).countTestCases()
     try:
         with (RUN_ROOT / "tests.log").open("x") as log:
             result = unittest.TextTestRunner(stream=log, verbosity=2).run(suite)
@@ -883,7 +1107,7 @@ def main():
         count = re.search(r"Ran (\d+) tests? in", text)
         discovery = {"rc": child.returncode, "tests": int(count[1]) if count else None,
                      "verdict": "PASS" if child.returncode == 0 and count
-                     and int(count[1]) == 26 and text.rstrip().endswith("OK") else "FAIL"}
+                     and int(count[1]) == discovered and text.rstrip().endswith("OK") else "FAIL"}
         after = sources_now()
     report = {"verdict": "PASS" if result.wasSuccessful() and not result.skipped and before == after else "FAIL",
               "tests": result.testsRun, "passed": result.testsRun - len(result.failures)
@@ -892,6 +1116,8 @@ def main():
               "source_root": str(ROOT), "sources": before, "source_drift": before != after,
               "measurements": MEASUREMENTS, "browser_requested": bool(BROWSER),
               "discovery": discovery,
+              "discovery_collected_tests": discovered, "integrity_only": args.integrity_only,
+              "geometry": "NOT_MEASURED" if args.integrity_only else "measured by candidate tests",
               "production_gateway": "NOT_MEASURED", "production_operations": False}
     if discovery is not None and discovery["verdict"] != "PASS":
         report["verdict"] = "FAIL"
