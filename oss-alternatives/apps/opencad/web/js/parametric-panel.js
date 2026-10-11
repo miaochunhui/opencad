@@ -1,14 +1,12 @@
-/* Isolated parameter UI. Project session owns authentication/version receipts. */
+/* Parameter UI owns drafts; the private session alone owns mutation receipts. */
 (function () {
   "use strict";
-  let panel, form, fields, dimensions, configurations, result, notice, current = null;
-  let busy = false, reads = 0, dirty = false;
-  let bindingUpdate = Promise.resolve(), bindingError = null;
+  let panel, form, fields, dimensions, configurations, features, result, notice, discardConfirmation;
+  let current = null, specification = null, owner = null, blocked = false, expired = false;
+  let busy = false, dirty = false, reads = 0, epoch = 0;
+  let bindingUpdate = Promise.resolve(), bindingError = null, clearOverrides = false;
   const inputs = new Map(), dimensionInputs = new Map();
-
-  function report(error) {
-    if (notice) notice.textContent = String(error.message || error);
-  }
+  const digestPattern = /^[0-9a-f]{64}$/;
 
   function node(tag, text, className) {
     const item = document.createElement(tag);
@@ -17,85 +15,196 @@
     return item;
   }
 
-  async function request(body) {
-    const response = await window.fetch("/api/parametric", body === undefined ? {} : {
-      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)
-    });
-    const value = await response.json();
-    if (!response.ok || value.ok !== true) {
-      throw new Error((value.error || "parametric_request_failed") + ": " + (value.detail || ""));
-    }
-    if (!/^[0-9a-f]{64}$/.test(value.document_sha256 || "")) {
-      throw new Error("parametric_response_without_document_sha");
-    }
-    if (!Number.isSafeInteger(value.revision) || value.revision < 1 ||
-        !/^[0-9a-f]{64}$/.test(value.sha256 || "") ||
-        typeof value.project_id !== "string" || !value.project_id) {
-      throw new Error("parametric_response_without_project_receipt");
-    }
-    return value;
+  function report(error) {
+    if (notice) notice.textContent = String(error.message || error);
   }
 
   function markBusy(value) {
     busy = value;
     panel.setAttribute("aria-busy", String(value));
     panel.querySelectorAll("button, input, select").forEach(function (item) {
-      item.disabled = value || item.dataset.readonly === "true";
+      item.disabled = value || expired || !current || item.dataset.readonly === "true" ||
+        (blocked && item.dataset.parametricReload !== "true" &&
+          item.dataset.parametricDiscard !== "true" &&
+          item.dataset.parametricConfirmDiscard !== "true" &&
+          item.dataset.parametricCancelDiscard !== "true");
     });
   }
 
-  function render(value) {
-    current = value;
-    bindingError = null;
-    dirty = false;
-    fields.replaceChildren(node("legend", "参数表达式"));
-    dimensions.replaceChildren(node("legend", "驱动尺寸")); configurations.replaceChildren();
-    inputs.clear(); dimensionInputs.clear();
-    const base = node("option", "基础配置");
-    base.value = ""; configurations.append(base);
-    (value.configurations || []).forEach(function (name) {
-      const option = node("option", name); option.value = name; configurations.append(option);
+  function shield(message, permanent) {
+    ++epoch; ++reads;
+    blocked = true;
+    if (permanent) {
+      expired = true;
+      owner = null; current = null; specification = null;
+      inputs.clear(); dimensionInputs.clear();
+      fields.replaceChildren(); dimensions.replaceChildren(); features.replaceChildren();
+      configurations.replaceChildren(); result.textContent = "";
+      delete panel.dataset.documentSha;
+      delete panel.dataset.projectId; delete panel.dataset.revision;
+      delete result.dataset.documentSha; delete result.dataset.volumeMm3; delete result.dataset.revision;
+      dirty = false; clearOverrides = false;
+    }
+    form.hidden = true;
+    discardConfirmation.hidden = true;
+    panel.querySelectorAll("[data-parametric-create]").forEach(function (button) {
+      button.hidden = true;
     });
-    configurations.value = value.configuration || "";
-    (value.parameters || []).forEach(function (parameter) {
-      const row = node("label", undefined, "parametric-row");
-      const input = node("input");
-      input.type = "text"; input.value = parameter.expression; input.required = true;
-      input.maxLength = 2048; input.dataset.parameter = parameter.name;
-      input.setAttribute("aria-label", parameter.name + " 表达式");
-      row.append(node("span", parameter.name), input,
-        node("small", parameter.value.value + (parameter.unit === "length" ? " nm" : "")));
-      fields.append(row);
-      inputs.set(parameter.name, {input: input, original: parameter.expression});
+    notice.textContent = message;
+    markBusy(false);
+  }
+
+  async function json(path, body) {
+    const response = await window.fetch(path, body === undefined ? {} : {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)
     });
-    (value.driving_dimensions || []).forEach(function (dimension) {
-      const row = node("label", undefined, "parametric-row");
-      const input = node("input");
-      input.type = "text"; input.value = dimension.value_nm + " * nm";
-      input.maxLength = 2048; input.required = true; input.dataset.dimension = dimension.key;
-      input.dataset.readonly = String(!dimension.editable);
-      input.disabled = !dimension.editable;
-      input.setAttribute("aria-label", dimension.key + " 驱动尺寸");
-      row.append(node("span", dimension.key), input); dimensions.append(row);
-      dimensionInputs.set(dimension.key, {input: input, original: input.value});
+    const value = await response.json();
+    if (!response.ok || value.ok !== true) {
+      const error = new Error((value.error || "parametric_request_failed") + ": " + (value.detail || ""));
+      error.status = response.status;
+      throw error;
+    }
+    return value;
+  }
+
+  async function liveOwner() {
+    const session = await json("/api/auth/me");
+    const identifier = session.user && session.user.user_id;
+    if (typeof identifier !== "string" || !identifier || (owner && owner !== identifier)) {
+      shield("账号已变化，已清除本页私有参数。请重新打开项目。", true);
+      throw new Error("parametric_identity_changed");
+    }
+    return identifier;
+  }
+
+  function receipt(value) {
+    if (!digestPattern.test(value.document_sha256 || "") ||
+        !Number.isSafeInteger(value.revision) || value.revision < 1 ||
+        !digestPattern.test(value.sha256 || "") ||
+        typeof value.project_id !== "string" || !value.project_id) {
+      throw new Error("parametric_response_without_project_receipt");
+    }
+  }
+
+  function sameHead(a, b) {
+    return a.project_id === b.project_id && a.revision === b.revision && a.sha256 === b.sha256;
+  }
+
+  async function readBound() {
+    const identifier = await liveOwner();
+    const value = await json("/api/parametric");
+    receipt(value);
+    const state = await json("/api/state");
+    const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(state.doc));
+    const digest = Array.from(new Uint8Array(hash), function (b) {
+      return b.toString(16).padStart(2, "0");
+    }).join("");
+    if (!sameHead(value, state) || digest !== value.document_sha256) {
+      throw new Error("parametric_read_version_conflict");
+    }
+    if (await liveOwner() !== identifier) throw new Error("parametric_identity_changed");
+    return {value: value, spec: JSON.parse(state.doc).parametric || null, owner: identifier};
+  }
+
+  function featurePreview() {
+    features.replaceChildren(node("legend", "特征抑制"));
+    if (!current || current.parametric_version !== 2) {
+      features.append(node("p", "此模型为 v1，仅支持尺寸配置。"));
+      return;
+    }
+    const selected = configurations.value;
+    const flags = (current.configuration_suppressions || {})[selected] || {};
+    Object.entries(current.feature_bindings || {}).forEach(function (entry) {
+      const key = entry[0], feature = entry[1];
+      const suppressed = Object.prototype.hasOwnProperty.call(flags, key)
+        ? flags[key] : feature.base_suppressed;
+      const row = node("p", undefined, "parametric-feature");
+      row.dataset.feature = key; row.dataset.suppressed = String(suppressed);
+      row.append(node("strong", key === "hole_cut" ? "孔切除" :
+        key === "plate_boss" ? "板实体" : key),
+      node("span", suppressed ? "已抑制" : "参与重建"),
+      node("small", "UUID " + feature.target_uuid));
+      features.append(row);
     });
+    features.append(node("small", "显示所选配置的抑制定义；完整重建后才改变已保存的实体。"));
+  }
+
+  function render(bound, preserve) {
+    const value = bound.value;
+    owner = bound.owner; current = value; specification = bound.spec;
+    blocked = false; bindingError = null;
+    if (!preserve) {
+      dirty = false; clearOverrides = false;
+      fields.replaceChildren(node("legend", "参数表达式"));
+      dimensions.replaceChildren(node("legend", "驱动尺寸"));
+      configurations.replaceChildren();
+      inputs.clear(); dimensionInputs.clear();
+      const base = node("option", "基础配置"); base.value = ""; configurations.append(base);
+      (value.configurations || []).forEach(function (name) {
+        const option = node("option", name); option.value = name; configurations.append(option);
+      });
+      configurations.value = value.configuration || "";
+      (value.parameters || []).forEach(function (parameter) {
+        const row = node("label", undefined, "parametric-row"), input = node("input");
+        input.type = "text"; input.value = parameter.expression; input.required = true;
+        input.maxLength = 2048; input.dataset.parameter = parameter.name;
+        input.setAttribute("aria-label", parameter.name + " 表达式");
+        row.append(node("span", parameter.name), input,
+          node("small", parameter.value.value + (parameter.unit === "length" ? " nm" : "")));
+        fields.append(row);
+        inputs.set(parameter.name, {input: input, original: parameter.expression});
+      });
+      (value.driving_dimensions || []).forEach(function (dimension) {
+        const row = node("label", undefined, "parametric-row"), input = node("input");
+        input.type = "text"; input.value = dimension.value_nm + " * nm";
+        input.maxLength = 2048; input.required = true; input.dataset.dimension = dimension.key;
+        input.dataset.readonly = String(!dimension.editable);
+        input.setAttribute("aria-label", dimension.key + " 驱动尺寸");
+        row.append(node("span", dimension.key), input); dimensions.append(row);
+        dimensionInputs.set(dimension.key, {input: input, original: input.value});
+      });
+    }
+    featurePreview();
     form.hidden = !value.enabled;
-    panel.querySelector("[data-parametric-create]").hidden = value.enabled || !value.can_create_plate;
-    notice.textContent = value.enabled
-      ? "长度表达式需显式单位，如 60 * mm。依赖尺寸会在一次完整重建中同步更新。"
-      : "当前项目尚无参数模型。仅真空白项目可以创建带孔板，不会替换已有图纸。";
+    panel.querySelectorAll("[data-parametric-create]").forEach(function (button) {
+      button.hidden = value.enabled || !value.can_create_plate;
+    });
+    notice.textContent = preserve ? "已核对同一保存版本，未提交草稿仍保留。" : value.enabled
+      ? "表达式需显式单位，如 60 * mm。切换配置清除旧覆盖；完整重建才保存。"
+      : "仅空白项目可创建配置板，不会替换已有图纸。";
     panel.dataset.documentSha = value.document_sha256;
+    panel.dataset.projectId = value.project_id;
+    panel.dataset.revision = String(value.revision);
+    markBusy(busy);
   }
 
   async function refresh(force) {
-    if (busy || (!force && (dirty || form.contains(document.activeElement)))) return;
-    const sequence = ++reads;
+    if (expired || busy || (!force && (dirty || form.contains(document.activeElement)))) return;
+    const sequence = ++reads, generation = epoch, before = current;
     try {
-      const value = await request();
-      if (sequence === reads && !busy) render(value);
-      return value;
+      const bound = await readBound();
+      if (generation !== epoch || sequence !== reads || busy || expired) return;
+      if (before && bound.value.project_id !== before.project_id) {
+        shield("项目已变化，已清除旧项目参数。请重新打开项目。", true);
+        throw new Error("parametric_project_changed");
+      }
+      if (dirty && before && !sameHead(before, bound.value)) {
+        blocked = true; bindingError = new Error("parametric_draft_base_changed");
+        notice.textContent = "保存版本已变化。草稿仍保留，不能直接提交；请检查后明确丢弃草稿并重读。";
+        form.hidden = false; markBusy(false);
+        panel.querySelector("[data-parametric-discard]").disabled = false;
+        return;
+      }
+      render(bound, dirty);
+      return bound.value;
     } catch (error) {
-      if (sequence === reads) notice.textContent = String(error.message || error);
+      if (generation === epoch && sequence === reads && !expired) {
+        if (error.status === 401 || error.status === 403) {
+          shield("登录已失效，已清除本页私有参数。请重新登录。", true);
+        } else {
+          shield("参数未能验证，草稿保留但暂停编辑。请核对保存结果后重读：" + error.message, false);
+        }
+      }
       throw error;
     }
   }
@@ -103,29 +212,38 @@
   async function submit(action) {
     await bindingUpdate;
     if (bindingError) { report(bindingError); throw bindingError; }
-    if (!current || busy) {
-      const error = new Error("parametric_operation_in_progress"); report(error); throw error;
-    }
-    if (window.opencad3d && window.opencad3d.busy) {
-      const error = new Error("workspace_operation_in_progress"); report(error); throw error;
-    }
-    const before = current;
-    const body = {action: action, expected_document_sha256: current.document_sha256};
+    if (!current || busy || blocked || expired) throw new Error("parametric_operation_unavailable");
+    if (window.opencad3d && window.opencad3d.busy) throw new Error("workspace_operation_in_progress");
+    const before = current, generation = epoch;
+    const body = {action: action, expected_document_sha256: before.document_sha256};
     if (action === "rebuild") {
-      if (configurations.value !== (current.configuration || "")) body.configuration = configurations.value;
-      body.overrides = {};
-      inputs.forEach(function (item, name) {
-        if (item.input.value !== item.original) body.overrides[name] = item.input.value;
-      });
-      body.dimensions = {};
+      const switching = configurations.value !== (before.configuration || "");
+      if (switching || clearOverrides) body.configuration = configurations.value;
+      body.overrides = {}; body.dimensions = {};
+      if (clearOverrides && !switching) {
+        inputs.forEach(function (item, name) {
+          const baseExpression = (specification.configurations[configurations.value] || {})[name] ||
+            specification.parameters[name].expression;
+          if (item.input.value !== baseExpression) body.overrides[name] = item.input.value;
+        });
+      } else {
+        inputs.forEach(function (item, name) {
+          if (item.input.value !== item.original) body.overrides[name] = item.input.value;
+        });
+      }
       dimensionInputs.forEach(function (item, name) {
         if (item.input.value !== item.original) body.dimensions[name] = item.input.value;
       });
     }
     ++reads; markBusy(true);
+    let accepted = false;
     try {
-      const value = await request(body);
-      if (value.project_id !== before.project_id || value.revision < before.revision ||
+      await liveOwner();
+      if (generation !== epoch || expired) throw new Error("parametric_context_changed");
+      const value = await json("/api/parametric", body);
+      accepted = true; receipt(value);
+      if (generation !== epoch || expired || value.project_id !== before.project_id ||
+          value.revision !== before.revision + 1 ||
           value.base_document_sha256 !== before.document_sha256) {
         throw new Error("parametric_commit_receipt_conflict");
       }
@@ -134,59 +252,164 @@
           !Array.isArray(value.mesh.solids) || !value.mesh.solids.length) {
         throw new Error("parametric_artifact_version_mismatch");
       }
+      await liveOwner();
       const model = window.opencad3d;
-      if (model && typeof model.refresh === "function") {
-        await model.refresh();
-        if (model.document_sha256 !== value.document_sha256) throw new Error("parametric_display_version_conflict");
+      if (!model || typeof model.refresh !== "function") throw new Error("parametric_view_unavailable");
+      const displayed = await model.refresh();
+      if (!sameHead(value, displayed) || model.document_sha256 !== value.document_sha256) {
+        throw new Error("parametric_display_version_conflict");
       }
-      render(value);
+      const bound = await readBound();
+      if (!sameHead(bound.value, value) || generation !== epoch || expired) {
+        throw new Error("parametric_display_version_conflict");
+      }
+      render(bound, false);
       const volume = value.mesh.solids[0].properties.volume_nm3 / 1e18;
+      if (!Number.isFinite(volume) || volume <= 0) throw new Error("parametric_volume_invalid");
       result.textContent = "重建已保存 | 体积 " + volume.toFixed(6) + " mm³ | STEP " +
         value.step.bytes + " bytes | " + value.document_sha256.slice(0, 12);
       result.dataset.documentSha = value.document_sha256;
       result.dataset.volumeMm3 = String(volume);
-      notice.textContent = "真实 BRep、网格和 STEP 已验证为同一文档版本。范围为单件草图/实体工作流。";
+      result.dataset.revision = String(value.revision);
+      notice.textContent = "真实 BRep、网格和 STEP 已核对同一保存版本。";
       window.dispatchEvent(new CustomEvent("opencad:parametric", {detail: value}));
       return value;
     } catch (error) {
-      notice.textContent = String(error.message || error);
+      if (generation === epoch && !expired) {
+        if (error.status === 401 || error.status === 403) {
+          shield("登录已失效，已清除本页私有参数。请重新登录。", true);
+        } else {
+          blocked = true;
+          notice.textContent = (accepted ? "编辑已保存，但视图未确认。不会再次提交；" :
+            "编辑未确认或被拒绝，草稿仍保留；") + "请核对保存结果后重读。 " + error.message;
+        }
+      }
       throw error;
-    } finally { markBusy(false); }
+    } finally {
+      if (generation === epoch) {
+        markBusy(false);
+        if (blocked && !expired) panel.querySelector("[data-parametric-discard]").disabled = false;
+      }
+    }
+  }
+
+  async function save() {
+    await bindingUpdate;
+    if (!current || busy || blocked || expired || bindingError) {
+      throw new Error("parametric_operation_unavailable");
+    }
+    const before = current, generation = epoch;
+    ++reads; markBusy(true);
+    try {
+      await liveOwner();
+      if (generation !== epoch || expired) throw new Error("parametric_context_changed");
+      const saved = await json("/api/save", {});
+      if (saved.project_id !== before.project_id || saved.revision !== before.revision + 1) {
+        throw new Error("parametric_commit_receipt_conflict");
+      }
+      await window.opencad3d.refresh();
+      const bound = await readBound();
+      if (generation !== epoch || expired || !sameHead(bound.value, saved) ||
+          parameterState(bound.value) !== parameterState(before)) {
+        throw new Error("parametric_save_version_conflict");
+      }
+      render(bound, dirty);
+      notice.textContent = "当前已保存模型已确认；未提交的配置草稿仍保留。";
+      return saved;
+    } catch (error) {
+      if (generation === epoch && !expired) {
+        if (error.status === 401 || error.status === 403) {
+          shield("登录已失效，已清除本页私有参数。请重新登录。", true);
+        } else {
+          blocked = true; report(error);
+        }
+      }
+      throw error;
+    } finally {
+      if (generation === epoch) {
+        markBusy(false);
+        if (blocked && !expired) panel.querySelector("[data-parametric-discard]").disabled = false;
+      }
+    }
   }
 
   function mount(target) {
     if (panel) return panel;
-    panel = node("section", undefined, "parametric-panel");
-    panel.id = "parametric-panel";
+    panel = node("section", undefined, "parametric-panel"); panel.id = "parametric-panel";
     panel.setAttribute("aria-label", "参数化重建");
-    panel.append(node("h2", "参数化重建"));
+    panel.append(node("h2", "参数化配置"));
     notice = node("p", "正在读取项目参数…", "parametric-notice");
     notice.setAttribute("role", "status"); notice.setAttribute("aria-live", "polite");
     form = node("form");
     form.addEventListener("focusin", function () { ++reads; });
-    form.addEventListener("input", function () { dirty = true; ++reads; });
-    form.addEventListener("change", function () { dirty = true; ++reads; });
-    const configurationLabel = node("label", "配置");
+    ["input", "change"].forEach(function (name) {
+      form.addEventListener(name, function () { dirty = true; ++reads; featurePreview(); });
+    });
+    const label = node("label", "配置");
     configurations = node("select"); configurations.setAttribute("aria-label", "参数配置");
-    configurationLabel.append(configurations);
-    fields = node("fieldset");
-    dimensions = node("fieldset");
-    const rebuild = node("button", "完整重建"); rebuild.type = "submit";
+    label.append(configurations);
+    fields = node("fieldset"); dimensions = node("fieldset"); features = node("fieldset");
+    const rebuild = node("button", "完整重建并保存"); rebuild.type = "submit";
     rebuild.dataset.parametricRebuild = "true";
-    form.append(configurationLabel, fields, dimensions, rebuild);
+    const reset = node("button", "清除显式覆盖草稿"); reset.type = "button";
+    reset.dataset.parametricResetOverrides = "true";
+    reset.addEventListener("click", function () {
+      if (!specification) return;
+      clearOverrides = true; dirty = true;
+      inputs.forEach(function (item, name) {
+        item.input.value = (specification.configurations[configurations.value] || {})[name] ||
+          specification.parameters[name].expression;
+      });
+      dimensionInputs.forEach(function (item) { item.input.value = item.original; });
+      notice.textContent = "已准备清除显式覆盖；完整重建成功后才持久保存。";
+    });
+    const discard = node("button", "丢弃草稿并重读"); discard.type = "button";
+    discard.dataset.parametricDiscard = "true";
+    discard.addEventListener("click", function () {
+      discardConfirmation.hidden = false;
+      discardConfirmation.querySelector("[data-parametric-cancel-discard]").focus();
+    });
+    discardConfirmation = node("div", undefined, "parametric-discard-confirmation");
+    discardConfirmation.hidden = true;
+    discardConfirmation.setAttribute("role", "group");
+    discardConfirmation.setAttribute("aria-label", "确认丢弃本面板草稿");
+    const confirmDiscard = node("button", "确认丢弃草稿"); confirmDiscard.type = "button";
+    confirmDiscard.dataset.parametricConfirmDiscard = "true";
+    confirmDiscard.addEventListener("click", function () {
+      discardConfirmation.hidden = true;
+      dirty = false; clearOverrides = false; bindingError = null;
+      refresh(true).catch(report);
+    });
+    const cancelDiscard = node("button", "保留草稿"); cancelDiscard.type = "button";
+    cancelDiscard.dataset.parametricCancelDiscard = "true";
+    cancelDiscard.addEventListener("click", function () {
+      discardConfirmation.hidden = true;
+      discard.focus();
+    });
+    discardConfirmation.append(node("p", "只丢弃本面板未提交草稿，不删除已保存配置或图纸。"),
+      confirmDiscard, cancelDiscard);
+    form.append(label, features, fields, dimensions, reset, rebuild, discard, discardConfirmation);
     form.addEventListener("submit", function (event) {
       event.preventDefault(); submit("rebuild").catch(report);
     });
-    const create = node("button", "创建真实带孔板"); create.type = "button";
-    create.dataset.parametricCreate = "true";
-    create.addEventListener("click", function () { submit("create_plate").catch(report); });
+    const actions = node("div", undefined, "parametric-actions");
+    [["create_configurable_plate", "创建真实配置板"], ["create_plate", "创建真实带孔板（v1）"]]
+      .forEach(function (item) {
+        const create = node("button", item[1]); create.type = "button";
+        create.dataset.parametricCreate = item[0];
+        create.addEventListener("click", function () { submit(item[0]).catch(report); });
+        actions.append(create);
+      });
     const reload = node("button", "重读已保存参数"); reload.type = "button";
     reload.dataset.parametricReload = "true";
     reload.addEventListener("click", function () { refresh(true).catch(report); });
-    result = node("output", "", "parametric-result");
-    result.setAttribute("aria-live", "polite");
-    panel.append(notice, create, form, reload, result); target.append(panel);
-    refresh().catch(report);
+    const saveButton = node("button", "确认保存当前模型"); saveButton.type = "button";
+    saveButton.dataset.parametricSave = "true";
+    saveButton.addEventListener("click", function () { save().catch(report); });
+    result = node("output", "", "parametric-result"); result.setAttribute("aria-live", "polite");
+    panel.append(notice, actions, form, saveButton, reload, result); target.append(panel);
+    markBusy(false);
+    refresh(true).catch(report);
     return panel;
   }
 
@@ -195,40 +418,48 @@
     return JSON.stringify({
       enabled: value.enabled, can_create_plate: value.can_create_plate,
       parameters: value.parameters, configuration: value.configuration,
-      configurations: value.configurations, driving_dimensions: value.driving_dimensions
+      configurations: value.configurations, driving_dimensions: value.driving_dimensions,
+      feature_bindings: value.feature_bindings,
+      configuration_suppressions: value.configuration_suppressions
     });
   }
   window.addEventListener("opencad:project-commit", function (event) {
     const detail = event.detail;
-    if (!panel || !current || !detail || detail.path !== "/api/drawing") return;
+    if (!panel || !current || !detail || detail.path === "/api/parametric" || busy || expired) return;
     ++reads;
+    const generation = epoch;
     bindingUpdate = bindingUpdate.then(async function () {
       const before = current, receipt = detail.receipt, base = detail.base;
       try {
+        const bound = await readBound(), value = bound.value;
+        if (generation !== epoch || expired || current !== before) return;
         if (!base || !receipt || base.project_id !== before.project_id ||
             base.expected_revision !== before.revision || base.expected_sha !== before.sha256 ||
-            typeof base.request_id !== "string" || !base.request_id ||
-            receipt.revision !== base.expected_revision + 1) {
+            receipt.revision !== base.expected_revision + 1 || !sameHead(value, receipt)) {
           throw new Error("parametric_commit_receipt_conflict");
         }
-        const value = await request();
-        if (value.project_id !== before.project_id || value.project_id !== receipt.project_id ||
-            value.revision !== receipt.revision || value.sha256 !== receipt.sha256 ||
-            value.document_sha256 !== receipt.source_document_sha256 ||
-            parameterState(value) !== parameterState(before)) {
-          throw new Error("parametric_commit_receipt_conflict");
+        if (dirty && parameterState(value) !== parameterState(before)) {
+          throw new Error("parametric_draft_base_changed");
         }
-        if (current !== before) return;
-        // Only our confirmed drawing metadata changed. Preserve unsaved inputs.
-        current = value;
-        panel.dataset.documentSha = value.document_sha256;
-        bindingError = null;
+        render(bound, dirty);
       } catch (error) {
-        if (current === before) { bindingError = error; report(error); }
+        if (generation === epoch && current === before && !expired) {
+          if (error.status === 401 || error.status === 403) {
+            shield("登录已失效，已清除本页私有参数。请重新登录。", true);
+            return;
+          }
+          bindingError = error; blocked = true; report(error); markBusy(false);
+          panel.querySelector("[data-parametric-discard]").disabled = false;
+        }
       }
     });
   });
-  window.addEventListener("opencad:state", function () { if (panel && !busy) refresh().catch(report); });
+  window.addEventListener("opencad:state", function (event) {
+    if (!panel || expired) return;
+    if (current && event.detail && event.detail.project_id !== current.project_id) {
+      shield("项目已变化，已清除旧项目参数。请重新打开项目。", true);
+    } else if (!busy) refresh(false).catch(report);
+  });
   function boot() {
     const target = document.querySelector("[data-parametric-host]") || document.querySelector("main > aside");
     if (target) mount(target);

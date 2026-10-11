@@ -21,3 +21,24 @@
 .parametric-panel [aria-busy="true"],
 .parametric-panel[aria-busy="true"] { opacity: .8; }
 .parametric-panel [hidden] { display: none !important; }
+.parametric-panel .parametric-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.parametric-panel button { max-width: 100%; margin: .25rem .25rem .25rem 0; }
+.parametric-panel .parametric-feature {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: .3rem .5rem; padding: .55rem;
+  border-left: 3px solid #397362; background: #e9f1ea;
+}
+.parametric-panel .parametric-feature[data-suppressed="true"] {
+  border-left-color: #a36d30; background: #f5eddc;
+}
+.parametric-panel .parametric-feature small {
+  grid-column: 1 / -1; font-size: .7rem; overflow-wrap: anywhere;
+}
+.parametric-panel select { min-height: 2.1rem; }
+.parametric-panel .parametric-discard-confirmation {
+  border: 1px solid #a36d30; background: #f5eddc; padding: .65rem; margin-top: .5rem;
+}
+@media (max-width: 650px) {
+  .parametric-panel .parametric-actions { display: grid; }
+  .parametric-panel button { width: 100%; margin-right: 0; }
+}
