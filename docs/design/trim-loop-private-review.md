@@ -17,6 +17,9 @@ The SHA covers every Git-visible tracked/untracked file's relative path, bytes
 and executable flag. The tool separately records its own path/hash, source HEAD,
 dirty status and before/after manifests. Preflight and selftest are NOT runtime
 acceptance. A full SHA mismatch rejects execution before creating runtime.
+Runtime requires unchanged HEAD and dirty status as well as bytes/path/mode;
+dirty paths are limited to this review tool and document, never product files.
+The executor's own before/after SHA is also checked when source-root differs.
 
 ```bash
 sudo -n -u infra python3 -B tools/trim_loop_private_review.py --selftest --out /hf3fs-jd/data/tmp/opencad-trim-loop-private-selftest-20261012-v1
@@ -42,6 +45,61 @@ bytes/hashes and readback hole witnesses. The original verdict remains immutable
 failed, partial, empty and preflight-only results cannot become accepted.
 Only changes to this tool and its design document are permitted when comparing
 the old source with the current executor. Product byte/path/mode drift fails.
+If the current HEAD differs, the original must be its verified ancestor and
+every intervening commit's changed paths must stay within those two owned files.
+This is reported as `OWNED_TOOL_DOCUMENT_ONLY_CONTENT_EQUIVALENT`, with both
+full HEADs and `same_commit_acceptance=false`; it is not same-HEAD acceptance.
+
+## Versioned Complete Ledger
+
+`workflow_ledger()` is the single `trim-private-ledger-v1` declaration. It
+derives exact ordered checks, HTTP labels/routes/methods/statuses, measurement
+labels, named fixture specifications and BRep/STEP shape/readback labels from
+the workflow groups. The HTTP producer, bad-loop producer, fixture capture and
+FreeCAD READBACK must reconcile with this declaration before PASS. Counts are
+calculated from actual entries, never used as the completeness specification.
+The offline consumer uses the same declaration, rejects unknown versions, and
+requires unique exact names/order, including all response status contracts.
+
+The original complete ledger has 191 checks, 46 HTTP requests, seven
+measurements, four named fixtures, eight shapes and 67 readback checks.
+These numbers describe the preserved execution, not bare frozen thresholds.
+Deletion, duplication, renaming or reordering fails even with recomputed
+self-consistent counts. Fixtures also bind their exact recipe, analytic
+values and witnesses to the recorded HTTP project/revision/document version.
+
+Immutable pre-versioned evidence is admitted only for the two recorded legacy
+tool SHA256 values in `LEGACY_TOOLS`, its manifest-bound producer, and the
+recorded legacy READBACK script SHA. It still must satisfy the entire current
+v1 label/order/HTTP/fixture contract. No old result or verdict is rewritten.
+
+The P1 counterexample is retained under
+`opencad-trim-ledger-completeness-20261012-v1/before/20261011T195512493076Z-5e22b1a4`:
+original rc=1, 11 tests with one failure, `AssertionError not raised` for a
+one-check/one-HTTP/one-readback PASS sample. The old positive fixture itself
+was incomplete; it is replaced with a declaration-derived complete fixture.
+The other nine existing controls remain, with every-item mutation, HTTP
+contract, fixture binding and HEAD/dirty-state controls added.
+
+The first stricter offline readback is also retained:
+`opencad-trim-ledger-completeness-20261012-v1/original-readback-v1/20261011T200036437272Z-3f5798b4`,
+original rc=1, first cause `Fixture ledger contract changed: polygon/area`.
+The review erroneously compared JSON `50.0` and `50` as distinct bytes.
+Finite numeric exact equality now accepts those equivalent values; booleans,
+nonfinite values and numerically different values remain rejected.
+
+`--selftest --selftest-ledger ABS_ORIGINAL_RESULT` reads an existing real
+result and mutates only detached in-memory copies. It records original
+result/input hashes and actual rejected mutation counts in fresh evidence:
+
+```bash
+sudo -n -u infra python3 -B tools/trim_loop_private_review.py --selftest --selftest-ledger /hf3fs-jd/data/tmp/opencad-trim-loop-private-baseline-20261012-v1/20261011T183348334275Z-a7585681/result.json --out /hf3fs-jd/data/tmp/opencad-trim-ledger-completeness-20261012-v1/after
+sudo -n -u infra python3 -B tools/trim_loop_private_review.py --source-root /data/dev/wt-opencad-trim-loops-20261012 --verify-result /hf3fs-jd/data/tmp/opencad-trim-loop-private-baseline-20261012-v1/20261011T183348334275Z-a7585681 --out /hf3fs-jd/data/tmp/opencad-trim-ledger-completeness-20261012-v1/original-readback
+```
+
+This hardening runs no new product full/private acceptance, HTTP, FreeCAD
+worker or service. The original complete 191/46/67 execution and its rc remain
+historical evidence of its selected tree only, not a newer release freeze.
 
 The nonfinite-measurement adversarial selftest initially failed at
 `opencad-trim-loop-private-nonfinite-before-20261012-v1/20261011T184050121610Z-413a5786`:

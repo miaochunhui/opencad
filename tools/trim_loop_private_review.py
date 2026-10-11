@@ -12,6 +12,7 @@ See docs/design/trim-loop-private-review.md for the acceptance boundaries.
 from __future__ import annotations
 
 import argparse
+import ast
 from contextlib import contextmanager
 import copy
 from datetime import datetime, timezone
@@ -40,6 +41,21 @@ REQUIRED = (APP_REL + "/secure_web.py", APP_REL + "/project_gateway.py",
             APP_REL + "/project_store.py", APP_REL + "/access_control.py",
             APP_REL + "/industrial_surfaces.py", CORE_REL + "/cadcore/kernel/surfaces.py",
             CORE_REL + "/cadcore/kernel/surfaces_worker.py")
+OWNED = frozenset(("tools/trim_loop_private_review.py", "docs/design/trim-loop-private-review.md"))
+LEDGER_VERSION = "trim-private-ledger-v1"
+LEGACY_TOOLS = frozenset((
+    "ec1de01c2c087ca58f0cca28dc3a7312f378347ab99132bc33cfd6cf0f0ffe3b",
+    "9ceb18cf82c05b31d008dbb4a05f91c4a4c1d1296ad84beee7e9158d4b50f166"))
+LEGACY_READBACK_SHA = "272029064f92263aeb282de0eab04892ce44a5fcc9c0d2af578cf72eb8ba1f01"
+DENIALS = (
+    ("anonymous", None, {}, 401, "missing_token"),
+    ("forged", None, {"Cookie": "opencad_session=forged"}, 401, "invalid_token"),
+    ("other-owner", "other", {}, 403, "project_forbidden"),
+    ("csrf-missing", "owner", {"X-OpenCAD-Request": None}, 403, "cross_site_request"),
+    ("csrf-origin", "owner", {"Origin": "https://example.invalid"}, 403, "cross_site_request"))
+BAD_LOOPS = ("unclosed", "self-cross", "hole-in-concave-notch", "holes-overlap",
+             "outer-direction", "hole-direction", "out-of-uv-bounds", "zero-area",
+             "duplicate-vertex")
 
 
 def stamp():
@@ -78,7 +94,8 @@ def valid_sha(value):
 def source_binding(source):
     source = source.resolve(strict=True)
     names = subprocess.check_output(
-        ["git", "-C", str(source), "ls-files", "-z", "--cached", "--others", "--exclude-standard"])
+        ["git", "--no-replace-objects", "-C", str(source),
+         "ls-files", "-z", "--cached", "--others", "--exclude-standard"])
     manifest = {}
     for raw in sorted(set(names.split(b"\0")) - {b""}):
         name = os.fsdecode(raw)
@@ -100,9 +117,53 @@ def source_binding(source):
         raise ValueError("Incomplete selected source")
     return {"root": str(source), "sha256": sha(canonical(manifest)), "manifest": manifest,
             "head": subprocess.check_output(
-                ["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip(),
+                ["git", "--no-replace-objects", "-C", str(source), "rev-parse", "HEAD"], text=True).strip(),
             "status": subprocess.check_output(
-                ["git", "-C", str(source), "status", "--porcelain"], text=True)}
+                ["git", "--no-replace-objects", "-C", str(source), "status", "--porcelain"], text=True)}
+
+
+def dirty_paths(binding):
+    names = []
+    for line in binding["status"].splitlines():
+        if len(line) < 4 or line[2] != " ":
+            raise AssertionError("Invalid source dirty status")
+        name = line[3:]
+        if " -> " in name:
+            raise AssertionError("Renamed source is not an owned tool/document edit")
+        if name.startswith('"'):
+            name = ast.literal_eval(name)
+        names.append(name)
+    return names
+
+
+def source_identity(before, after):
+    for item in (before, after):
+        head = item["head"]
+        if (type(head) is not str or len(head) != 40
+                or set(head) - set("0123456789abcdef")):
+            raise AssertionError("Source HEAD is absent or invalid")
+        if set(dirty_paths(item)) - OWNED:
+            raise AssertionError("Runtime source has non-owned dirty paths")
+    if (before["root"] != after["root"] or before["head"] != after["head"]
+            or before["status"] != after["status"] or before["manifest"] != after["manifest"]):
+        raise AssertionError("Source byte/path/mode/HEAD/dirty drift")
+
+
+def current_source_policy(before, after, current, changed_paths=None):
+    source_identity(before, after)
+    source_identity(current, current)
+    old = {key: value for key, value in before["manifest"].items() if key not in OWNED}
+    new = {key: value for key, value in current["manifest"].items() if key not in OWNED}
+    if before["root"] != current["root"] or old != new:
+        raise AssertionError("Current product byte/path/mode drift")
+    same_head = before["head"] == current["head"]
+    if not same_head and (changed_paths is None or not changed_paths
+                          or set(changed_paths) - OWNED):
+        raise AssertionError("Different current HEAD includes non-owned changes or is unverified")
+    return {"policy": "SAME_HEAD" if same_head else "OWNED_TOOL_DOCUMENT_ONLY_CONTENT_EQUIVALENT",
+            "same_head": same_head, "original_head": before["head"], "current_head": current["head"],
+            "changed_commit_paths": sorted(changed_paths or []),
+            "product_content_equivalent": True, "same_commit_acceptance": same_head}
 
 
 def frozen(binding, expected):
@@ -324,6 +385,163 @@ def polygon_recipe():
                       [[.4, .2], [.4, .4], [.5, .2], [.4, .2]]]}
 
 
+def fixture_specs():
+    points = [([1.5, 5, 0], True), ([2.5, 2.5, 0], False),
+              ([4.3, 2.5, 0], False), ([7, 7, 0], False)]
+    thick_points = [([p[0], p[1], 1], inside) for p, inside in points]
+    return [{"name": name, "signature": [2] if name == "polygon" else [0] * 13 + [2, 2],
+             "area": 50 if name == "polygon" else None,
+             "volume": None if name == "polygon" else 100,
+             "witnesses": points if name == "polygon" else thick_points}
+            for name in ("polygon", "thickened", "cli-reopened-thickened", "http-opened-thickened")]
+
+
+def measurement_spec(name):
+    fixture = "polygon" if name in ("polygon", "saved-polygon", "undo-polygon") else "thickened"
+    spec = next(item for item in fixture_specs() if item["name"] == fixture)
+    recipe = polygon_recipe()
+    if spec["volume"] is not None:
+        recipe = {"op": "thicken", "surface": recipe, "thickness_nm": 2_000_000, "inward": False}
+    return {**spec, "recipe": recipe}
+
+
+def workflow_ledger():
+    """One versioned declaration for producer and offline consumer, never count-only."""
+    checks, http, measurements = [], [], []
+
+    def check(*labels):
+        checks.extend(labels)
+
+    def request(label, route, method="POST", status=200, envelope=True):
+        http.append({"name": label, "route": route, "method": method, "status": status})
+        check(label + "/response-bounded")
+        if envelope:
+            check(label + "/http-contract")
+
+    def reject(label, status, route="/api/surfaces", method="POST", conflict=False):
+        request(label, route, method, status, envelope=False)
+        check(label + "/exact-denial", label + "/entire-db-head-history-receipts-unchanged")
+        if method == "POST" and not conflict:
+            check(label + "/no-success-receipt")
+
+    def capture(label):
+        request(label + "/state", "/api/state", "GET")
+        check(label + "/state/durable-head-and-document")
+        request(label, "/api/surfaces", "GET")
+        check(label + "/canonical-document-recipe", label + "/http-kernel-source-binding",
+              label + "/get-zero-project-writes")
+        measurements.append(label)
+
+    check("fixture/analytic-concave-double-hole-area", "fixture/initial-complete-db-empty",
+          "initial/original-cli-ready")
+    for name in ("owner", "other"):
+        label = "login-" + name
+        request(label, "/api/auth/login")
+        check(label + "/real-cookie", label + "/identity")
+    request("create", "/api/projects", status=201)
+    for label, _user, _headers, status, _error in DENIALS:
+        reject(label, status)
+    request("polygon-post", "/api/surfaces")
+    check("polygon-post/durable-receipt")
+    capture("polygon")
+    check("polygon/one-undo")
+    request("save", "/api/save")
+    check("save/durable-receipt")
+    capture("saved-polygon")
+    check("save/exact-document-history")
+    request("old-polygon-receipt-replay", "/api/surfaces")
+    check("receipt/old-response-not-current-head")
+    reject("receipt-conflict", 409, conflict=True)
+    reject("stale-base", 409)
+    for name in ("mesh", "step"):
+        reject("domain-" + name, 422, "/api/" + name, "GET")
+    for name in BAD_LOOPS:
+        reject("invalid-" + name, 400)
+    reject("physical-degenerate", 422)
+    reject("invalid-open", 400, "/api/open")
+    request("thicken-post", "/api/surfaces")
+    check("thicken/durable-receipt")
+    capture("thickened")
+    for command, label in (("undo", "undo-polygon"), ("redo", "redo-thickened")):
+        request(command, "/api/command")
+        check(command + "/durable-receipt")
+        capture(label)
+        check(command + "/exact-document-history")
+    request("download-document", "/api/document", "GET", envelope=False)
+    check("download/version-and-exact-document", "initial/original-cli-rc", "reopen/original-cli-ready")
+    capture("cli-reopened-thickened")
+    check("reopen/cookie-db-history-and-head-survive")
+    request("reopen-old-receipt", "/api/surfaces")
+    check("reopen/old-surface-receipt")
+    request("open-canonical-document", "/api/open")
+    check("open/durable-receipt")
+    capture("http-opened-thickened")
+    check("open/canonical-doc-and-history-reset", "reopen/original-cli-rc")
+    fixtures = fixture_specs()
+    readback, shapes = [], []
+    for fixture in fixtures:
+        name = fixture["name"]
+        check(name + "/independent-real-bound-worker", name + "/independent-vs-http-properties")
+        for fmt in ("brep", "step"):
+            label = name + "/" + fmt
+            shapes.append(label)
+            suffixes = ["bytes-and-sha", "valid", "holes-and-closed-wires"]
+            suffixes += ["open", "analytic-area"] if fixture["volume"] is None else ["closed-analytic-volume"]
+            readback.extend(label + "/" + suffix for suffix in suffixes)
+            readback.extend(label + "/witness/" + str(point) for point, _inside in fixture["witnesses"])
+    readback.append("negative-control/bounding-rectangle-fills-hole")
+    check("independent-brep-step-readback", "source/zero-byte-path-mode-drift")
+    return {"schema": LEDGER_VERSION, "checks": checks, "http_requests": http,
+            "measurements": measurements, "fixtures": fixtures, "shapes": shapes,
+            "readback_checks": readback}
+
+
+def exact_names(items, expected, label):
+    if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+        raise AssertionError("Invalid ledger " + label)
+    actual = [item.get("name") for item in items]
+    if actual != expected or len(set(actual)) != len(actual):
+        raise AssertionError("Incomplete/duplicate/renamed/out-of-order ledger " + label)
+
+
+def ledger_contract(saved):
+    expected = workflow_ledger()
+    declared = saved.get("ledger")
+    if declared is None:
+        if saved.get("tool_sha256") not in LEGACY_TOOLS:
+            raise AssertionError("Unversioned ledger producer is not a supported immutable legacy tool")
+    elif declared != expected:
+        raise AssertionError("Versioned ledger declaration does not match current producer")
+    exact_names(saved["checks"], expected["checks"], "checks")
+    exact_names(saved["http_requests"], [item["name"] for item in expected["http_requests"]], "HTTP")
+    for actual, wanted in zip(saved["http_requests"], expected["http_requests"]):
+        if (any(actual.get(key) != value for key, value in wanted.items())
+                or type(actual.get("status")) is not int):
+            raise AssertionError("HTTP ledger route/method/status mismatch: " + wanted["name"])
+    exact_names(saved["measurements"], expected["measurements"], "measurements")
+    exact_names(saved["readback"]["checks"], expected["readback_checks"], "readback checks")
+    exact_names(saved["readback"]["shapes"], expected["shapes"], "readback shapes")
+    return expected
+
+
+def fixture_contract(inputs, saved):
+    expected = fixture_specs()
+    exact_names(inputs, [item["name"] for item in expected], "fixtures")
+    measurements = {item["name"]: item for item in saved["measurements"]}
+    for actual, wanted in zip(inputs, expected):
+        for key in ("signature", "area", "volume", "witnesses"):
+            value = actual[key]
+            matches = (finite_positive(value) and value == wanted[key]
+                       if key in ("area", "volume") and wanted[key] is not None
+                       else canonical(value) == canonical(wanted[key]))
+            if not matches:
+                raise AssertionError("Fixture ledger contract changed: " + wanted["name"] + "/" + key)
+        if actual["gateway_version"] != measurements[wanted["name"]]["version"]:
+            raise AssertionError("Fixture is not bound to the recorded HTTP version")
+        if actual["recipe"] != measurement_spec(wanted["name"])["recipe"]:
+            raise AssertionError("Fixture recipe changed from the versioned workflow")
+
+
 def analytic_area(recipe):
     def area(ring):
         return sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(ring, ring[1:])) / 2
@@ -402,28 +620,39 @@ def version_contract(response, state, head):
 
 def suite_contract(saved):
     """A partial or originally failed execution cannot become accepted readback."""
-    if (saved.get("verdict") != "PASS" or saved.get("rc") != 0
+    if (saved.get("verdict") != "PASS" or type(saved.get("rc")) is not int or saved.get("rc") != 0
             or saved.get("acceptance") != "REAL_HTTP_DB_BREP_STEP"
             or not saved.get("finished_at") or saved.get("first_cause")
             or saved.get("source_drift") is not False):
         raise AssertionError("Original suite is failed, incomplete or not real acceptance")
+    ledger_contract(saved)
+    source_identity(saved["source_before"], saved["source_after"])
     checks = saved["checks"]
     readback = saved["readback"]
-    actual = {"checks": len(checks), "passed": sum(item["passed"] is True for item in checks),
-              "failed": sum(item["passed"] is not True for item in checks),
-              "http_requests": len(saved["http_requests"]),
-              "readback_checks": len(readback["checks"]),
-              "readback_passed": sum(item["passed"] is True for item in readback["checks"])}
+    actual = suite_counts(saved)
     if (not checks or not readback["checks"] or not saved["http_requests"]
             or actual != saved["counts"] or actual["failed"] != 0
             or actual["readback_checks"] != actual["readback_passed"] or readback["ok"] is not True):
         raise AssertionError("Saved counts disagree, are empty or contain failed checks")
     if (len(saved["cli_processes"]) != 2 or any(
-            process.get("rc") != 0 or process.get("shutdown_error") or not process.get("ready_at")
+            type(process.get("rc")) is not int or process.get("rc") != 0
+            or process.get("shutdown_error") or not process.get("ready_at")
             for process in saved["cli_processes"])
             or saved["readback_execution"] != {"rc": 0, "rc_measured": True}):
         raise AssertionError("Original CLI/readback did not terminate successfully")
+    if [item.get("label") for item in saved["cli_processes"]] != ["initial", "reopen"]:
+        raise AssertionError("CLI ledger labels/order mismatch")
     return actual
+
+
+def suite_counts(saved):
+    checks = saved["checks"]
+    readback = saved.get("readback", {})
+    return {"checks": len(checks), "passed": sum(item["passed"] is True for item in checks),
+            "failed": sum(item["passed"] is not True for item in checks),
+            "http_requests": len(saved["http_requests"]),
+            "readback_checks": len(readback.get("checks", [])),
+            "readback_passed": sum(item["passed"] is True for item in readback.get("checks", []))}
 
 
 def verify_saved(source, evidence, review):
@@ -441,12 +670,26 @@ def verify_saved(source, evidence, review):
     if any(sha(canonical(item["manifest"])) != item["sha256"] for item in (before, after)):
         raise AssertionError("Original manifest digest mismatch")
     current = source_binding(source)
-    owned = {"tools/trim_loop_private_review.py", "docs/design/trim-loop-private-review.md"}
-    old_product = {key: value for key, value in before["manifest"].items() if key not in owned}
-    new_product = {key: value for key, value in current["manifest"].items() if key not in owned}
-    review.check("readback/current-product-byte-path-mode-binding", old_product == new_product,
+    changed_paths = None
+    if before["head"] != current["head"]:
+        ancestry = subprocess.run(
+            ["git", "--no-replace-objects", "-C", str(source), "merge-base", "--is-ancestor",
+             before["head"], current["head"]], capture_output=True, text=True)
+        if ancestry.returncode != 0:
+            raise AssertionError("Original HEAD is not a verified ancestor; rc=%s" % ancestry.returncode)
+        names = subprocess.check_output(
+            ["git", "--no-replace-objects", "-C", str(source), "log", "--format=", "--name-only",
+             "--full-history", "-m", "--no-renames", "-z", before["head"] + ".." + current["head"]])
+        changed_paths = sorted(set(os.fsdecode(name).strip("\n") for name in names.split(b"\0")
+                                   if name.strip(b"\n")))
+    policy = current_source_policy(before, after, current, changed_paths)
+    review.report["source_comparison"] = policy
+    review.check("readback/current-product-byte-path-mode-binding", True,
                  original_sha=before["sha256"], current_sha=current["sha256"],
-                 allowed_tool_document_changes=sorted(owned))
+                 allowed_tool_document_changes=sorted(OWNED), **policy)
+    producer_path = "tools/trim_loop_private_review.py"
+    if "ledger" not in saved and before["manifest"][producer_path]["sha256"] != saved["tool_sha256"]:
+        raise AssertionError("Original ledger producer is not bound to source manifest")
 
     def bound_file(path):
         path = Path(path)
@@ -516,23 +759,31 @@ def verify_saved(source, evidence, review):
         state_index, _ = requests[measurement["name"] + "/state"]
         state = read_json(evidence / ("http-%03d.json" % state_index))
         version_contract(response, state, measurement["version"])
-        properties = response["result"]["properties"]
-        signature = sorted(item["inner_wire_count"] for item in properties["faces"])
-        area = 50 if properties["solid_count"] == 0 else None
-        volume = 100 if properties["solid_count"] == 1 else None
-        mesh = measured_contract(response["result"], signature, area=area, volume=volume)
+        spec = measurement_spec(measurement["name"])
+        doc = json.loads(state["doc"], parse_constant=reject_constant)
+        if (doc.get("x_industrial_surfaces") != {"schema": 1, "recipe": spec["recipe"]}
+                or response["surface"] != doc["x_industrial_surfaces"]):
+            raise AssertionError("HTTP measurement recipe not bound to versioned workflow")
+        mesh = measured_contract(response["result"], spec["signature"],
+                                 area=spec["area"], volume=spec["volume"])
         review.check("readback/http-measured-version-" + measurement["name"],
                      mesh == measurement["mesh"]
                      and response["result"]["roundtrip"] == measurement["roundtrip"])
     inputs = read_json(evidence / "readback-input.json")
     saved_readback = read_json(evidence / "readback.json")
+    fixture_contract(inputs, saved)
+    script = bound_file(evidence / "readback.py")
+    script_ok = (sha(script.read_bytes()) == LEGACY_READBACK_SHA if "ledger" not in saved
+                 else script.read_text() == READBACK)
     review.check("readback/independent-result-exact",
-                 saved_readback == saved["readback"] and len(inputs) == 4
-                 and (evidence / "readback.py").read_text() == READBACK
+                 saved_readback == saved["readback"] and script_ok
                  and saved_readback["ok"] is True
                  and all(item["passed"] is True for item in saved_readback["checks"]),
                  stdout_marker_required=False,
                  terminal_evidence="original measured rc plus completed readback JSON")
+    if "ledger" in saved:
+        review.check("readback/versioned-producer-plan",
+                     read_json(bound_file(evidence / "ledger.json")) == workflow_ledger())
     shape_map = {shape["name"]: shape for shape in saved_readback["shapes"]}
     for fixture in inputs:
         measured_contract(fixture["result"], fixture["signature"],
@@ -559,6 +810,94 @@ def verify_saved(source, evidence, review):
                                  for actual, (point, expected) in zip(shape["witnesses"], fixture["witnesses"])))
     review.report["verified_geometry"] = saved_readback["shapes"]
     review.report["acceptance"] = "EVIDENCE_VERIFIED_ONLY_NO_HTTP_OR_WORKER_RERUN"
+
+
+def complete_control_fixture():
+    ledger = workflow_ledger()
+    source = {"root": "/data/dev/control", "head": "a" * 40, "status": "", "manifest": {}}
+    sample = {"verdict": "PASS", "rc": 0, "acceptance": "REAL_HTTP_DB_BREP_STEP",
+              "finished_at": stamp(), "source_drift": False, "ledger": ledger,
+              "source_before": copy.deepcopy(source), "source_after": copy.deepcopy(source),
+              "checks": [{"name": name, "passed": True} for name in ledger["checks"]],
+              "http_requests": copy.deepcopy(ledger["http_requests"]),
+              "measurements": [{"name": name, "version": {}} for name in ledger["measurements"]],
+              "readback": {"ok": True,
+                           "checks": [{"name": name, "passed": True} for name in ledger["readback_checks"]],
+                           "shapes": [{"name": name} for name in ledger["shapes"]]},
+              "cli_processes": [{"label": name, "rc": 0, "ready_at": stamp()}
+                                for name in ("initial", "reopen")],
+              "readback_execution": {"rc": 0, "rc_measured": True}}
+    sample["counts"] = suite_counts(sample)
+    return sample
+
+
+def original_ledger_controls(path, review):
+    """Read an immutable real ledger and mutate only detached in-memory copies."""
+    saved = read_json(path)
+    suite_contract(saved)
+    inputs = read_json(path.parent / "readback-input.json")
+    fixture_contract(inputs, saved)
+    rejected = 0
+    for group in ("checks", "http_requests", "measurements", "readback_checks", "shapes"):
+        original = (saved["readback"]["checks"] if group == "readback_checks" else
+                    saved["readback"]["shapes"] if group == "shapes" else saved[group])
+        for index in range(len(original)):
+            for operation in ("delete", "duplicate", "rename", "reorder"):
+                bad = copy.deepcopy(saved)
+                target = (bad["readback"]["checks"] if group == "readback_checks" else
+                          bad["readback"]["shapes"] if group == "shapes" else bad[group])
+                if operation == "delete":
+                    target.pop(index)
+                elif operation == "duplicate":
+                    target.insert(index, copy.deepcopy(target[index]))
+                elif operation == "rename":
+                    target[index]["name"] += "-changed"
+                else:
+                    other = (index + 1) % len(target)
+                    target[index], target[other] = target[other], target[index]
+                bad["counts"] = suite_counts(bad)
+                try:
+                    suite_contract(bad)
+                except AssertionError:
+                    rejected += 1
+                else:
+                    raise AssertionError("Real ledger mutation accepted: %s/%s/%s" %
+                                         (group, index, operation))
+    for index in range(len(saved["http_requests"])):
+        for key, value in (("route", "/changed"), ("method", "DELETE"), ("status", 202)):
+            bad = copy.deepcopy(saved)
+            bad["http_requests"][index][key] = value
+            try:
+                suite_contract(bad)
+            except AssertionError:
+                rejected += 1
+            else:
+                raise AssertionError("Real HTTP contract mutation accepted: %s/%s" % (index, key))
+    for index in range(len(inputs)):
+        for operation in ("delete", "duplicate", "rename", "reorder"):
+            bad = copy.deepcopy(inputs)
+            if operation == "delete":
+                bad.pop(index)
+            elif operation == "duplicate":
+                bad.insert(index, copy.deepcopy(bad[index]))
+            elif operation == "rename":
+                bad[index]["name"] += "-changed"
+            else:
+                other = (index + 1) % len(bad)
+                bad[index], bad[other] = bad[other], bad[index]
+            try:
+                fixture_contract(bad, saved)
+            except AssertionError:
+                rejected += 1
+            else:
+                raise AssertionError("Real fixture mutation accepted: %s/%s" % (index, operation))
+    review.report["original_ledger_controls"] = {
+        "result": str(path), "result_sha256": sha(path.read_bytes()),
+        "input_sha256": sha((path.parent / "readback-input.json").read_bytes()),
+        "original_counts": suite_counts(saved), "mutations_rejected": rejected,
+        "original_verdict_unchanged": saved["verdict"], "acceptance": "IN_MEMORY_LEDGER_CONTROLS_ONLY"}
+    review.check("selftest/original-complete-ledger-and-all-item-mutations", rejected > 0,
+                 mutations_rejected=rejected)
 
 
 READBACK = '''import FreeCAD as App
@@ -615,6 +954,13 @@ try:
     rectangle = Part.makePlane(8, 8, App.Vector(1, 1, 0))
     check("negative-control/bounding-rectangle-fills-hole",
           rectangle.distToShape(Part.Vertex(App.Vector(2.5, 2.5, 0)))[0] < 1e-7)
+    ledger = json.loads(Path(os.environ["TRIM_PRIVATE_LEDGER"]).read_text())
+    for actual, expected, label in (
+        ([item["name"] for item in inputs], [item["name"] for item in ledger["fixtures"]], "fixtures"),
+        ([item["name"] for item in result["checks"]], ledger["readback_checks"], "checks"),
+        ([item["name"] for item in result["shapes"]], ledger["shapes"], "shapes")):
+        if actual != expected or len(set(actual)) != len(actual):
+            raise AssertionError("Incomplete/duplicate/renamed/out-of-order readback ledger " + label)
     result["ok"] = True
 except Exception:
     result["first_cause"] = traceback.format_exc()
@@ -626,6 +972,8 @@ raise SystemExit(0 if result["ok"] else 3)
 
 
 def workflow(source, runtime, review):
+    source_identity(review.report["source_before"], review.report["source_before"])
+    review.report["ledger"] = workflow_ledger()
     access, stores, docmodel, surfaces, subproc = import_product(source)
     credentials = {name: secrets.token_hex(24) for name in ("owner", "other")}
     principals = {}
@@ -704,8 +1052,8 @@ def workflow(source, runtime, review):
                              "http_properties": data["result"]["properties"]})
         return current, data
 
-    points = [([1.5, 5, 0], True), ([2.5, 2.5, 0], False),
-              ([4.3, 2.5, 0], False), ([7, 7, 0], False)]
+    specs = {item["name"]: item for item in fixture_specs()}
+    points = specs["polygon"]["witnesses"]
     try:
         review.check("fixture/initial-complete-db-empty", all(v == 0 for v in db_anchor(store)["counts"].values()))
         with secure_cli(source, runtime, review, "initial") as (port, origin):
@@ -724,12 +1072,7 @@ def workflow(source, runtime, review):
             head = http.json("create", "/api/projects", {"title": "Exact UV double-hole private review",
                              "request_id": secrets.token_hex(16), "standard": "gbt"}, status=201)[0]
             project = head["project_id"]
-            for label, user, overrides, status, error in (
-                ("anonymous", None, {}, 401, "missing_token"),
-                ("forged", None, {"Cookie": "opencad_session=forged"}, 401, "invalid_token"),
-                ("other-owner", "other", {}, 403, "project_forbidden"),
-                ("csrf-missing", "owner", {"X-OpenCAD-Request": None}, 403, "cross_site_request"),
-                ("csrf-origin", "owner", {"Origin": "https://example.invalid"}, 403, "cross_site_request")):
+            for label, user, overrides, status, error in DENIALS:
                 reject(http, label, head, edit(head, recipe=recipe), status, error,
                        user=user, overrides=overrides)
             create_body = edit(head, recipe=recipe)
@@ -784,6 +1127,8 @@ def workflow(source, runtime, review):
             bad = copy.deepcopy(recipe)
             bad["outer"].insert(1, list(bad["outer"][0]))
             bad_recipes.append(("duplicate-vertex", bad))
+            if tuple(name for name, _recipe in bad_recipes) != BAD_LOOPS:
+                raise AssertionError("Bad-loop producer drifted from versioned ledger")
             for label, invalid in bad_recipes:
                 reject(http, "invalid-" + label, saved, edit(saved, recipe=invalid), 400, "bad_surface_arguments")
             degenerate = copy.deepcopy(recipe)
@@ -797,8 +1142,8 @@ def workflow(source, runtime, review):
             thick_body = edit(saved, recipe=thick_recipe)
             thick = http.json("thicken-post", "/api/surfaces", thick_body, project=project)[0]
             receipt("thicken", "/api/surfaces", thick_body, thick)
-            signature = [0] * 13 + [2, 2]
-            thick_points = [([p[0], p[1], 1], inside) for p, inside in points]
+            signature = specs["thickened"]["signature"]
+            thick_points = specs["thickened"]["witnesses"]
             thick_state, _ = capture(http, "thickened", thick, thick_recipe, signature,
                                     volume=expected_area * 2, witnesses=thick_points)
             undo_body = edit(thick, command="undo", args={})
@@ -862,11 +1207,14 @@ def workflow(source, runtime, review):
                          and item["result"]["properties"]["inner_wire_count"] == item["http_properties"]["inner_wire_count"]
                          and item["result"]["properties"]["volume_mm3"] == item["http_properties"]["volume_mm3"])
         write_json(review.out / "readback-input.json", captures)
+        fixture_contract(captures, review.report)
+        write_json(review.out / "ledger.json", review.report["ledger"])
         script = review.out / "readback.py"
         script.write_text(READBACK, encoding="utf-8")
         env = product_env(source, runtime)
         env.update(TRIM_PRIVATE_READBACK_INPUT=str(review.out / "readback-input.json"),
-                   TRIM_PRIVATE_READBACK_RESULT=str(review.out / "readback.json"))
+                   TRIM_PRIVATE_READBACK_RESULT=str(review.out / "readback.json"),
+                   TRIM_PRIVATE_LEDGER=str(review.out / "ledger.json"))
         outcome = subproc._run([subproc.find_executable(), str(script)], cwd=str(runtime), env=env, timeout_s=60)
         (review.out / "readback-stdout.log").write_text(outcome.stdout)
         (review.out / "readback-stderr.log").write_text(outcome.stderr)
@@ -881,6 +1229,18 @@ def workflow(source, runtime, review):
 
 
 class Controls(unittest.TestCase):
+    def test_incomplete_one_one_ledger_must_be_refused(self):
+        sample = {"verdict": "PASS", "rc": 0, "acceptance": "REAL_HTTP_DB_BREP_STEP",
+                  "finished_at": stamp(), "source_drift": False,
+                  "checks": [{"passed": True}], "http_requests": [{"status": 200}],
+                  "readback": {"ok": True, "checks": [{"passed": True}]},
+                  "counts": {"checks": 1, "passed": 1, "failed": 0, "http_requests": 1,
+                             "readback_checks": 1, "readback_passed": 1},
+                  "cli_processes": [{"rc": 0, "ready_at": stamp()} for i in range(2)],
+                  "readback_execution": {"rc": 0, "rc_measured": True}}
+        with self.assertRaisesRegex(AssertionError, "ledger"):
+            suite_contract(sample)
+
     def test_freeze_full_sha(self):
         binding = {"sha256": "a" * 64}
         frozen(binding, "a" * 64)
@@ -955,22 +1315,132 @@ class Controls(unittest.TestCase):
         self.assertTrue(finite_positive(50))
 
     def test_failed_partial_suite_never_promoted(self):
-        sample = {"verdict": "PASS", "rc": 0, "acceptance": "REAL_HTTP_DB_BREP_STEP",
-                  "finished_at": stamp(), "source_drift": False,
-                  "checks": [{"passed": True}], "http_requests": [{"status": 200}],
-                  "readback": {"ok": True, "checks": [{"passed": True}]},
-                  "counts": {"checks": 1, "passed": 1, "failed": 0, "http_requests": 1,
-                             "readback_checks": 1, "readback_passed": 1},
-                  "cli_processes": [{"rc": 0, "ready_at": stamp()} for i in range(2)],
-                  "readback_execution": {"rc": 0, "rc_measured": True}}
+        sample = complete_control_fixture()
         suite_contract(sample)
         for key, value in (("verdict", "FAIL"), ("rc", 1), ("finished_at", None),
                            ("checks", []), ("first_cause", "original failure"),
                            ("acceptance", "PREFLIGHT_ONLY"), ("source_drift", True),
-                           ("counts", {**sample["counts"], "passed": 2}),
+                           ("counts", {**sample["counts"], "passed": sample["counts"]["passed"] + 1}),
                            ("cli_processes", [{"rc": -9, "ready_at": stamp()}])):
             with self.assertRaises(AssertionError):
                 suite_contract({**sample, key: value})
+
+    def test_every_ledger_item_delete_duplicate_rename_reorder_rejected(self):
+        sample = complete_control_fixture()
+        for group in ("checks", "http_requests", "measurements", "readback_checks", "shapes"):
+            for index in range(len(workflow_ledger()[group])):
+                for operation in ("delete", "duplicate", "rename", "reorder"):
+                    with self.subTest(group=group, index=index, operation=operation):
+                        bad = copy.deepcopy(sample)
+                        target = (bad["readback"]["checks"] if group == "readback_checks" else
+                                  bad["readback"]["shapes"] if group == "shapes" else bad[group])
+                        if operation == "delete":
+                            target.pop(index)
+                        elif operation == "duplicate":
+                            target.insert(index, copy.deepcopy(target[index]))
+                        elif operation == "rename":
+                            target[index]["name"] += "-changed"
+                        else:
+                            other = (index + 1) % len(target)
+                            target[index], target[other] = target[other], target[index]
+                        bad["counts"] = suite_counts(bad)
+                        with self.assertRaisesRegex(AssertionError, "ledger"):
+                            suite_contract(bad)
+
+    def test_every_http_route_method_status_rejected(self):
+        sample = complete_control_fixture()
+        for index in range(len(sample["http_requests"])):
+            for key, value in (("route", "/changed"), ("method", "DELETE"), ("status", 202)):
+                with self.subTest(index=index, key=key):
+                    bad = copy.deepcopy(sample)
+                    bad["http_requests"][index][key] = value
+                    with self.assertRaisesRegex(AssertionError, "HTTP ledger"):
+                        suite_contract(bad)
+
+    def test_fixture_names_and_http_binding_are_exact(self):
+        sample = complete_control_fixture()
+        inputs = copy.deepcopy(fixture_specs())
+        for item in inputs:
+            item["gateway_version"] = {}
+            item["recipe"] = measurement_spec(item["name"])["recipe"]
+        fixture_contract(inputs, sample)
+        decimal = copy.deepcopy(inputs)
+        decimal[0]["area"] = 50.0
+        fixture_contract(decimal, sample)
+        for invalid in (True, math.nan, math.inf, 49.999999999, 51):
+            bad = copy.deepcopy(inputs)
+            bad[0]["area"] = invalid
+            with self.assertRaises(AssertionError):
+                fixture_contract(bad, sample)
+        for index in range(len(inputs)):
+            for operation in ("delete", "duplicate", "rename", "reorder", "version", "witness", "recipe"):
+                with self.subTest(index=index, operation=operation):
+                    bad = copy.deepcopy(inputs)
+                    if operation == "delete":
+                        bad.pop(index)
+                    elif operation == "duplicate":
+                        bad.insert(index, copy.deepcopy(bad[index]))
+                    elif operation == "rename":
+                        bad[index]["name"] += "-changed"
+                    elif operation == "reorder":
+                        other = (index + 1) % len(bad)
+                        bad[index], bad[other] = bad[other], bad[index]
+                    elif operation == "version":
+                        bad[index]["gateway_version"] = {"revision": -1}
+                    elif operation == "witness":
+                        bad[index]["witnesses"] = []
+                    else:
+                        bad[index]["recipe"] = plane_recipe()
+                    with self.assertRaises(AssertionError):
+                        fixture_contract(bad, sample)
+
+    def test_versioned_and_legacy_producers_are_explicit(self):
+        sample = complete_control_fixture()
+        legacy = copy.deepcopy(sample)
+        legacy.pop("ledger")
+        legacy["tool_sha256"] = sorted(LEGACY_TOOLS)[0]
+        suite_contract(legacy)
+        legacy["tool_sha256"] = "a" * 64
+        with self.assertRaisesRegex(AssertionError, "producer"):
+            suite_contract(legacy)
+        for key in ("schema", "checks", "http_requests", "fixtures"):
+            bad = copy.deepcopy(sample)
+            bad["ledger"][key] = "changed"
+            with self.assertRaisesRegex(AssertionError, "declaration"):
+                suite_contract(bad)
+
+    def test_runtime_head_dirty_and_byte_drift_fail(self):
+        sample = complete_control_fixture()
+        before = sample["source_before"]
+        for key, value in (("head", "b" * 40), ("status", " M tools/trim_loop_private_review.py\n"),
+                           ("manifest", {"new": {}}), ("root", "/changed")):
+            after = {**before, key: value}
+            with self.subTest(key=key), self.assertRaisesRegex(AssertionError, "drift"):
+                source_identity(before, after)
+        dirty = {**before, "status": " M oss-alternatives/apps/opencad/server.py\n"}
+        with self.assertRaisesRegex(AssertionError, "non-owned dirty"):
+            source_identity(dirty, dirty)
+        owned = {**before, "status": "?? tools/trim_loop_private_review.py\n"}
+        source_identity(owned, owned)
+
+    def test_current_head_owned_only_not_same_commit_acceptance(self):
+        before = complete_control_fixture()["source_before"]
+        current = {**before, "head": "b" * 40}
+        policy = current_source_policy(before, before, current, sorted(OWNED))
+        self.assertFalse(policy["same_head"])
+        self.assertFalse(policy["same_commit_acceptance"])
+        for paths in (None, [], ["oss-alternatives/apps/opencad/server.py"]):
+            with self.assertRaisesRegex(AssertionError, "Different current HEAD"):
+                current_source_policy(before, before, current, paths)
+        with self.assertRaisesRegex(AssertionError, "product"):
+            current_source_policy(before, before, {**current, "manifest": {"foreign": {}}}, sorted(OWNED))
+
+    def test_readback_script_requires_single_versioned_plan(self):
+        compile(READBACK, "readback.py", "exec")
+        self.assertIn('os.environ["TRIM_PRIVATE_LEDGER"]', READBACK)
+        self.assertIn('ledger["readback_checks"]', READBACK)
+        self.assertIn('ledger["shapes"]', READBACK)
+        self.assertIn('ledger["fixtures"]', READBACK)
 
     def test_analytic_fixture_not_rectangle(self):
         self.assertAlmostEqual(analytic_area(polygon_recipe()), 50)
@@ -993,8 +1463,14 @@ def main():
     parser.add_argument("--expect-source-sha")
     parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--selftest", action="store_true")
+    parser.add_argument("--selftest-ledger", type=Path,
+                        help="with --selftest, read a real original result and reject detached ledger mutations")
     parser.add_argument("--verify-result", type=Path, help="read an existing evidence directory; no HTTP/worker rerun")
     args = parser.parse_args()
+    if args.selftest_ledger is not None and not args.selftest:
+        parser.error("--selftest-ledger requires --selftest")
+    if sum((args.preflight, args.selftest, args.verify_result is not None)) > 1:
+        parser.error("select only one of preflight, selftest or verify-result")
     source = args.source_root.resolve(strict=True)
     parent = external(args.out, source)
     out = parent / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-" + secrets.token_hex(4))
@@ -1023,6 +1499,9 @@ def main():
                                   "errors": len(result.errors), "skips": len(result.skipped)}
             if not result.wasSuccessful() or not result.testsRun:
                 raise AssertionError("Review validator selftest failed")
+            if args.selftest_ledger is not None:
+                original = external(args.selftest_ledger, source)
+                original_ledger_controls(original, review)
             report["verdict"], report["acceptance"] = "PASS", "SELFTEST_ONLY"
         elif args.verify_result:
             verify_saved(source, args.verify_result, review)
@@ -1042,8 +1521,15 @@ def main():
             workflow(source, runtime, review)
             report["acceptance"], report["verdict"] = "REAL_HTTP_DB_BREP_STEP", "PASS"
         after = source_binding(source)
-        report.update(source_after=after, source_drift=before["manifest"] != after["manifest"])
+        report.update(source_after=after, source_drift=any(
+            before[key] != after[key] for key in ("manifest", "head", "status", "root")))
+        source_identity(before, after)
         review.check("source/zero-byte-path-mode-drift", not report["source_drift"])
+        if report["acceptance"] == "REAL_HTTP_DB_BREP_STEP":
+            ledger_contract(report)
+        report["tool_after_sha256"] = sha(Path(__file__).read_bytes())
+        if report["tool_after_sha256"] != report["tool_sha256"]:
+            raise AssertionError("Ledger executor source drift")
         for path in out.rglob("*"):
             if path.is_file() and any(value.encode() in path.read_bytes() for value in review.private_values if value):
                 raise AssertionError("Generated credential leaked into evidence: " + str(path))
@@ -1058,17 +1544,12 @@ def main():
         if before is not None:
             try:
                 after = source_binding(source)
-                report.update(source_after=after, source_drift=before["manifest"] != after["manifest"])
+                report.update(source_after=after, source_drift=any(
+                    before[key] != after[key] for key in ("manifest", "head", "status", "root")))
             except Exception as secondary:
                 report.setdefault("secondary_failures", []).append(str(secondary))
         print(report["first_cause"], file=sys.stderr)
-    report.update(finished_at=stamp(), elapsed_s=time.monotonic() - started,
-                  counts={"checks": len(report["checks"]),
-                          "passed": sum(item["passed"] for item in report["checks"]),
-                          "failed": sum(not item["passed"] for item in report["checks"]),
-                          "http_requests": len(report["http_requests"]),
-                          "readback_checks": len(report.get("readback", {}).get("checks", [])),
-                          "readback_passed": sum(item["passed"] for item in report.get("readback", {}).get("checks", []))})
+    report.update(finished_at=stamp(), elapsed_s=time.monotonic() - started, counts=suite_counts(report))
     write_json(out / "result.json", json.loads(review.redact(json.dumps(report, allow_nan=False))))
     print("TRIM_LOOP_PRIVATE_REVIEW verdict=%s acceptance=%s rc=%s counts=%s source_sha256=%s evidence=%s" %
           (report["verdict"], report["acceptance"], report["rc"], canonical(report["counts"]),
