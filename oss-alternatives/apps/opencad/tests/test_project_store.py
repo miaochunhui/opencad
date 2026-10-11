@@ -96,6 +96,110 @@ class CrashBeforeCommitStore(ProjectStore):
                 os._exit(74)
 
 
+class RootPreflightTests(unittest.TestCase):
+    """Root validation must reject before any runtime or database is created."""
+
+    def setUp(self):
+        self.root = RUNTIME_ROOT / (self._testMethodName + "-" + uuid.uuid4().hex)
+        self.root.mkdir()
+
+    @contextmanager
+    def no_writes(self):
+        with patch.object(Path, "mkdir", side_effect=AssertionError("mkdir in preflight")), \
+                patch.object(Path, "touch", side_effect=AssertionError("touch in preflight")), \
+                patch.object(Path, "write_bytes", side_effect=AssertionError("write in preflight")), \
+                patch.object(Path, "write_text", side_effect=AssertionError("write in preflight")), \
+                patch.object(module.os, "open", side_effect=AssertionError("probe in preflight")), \
+                patch.object(module.os, "fsync", side_effect=AssertionError("sync in preflight")), \
+                patch.object(module.sqlite3, "connect",
+                             side_effect=AssertionError("SQLite in preflight")):
+            yield
+
+    def validate(self, root):
+        with self.no_writes():
+            return module.validate_root(root)
+
+    def reject(self, root):
+        before = sorted(str(path.relative_to(self.root)) for path in self.root.rglob("*"))
+        with self.assertRaises(InvalidPayload):
+            self.validate(root)
+        self.assertEqual(sorted(str(path.relative_to(self.root)) for path in self.root.rglob("*")),
+                         before)
+
+    def test_missing_local_root_validates_without_creating_any_directory(self):
+        root = self.root / "absent" / "projects"
+        self.assertEqual(self.validate(root), root)
+        self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_existing_local_root_preserves_contents_and_mode(self):
+        sentinel = self.root / "sentinel"
+        sentinel.write_bytes(b"unchanged")
+        before = self.root.stat().st_mode
+        self.assertEqual(self.validate(self.root), self.root)
+        self.assertEqual(sentinel.read_bytes(), b"unchanged")
+        self.assertEqual(self.root.stat().st_mode, before)
+        self.assertEqual(list(self.root.iterdir()), [sentinel])
+
+    def test_network_and_special_paths_reject_without_creation(self):
+        for parent in (Path("/hf3fs-jd/data/tmp"), Path("/3fs/research3fs/data/tmp"),
+                       Path("/dev/shm"), Path("/proc"), Path("/sys")):
+            root = parent / ("preflight-rejected-" + uuid.uuid4().hex) / "projects"
+            with self.subTest(parent=str(parent)):
+                self.reject(root)
+                self.assertFalse(root.parent.exists())
+
+    def test_fuse_mount_rejects_missing_root_before_mkdir(self):
+        root = self.root / "absent" / "projects"
+        original = Path.read_text
+        mountinfo = Path("/proc/self/mountinfo")
+
+        def mounted(path, *args, **kwargs):
+            if path == mountinfo:
+                return f"1 0 0:1 / / rw - ext4 local rw\n2 1 0:2 / {self.root} rw - fuse.test none rw\n"
+            return original(path, *args, **kwargs)
+
+        with patch.object(Path, "read_text", mounted):
+            self.reject(root)
+        self.assertFalse(root.parent.exists())
+
+    def test_git_root_and_missing_descendants_reject_without_creation(self):
+        (self.root / ".git").write_text("gitdir: fixture\n")
+        self.reject(self.root / "absent" / "projects")
+        self.assertEqual(list(self.root.iterdir()), [self.root / ".git"])
+        self.reject(ROOT / ("preflight-rejected-" + uuid.uuid4().hex) / "projects")
+
+    def test_linked_and_dangling_ancestors_reject_without_creation(self):
+        target = self.root / "target"
+        target.mkdir()
+        for name, destination in (("link", target), ("dangling", self.root / "missing")):
+            linked = self.root / name
+            linked.symlink_to(destination, target_is_directory=True)
+            with self.subTest(name=name):
+                self.reject(linked / "projects")
+                self.assertTrue(linked.is_symlink())
+        self.assertEqual(list(target.iterdir()), [])
+        self.assertFalse((self.root / "missing").exists())
+
+    def test_non_directory_root_and_ancestor_reject_without_creation(self):
+        target = self.root / "file"
+        target.write_bytes(b"unchanged")
+        for root in (target, target / "absent" / "projects"):
+            with self.subTest(root=str(root)):
+                self.reject(root)
+        self.assertEqual(target.read_bytes(), b"unchanged")
+
+    def test_constructor_calls_public_validation_before_mkdir_or_sqlite(self):
+        root = self.root / "absent" / "projects"
+        failure = InvalidPayload("fixture preflight rejection")
+        with patch.object(module, "validate_root", side_effect=failure) as validator, \
+                self.no_writes():
+            with self.assertRaises(InvalidPayload) as caught:
+                ProjectStore(root)
+        self.assertIs(caught.exception, failure)
+        validator.assert_called_once_with(root)
+        self.assertEqual(list(self.root.iterdir()), [])
+
+
 class StoreTests(unittest.TestCase):
     def setUp(self):
         self.runtime = RUNTIME_ROOT / (self._testMethodName + "-" + uuid.uuid4().hex)
@@ -756,6 +860,7 @@ class SidecarHTTPTests(unittest.TestCase):
 def load_tests(loader, _tests, _pattern):
     # Normal discovery has no gateway in the store-only development worktree.
     suite = loader.loadTestsFromTestCase(StoreTests)
+    suite.addTests(loader.loadTestsFromTestCase(RootPreflightTests))
     if HTTP_SOURCE is not None:
         suite.addTests(loader.loadTestsFromTestCase(SidecarHTTPTests))
     return suite

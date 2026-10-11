@@ -25,6 +25,7 @@ import uuid
 __all__ = [
     "ProjectStore", "ProjectStoreError", "InvalidPayload", "ProjectNotFound",
     "RevisionConflict", "IdempotencyConflict", "StoreCorrupt", "StorageFailure",
+    "validate_root",
 ]
 
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
@@ -244,6 +245,45 @@ def _sync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
+def validate_root(root: str | os.PathLike) -> Path:
+    """Check a local external storage path without creating or opening data.
+
+    This is a point-in-time preflight, not a reservation. Store initialization
+    repeats it and retains the creation collision and database file checks.
+    """
+    root = Path(os.path.abspath(os.fspath(root)))
+    for path in (root, *root.parents):
+        if path.is_symlink():
+            raise InvalidPayload(f"storage root has a linked component: {path}")
+        if path.exists() and not path.is_dir():
+            raise InvalidPayload(f"storage component is not a directory: {path}")
+        if (path / ".git").exists() or (path / ".git").is_symlink():
+            raise InvalidPayload("storage root must be outside Git worktrees")
+    resolved = root.resolve()
+    if any(resolved.is_relative_to(base) for base in
+           (Path("/3fs"), Path("/hf3fs-jd"), Path("/proc"), Path("/sys"), Path("/dev"))):
+        raise InvalidPayload("storage root must be on a durable local filesystem")
+    mountinfo = Path("/proc/self/mountinfo")
+    if mountinfo.exists():
+        mounts = []
+        for line in mountinfo.read_text().splitlines():
+            fields = line.split()
+            separator = fields.index("-")
+            mount = Path(fields[4].replace("\\040", " ").replace("\\134", "\\"))
+            if resolved.is_relative_to(mount):
+                mounts.append((len(mount.parts), fields[separator + 1]))
+        if mounts:
+            fs = max(mounts)[1]
+            if fs.startswith(("fuse", "nfs", "cifs", "smb", "9p")) or fs == "tmpfs":
+                raise InvalidPayload(f"WAL root filesystem is not supported: {fs}")
+    path = root
+    while not path.exists():
+        path = path.parent
+    if not path.is_dir():
+        raise InvalidPayload("storage parent is not a directory")
+    return root
+
+
 class ProjectStore:
     def __init__(self, root: str | os.PathLike, *, timeout: float = 5.0):
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
@@ -287,27 +327,7 @@ class ProjectStore:
             raise StorageFailure(f"storage initialization sync failed: {exc}") from exc
 
     def _prepare_root(self) -> None:
-        for path in (self.root, *self.root.parents):
-            if path.is_symlink():
-                raise InvalidPayload(f"storage root has a linked component: {path}")
-            if (path / ".git").exists():
-                raise InvalidPayload("storage root must be outside Git worktrees")
-        resolved = self.root.resolve()
-        if any(resolved.is_relative_to(base) for base in
-               (Path("/3fs"), Path("/hf3fs-jd"), Path("/proc"), Path("/sys"), Path("/dev"))):
-            raise InvalidPayload("storage root must be on a durable local filesystem")
-        if Path("/proc/self/mountinfo").exists():
-            mounts = []
-            for line in Path("/proc/self/mountinfo").read_text().splitlines():
-                fields = line.split()
-                separator = fields.index("-")
-                mount = Path(fields[4].replace("\\040", " ").replace("\\134", "\\"))
-                if resolved.is_relative_to(mount):
-                    mounts.append((len(mount.parts), fields[separator + 1]))
-            if mounts:
-                fs = max(mounts)[1]
-                if fs.startswith(("fuse", "nfs", "cifs", "smb", "9p")) or fs == "tmpfs":
-                    raise InvalidPayload(f"WAL root filesystem is not supported: {fs}")
+        validate_root(self.root)
         missing = []
         path = self.root
         while not path.exists():
