@@ -1,0 +1,29 @@
+.oc-render-panel {
+  --render-ink: #173d4c;
+  --render-border: #b6ccd0;
+  display: grid;
+  gap: 0.75rem;
+  max-width: 32rem;
+  padding: 1rem;
+  border: 1px solid var(--render-border);
+  border-radius: 0.5rem;
+  background: linear-gradient(145deg, #f0f7f6, #fafbf9);
+  color: var(--render-ink);
+  font: inherit;
+}
+.oc-render-panel h2 { margin: 0; font-size: 1.05rem; }
+.oc-render-panel label { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.oc-render-panel select,
+.oc-render-panel button { min-height: 2.75rem; font: inherit; }
+.oc-render-panel button {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--render-ink);
+  border-radius: 0.25rem;
+  background: var(--render-ink);
+  color: #fff;
+}
+.oc-render-panel :focus-visible { outline: 3px solid #b57520; outline-offset: 2px; }
+.oc-render-panel p { margin: 0; overflow-wrap: anywhere; }
+.oc-render-panel img { display: block; max-width: 100%; height: auto; border: 1px solid var(--render-border); }
+.oc-render-panel img[hidden] { display: none; }
+.oc-render-panel :disabled { opacity: 0.6; }

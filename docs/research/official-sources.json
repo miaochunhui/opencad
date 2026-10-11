@@ -1,0 +1,291 @@
+{
+  "schema": 1,
+  "owner": "research-gpu-seat8",
+  "research_date": "2026-10-11",
+  "readback_at": "2026-10-11T10:40:30+08:00",
+  "scope": "Official product facts, not OpenCAD test results or industrial parity evidence.",
+  "web_tool": {
+    "status": "NOT_CAPTURED",
+    "observed": "web.run search and open returned empty without source IDs in this seat. Chair withdrew earlier claimed search-body capture.",
+    "rule": "Candidate URLs and chair messages are not captured official facts."
+  },
+  "artifact_root": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011",
+  "fetch_recipe": {
+    "entry": "/data/dev/infra/ops/astrill-jumphost/astrill-fetch.py",
+    "argv_template": ["sudo", "-n", "-u", "infra", "python3", "-B", "/data/dev/infra/ops/astrill-jumphost/astrill-fetch.py", "url", "--url", "{url}", "--out", "{new_3fs_path}", "--rate", "1500k", "--tries", "1", "--hard-timeout", "60", "--log-dir", "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs"],
+    "max_concurrent_this_seat": 3,
+    "aggregate_configured_bytes_per_s": 4608000,
+    "constraint": "Aggregate configured rate below 8000000 bytes/s. Earlier 6m fetches ran serially.",
+    "preflight": "Existing infra@astrill node and git were read-only checked. No installation or credentials change.",
+    "verification": "Read nonempty semantic body, record actual bytes and SHA256, cross-check fetch terminal and remote/local digest. Do not trust rc=0 or HEAD Content-Length=0 alone.",
+    "rate_measurement": "Small pieces are below sampler resolution; reported 0.000 is NOT_MEASURED, not measured zero. Wget tiny buffered tails can exceed the set rate; peak-window total compliance is NOT_ESTABLISHED. Do not present c14_ok=1 as independent proof.",
+    "failure_policy": "No blind retry; retain failed logs and remote shared caches. A changed candidate or isolated capture query is a new scoped attempt.",
+    "caveat": "The existing fetch tool has a zero-length HEAD/already-complete false intermediate gate. The final failed pull and missing body are NOT_CAPTURED. Tool is read-only dependency and was not modified."
+  },
+  "sources": [
+    {
+      "id": "onshape-root",
+      "url": "https://www.onshape.com/en/",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-11T09:35:15+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/official/onshape-root.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-093515-193093.log",
+      "bytes": 201385,
+      "sha256": "9c854bead28b5a24dc9b51bacdf18390823a4b276f808c10dcc6b7f8b7631b6f",
+      "facts": [
+        {"key": "deployment", "value": "Official page describes cloud-native design and no installations/upgrades.", "anchor": "No installations"},
+        {"key": "platform_scope", "value": "Separate mobile app downloads are listed; marketing no-hardware requirement is not GPU architecture evidence.", "anchor": "Download the Onshape Mobile App"}
+      ],
+      "native_web": "NOT_VERIFIED_BY_THIS_BODY",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "onshape-platform",
+      "url": "https://www.onshape.com/en/platform",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-11T09:47:07+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/official/onshape-platform.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-094707-801811.log",
+      "bytes": 208827,
+      "sha256": "d0e5d3b80d29e6094dcd6cb94e9fec5ccd4cf5b7b1d0021311db3ad3a3fdadc5",
+      "facts": [
+        {"key": "platform", "value": "Cloud-native CAD with built-in product data management and system integration through REST APIs.", "anchor": "BUILT-IN PDM"},
+        {"key": "render_product", "value": "Render Studio is listed separately; the page does not establish interactive viewport rendering location.", "anchor": "Render Studio"}
+      ],
+      "native_web": "NOT_VERIFIED_BY_THIS_BODY",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "onshape-help-candidate",
+      "url": "https://cad.onshape.com/help/Content/browser_compatibility.htm",
+      "capture_status": "CAPTURED_OTHER_PAGE",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-11T10:33:06+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/official/onshape-browser.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-103306-3413127.log",
+      "bytes": 42117,
+      "sha256": "348c8dcb00eb5d73d21f75bc76ce34e979fa906bca970a046b7b8b113eb43149",
+      "facts": [],
+      "reason": "Actual title/body is generic Onshape Help homepage, not browser compatibility. Second graphics recommendation candidate returned identical homepage bytes.",
+      "additional_attempt": {
+        "url": "https://cad.onshape.com/help/Content/hardware_and_graphics_performance_recommendations.htm",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/official/onshape-graphics.html",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-103641-3639836.log",
+        "capture_started_at": "2026-10-11T10:36:41+08:00"
+      },
+      "native_web": "NOT_VERIFIED",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "freecad-features",
+      "url": "https://www.freecad.org/features.php?capture=opencad-seat8-20261011",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-11T09:45:21+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/official/freecad-features-fresh.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-094521-706350.log",
+      "bytes": 54005,
+      "sha256": "3fe83d029f4e2a48202f3eff2f30d3e2a4db45ca7c62f3084073b2f0459c0803",
+      "facts": [
+        {"key": "kernel", "value": "FreeCAD describes an Open CASCADE based geometry engine with BRep, NURBS, Boolean operations and fillets.", "anchor": "Open CASCADE Technology"},
+        {"key": "modeling", "value": "Parametric object dependencies and constraints-based 2D sketching are described.", "anchor": "parametric constraints-based 2D sketcher"}
+      ],
+      "native_web": "NOT_CLAIMED",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "freecad-downloads",
+      "url": "https://www.freecad.org/downloads.php?capture=opencad-seat8-20261011-resume",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-11T10:35:21+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/official/freecad-downloads-fresh.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-103521-3565884.log",
+      "bytes": 44453,
+      "sha256": "6fa7c6cc3706df5218b5531886a65201ac4cdd2162155fa4268851625d4faca6",
+      "facts": [
+        {"key": "deployment", "value": "Official downloads offer Windows installer/portable, Mac DMG and Linux AppImage. This is desktop distribution evidence, not native browser CAD.", "anchor": "x86_64 installer"}
+      ],
+      "native_web": "DESKTOP_DISTRIBUTION",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "occt-overview",
+      "url": "https://dev.opencascade.org/doc/overview/html/index.html?capture=opencad-seat8-20261011",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-11T09:40:29+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/official/occt-overview.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-094029-457059.log",
+      "bytes": 69891,
+      "sha256": "60cc449448cdf0bbfe0b0a3b21cf54ef55823f9b27ca49b8447afcfc200f8718",
+      "facts": [
+        {"key": "category", "value": "C++ software-development libraries for surface/solid modeling, visualization and CAD exchange; not an end-user browser CAD application.", "anchor": "intro_overview"},
+        {"key": "graphics", "value": "TKOpenGl implements graphics via OpenGL/OpenGL ES; this alone does not establish cloud remote rendering.", "anchor": "TKOpenGl"},
+        {"key": "license_description", "value": "Official overview describes LGPL 2.1 with an exception. Legal compliance review is outside this research.", "anchor": "intro_license"}
+      ],
+      "native_web": "SDK_NOT_END_USER_APP",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "nx-root",
+      "url": "https://plm.sw.siemens.com/en-US/nx/",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-11T09:45:40+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/official/nx.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-094540-717101.log",
+      "bytes": 74468,
+      "sha256": "592855ab8d2090612f93aeda14f9a1e3dca01d8c712f330bd47421aae11d31c3",
+      "facts": [],
+      "reason": "Legacy NX family URL resolved to current Designcenter/NX CAM marketing. Use nx-current-tiers for deployment claims.",
+      "native_web": "PRODUCT_FAMILY_NOT_ONE_RUNTIME",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "nx-cad-family",
+      "url": "https://plm.sw.siemens.com/en-US/nx/cad-online/",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-11T09:47:56+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/official/nx-cad-online.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-094756-844529.log",
+      "bytes": 148291,
+      "sha256": "0aa33c236f6368633886ffb73a47e68871b2c8f3bdb74ae124f31d922a83db2c",
+      "facts": [
+        {"key": "deployment_family", "value": "Designcenter offers on-premises, online and cloud-enabled options spanning browser to desktop.", "anchor": "Flexible deployment options"}
+      ],
+      "native_web": "PRODUCT_FAMILY_NOT_ONE_RUNTIME",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "nx-current-tiers",
+      "url": "https://www.siemens.com/en-us/technology/nx-cad/",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-11T10:31:32+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/official/nx-technology-chair.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-103132-3315195.log",
+      "bytes": 89660,
+      "sha256": "e2d0caea689e67aef05665e0798b69e2688fc33bfb8e047c96047c300a3da352",
+      "facts": [
+        {"key": "naming", "value": "The page states NX naming retired with June 2026 Designcenter CAD release; distinguish legacy NX/UG labels from current product names.", "anchor": "June 2026"},
+        {"key": "essentials", "value": "Designcenter X Essentials is specifically an entry-level browser-based application with essential CAD/CAM/CAE tools.", "anchor": "Browser-based essential"},
+        {"key": "tiers", "value": "On-premises Designcenter has Standard/Advanced/Premium; SaaS Designcenter X also has Essentials. SaaS family must not be flattened into Essentials runtime.", "anchor": "On-premises Designcenter"},
+        {"key": "roles_modules", "value": "Additional module token access requires a Standard/Advanced/Premium core seat. Family or module names alone do not establish every included capability.", "anchor": "Value Based Licensing"}
+      ],
+      "native_web": "ESSENTIALS_ONLY_EXPLICIT_BROWSER",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "autocad-web-guide",
+      "url": "https://help.autodesk.com/cloudhelp/ENU/AutoCAD-Web-Help/files/AutoCAD_Web_Help_Hitchhikers_guide_0home.html",
+      "capture_status": "CAPTURED_BODY",
+      "capture_method": "existing_astrill_url_fetch",
+      "capture_started_at": "2026-10-11T10:31:34+08:00",
+      "body_path": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/official/autocad-guide-chair.html",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-103134-3316305.log",
+      "bytes": 5645,
+      "sha256": "37a1eeed72c3ce0883d4fb6bd0c539d5efeb8e5a50161ba62b89ffc9a0083128",
+      "facts": [
+        {"key": "scope", "value": "Official guide identifies web-based AutoCAD and essential commands to create 2D drawings.", "anchor": "create 2D drawings"},
+        {"key": "commands", "value": "Guide links cover lines/circles, modify, precision, layers, properties, annotation/dimensions and layout/PDF.", "anchor": "Layout and Print"}
+      ],
+      "native_web": "WEB_BASED_2D_GUIDE",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "catia-family",
+      "url": "https://www.3ds.com/products/catia",
+      "capture_status": "NOT_CAPTURED",
+      "capture_started_at": "2026-10-11T09:36:02+08:00",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-093602-231852.log",
+      "bytes": 0,
+      "sha256": null,
+      "facts": [],
+      "reason": "HEAD EXPECTED_FROM_HTTP=0, POST_SIZE=0, wget_rc=-1/resume=already_complete; final ASTRiLL_FETCH ok=0 reason=empty_payload. No readable product body.",
+      "native_web": "NOT_VERIFIED",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "catia-experience",
+      "url": "https://www.3ds.com/products/catia/3dexperience-catia",
+      "capture_status": "NOT_CAPTURED",
+      "capture_started_at": "2026-10-11T10:29:59+08:00",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-102959-3231509.log",
+      "bytes": 0,
+      "sha256": null,
+      "facts": [],
+      "reason": "HEAD zero-length intermediate gate; remote body absent, rsync rc23 and final sha mismatch. R2026x/discipline/role claims NOT_CAPTURED.",
+      "native_web": "NOT_VERIFIED",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "catia-mechanical",
+      "url": "https://www.3ds.com/cloud/catia-product-design-experience/mechanical-design-engineering-3dexperience-catia",
+      "capture_status": "NOT_CAPTURED",
+      "capture_started_at": "2026-10-11T10:33:06+08:00",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-103306-3412606.log",
+      "bytes": 0,
+      "sha256": null,
+      "facts": [],
+      "reason": "Remote body absent, rsync rc23 and final sha mismatch. Cloud URL is not browser execution proof.",
+      "native_web": "NOT_VERIFIED",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "solidworks-desktop-connected",
+      "url": "https://www.solidworks.com/product/solidworks-design",
+      "capture_status": "NOT_CAPTURED",
+      "capture_started_at": "2026-10-11T09:35:37+08:00",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-093537-210713.log",
+      "bytes": 0,
+      "sha256": null,
+      "facts": [],
+      "reason": "Wget rc124, empty body. Desktop versus Connected runtime and roles require separate official capture.",
+      "native_web": "NOT_VERIFIED",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "solidworks-xdesign",
+      "url": "https://xdesign.solidworks.com/",
+      "capture_status": "NOT_CAPTURED",
+      "capture_started_at": "2026-10-11T10:23:10+08:00",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-102310-2853750.log",
+      "bytes": 0,
+      "sha256": null,
+      "facts": [],
+      "reason": "302 to solidworks.com/product/solidworks-xdesign, then wget rc124 with no body. Redirect target is candidate, not product fact.",
+      "native_web": "NOT_VERIFIED",
+      "remote_rendering": "NOT_VERIFIED"
+    },
+    {
+      "id": "autocad-web-details",
+      "url": "https://www.autodesk.com/products/autocad-web/product-details",
+      "capture_status": "NOT_CAPTURED",
+      "capture_started_at": "2026-10-11T10:31:33+08:00",
+      "fetch_log": "/hf3fs-jd/data/tmp/opencad-research-gpu-20261011/fetch-logs/url-fetch-20261011-103133-3315452.log",
+      "bytes": 0,
+      "sha256": null,
+      "facts": [],
+      "reason": "HTTP403, wget rc8. Guide capture does not validate missing product details, desktop parity or 3D features.",
+      "native_web": "NOT_VERIFIED_BY_THIS_BODY",
+      "remote_rendering": "NOT_VERIFIED"
+    }
+  ],
+  "retained_prior_failures": [
+    {"url": "https://www.onshape.com/en/product/cloud-native-cad", "status": "NOT_CAPTURED", "reason": "HTTP404", "log": "fetch-logs/url-fetch-20261011-093449-157164.log"},
+    {"url": "https://www.3ds.com/solidworks/xdesign", "status": "NOT_CAPTURED", "reason": "HTTP404", "log": "fetch-logs/url-fetch-20261011-094829-878566.log"},
+    {"url": "https://www.3ds.com/products/solidworks", "status": "NOT_CAPTURED", "reason": "empty/absent remote body, final pull failure", "log": "fetch-logs/url-fetch-20261011-095005-951179.log"},
+    {"url": "https://www.autodesk.com/products/autocad-web/overview", "status": "NOT_CAPTURED", "reason": "HTTP403", "log": "fetch-logs/url-fetch-20261011-094419-658100.log"},
+    {"url": "https://www.freecad.org/features.php", "status": "NOT_CAPTURED", "reason": "shared remote cache same-size/no_progress", "log": "fetch-logs/url-fetch-20261011-093959-420165.log"},
+    {"url": "https://www.freecad.org/downloads.php", "status": "NOT_CAPTURED", "reason": "shared remote cache same-size/no_progress; isolated capture query subsequently captured", "log": "fetch-logs/url-fetch-20261011-103307-3414362.log"}
+  ],
+  "industrial_comparison": {
+    "status": "NOT_COMPLETE",
+    "not_verified": ["CATIA disciplines/roles/R2026x", "SOLIDWORKS desktop/Connected/xDesign separation", "commercial module license inclusion", "production surface continuity", "large assembly/mates", "PMI/GD&T", "sheet metal", "weldments", "CAM/postprocessing", "CAE validation", "PLM enterprise controls", "industrial workloads and performance"],
+    "rule": "A feature name, upstream library capability, or a captured marketing statement is not an OpenCAD industrial acceptance result."
+  }
+}
