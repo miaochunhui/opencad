@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -18,6 +19,7 @@ import hashlib
 import http.client
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import sys
@@ -42,6 +44,21 @@ def write(path, value):
 
 def sha_bytes(value):
     return hashlib.sha256(value).hexdigest()
+
+
+def solved_mates(report, *, count, rank, dof):
+    if (not isinstance(report, dict) or report.get("status") != "solved"
+            or report.get("jacobian_rank") != rank or report.get("dof") != dof):
+        return False
+    residuals = report.get("residuals")
+    if not isinstance(residuals, list) or len(residuals) != count:
+        return False
+    for residual in residuals:
+        for name, limit in (("linear_residual_nm", 100), ("angular_residual_rad", 1e-7)):
+            value = residual.get(name)
+            if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= limit:
+                return False
+    return True
 
 
 def document_difference(before, after, path="$"):
@@ -193,6 +210,7 @@ class Review:
                                   "pin-1", axes["pin-1"])
         plane = self.assembly.Mate("plane", "plane", "ring-1", planes["ring-1"],
                                    "pin-1", planes["pin-1"])
+        self.mate_controls = (axis, plane)
         displaced = replace(assembly, mates=(axis, plane), components=(
             assembly.components[0], replace(assembly.components[1],
                 transform=self.assembly.Transform(translation_nm=(2_000_000, 0, 3_000_000)))))
@@ -257,9 +275,21 @@ class Review:
                                               {"username": name, "password": password}, capture=False)
             if status != 200:
                 raise AssertionError("isolated login failed")
+            cookie = headers["Set-Cookie"]
+            if name == "review-alice":
+                self.check("actual-login-cookie-boundary", "HttpOnly" in cookie
+                           and "SameSite=Strict" in cookie and "Path=/" in cookie,
+                           {"http_only": "HttpOnly" in cookie,
+                            "same_site_strict": "SameSite=Strict" in cookie,
+                            "scope": "generated isolated loopback session"},
+                           stage="authentication")
             self.cookies[name] = headers["Set-Cookie"].split(";", 1)[0]
         # Never retain generated passwords in attributes, logs or artifacts.
         passwords.clear()
+
+    def receipt(self, store, project, body, route="/api/assembly"):
+        return store.read_receipt(project["project_id"], body["request_id"],
+                                  request_payload={**body, "route": route})
 
     def call(self, method, path, body=None, *, project=None, user="review-alice", capture=True):
         headers = {"Origin": self.origin, "X-OpenCAD-Request": "1"}
@@ -541,6 +571,161 @@ class Review:
         self.check("assembly-route-export-reopen", status == 200
                    and restored["doc"] == undone["doc"], stage="assembly-http")
 
+    def assembly_mate_persistence(self):
+        if not getattr(self, "route_available", False):
+            self.check("assembly-mate-HTTP-controls", False,
+                       "UNTESTED_DEPENDENCY: actual assembly route unavailable",
+                       stage="mate-persistence")
+            return
+        project = self.create("Independent parts and solved mates")
+        status, _, _ = self.call("GET", "/api/assembly", project=project, user="anonymous")
+        self.check("assembly-no-cookie-denied", status == 401, stage="authentication")
+        head = self.state(project)
+        imported = []
+        for index, (part, component) in enumerate(zip(
+                self.fixture_assembly.parts, self.fixture_assembly.components), 1):
+            body = self.write_body(head, {"action": "import_part",
+                "part": part.as_dict(), "component": component.as_dict()})
+            status, _, response = self.call("POST", "/api/assembly", body, project=project)
+            valid = (status == 200 and response.get("revision") == head["revision"] + 1
+                     and response.get("evaluation", {}).get("solid_count") == index
+                     and response.get("assembly", {}).get("parts") ==
+                     [item.as_dict() for item in self.fixture_assembly.parts[:index]])
+            self.check("HTTP-independent-part-import-%d" % index, valid,
+                       {"status": status, "revision": response.get("revision")},
+                       stage="mate-persistence")
+            if not valid:
+                raise AssertionError("real independent part import failed")
+            imported.append(response)
+            head = self.state(project)
+        self.check("HTTP-independent-part-distinct-SHA",
+                   len({p["document_sha256"] for p in imported[-1]["assembly"]["parts"]}) == 2,
+                   stage="mate-persistence")
+        pin = self.fixture_assembly.components[1].as_dict()
+        pin["transform"]["translation_nm"] = [2_000_000, 0, 3_000_000]
+        status, _, displaced = self.call("POST", "/api/assembly", self.write_body(
+            head, {"action": "put_component", "component": pin}), project=project)
+        self.check("HTTP-mate-displaced-real-interference", status == 200
+                   and displaced.get("evaluation", {}).get("collisions", [{}])[0].get(
+                       "interference_volume_nm3", 0) > 0, stage="mate-persistence")
+        if status != 200:
+            raise AssertionError("cannot construct displaced mate positive control")
+        head = self.state(project)
+        solved_responses = []
+        for mate, count, rank, dof in (
+                (self.mate_controls[0], 1, 4, 2), (self.mate_controls[1], 2, 5, 1)):
+            body = self.write_body(head, {"action": "put_mate", "mate": mate.as_dict()})
+            status, _, response = self.call("POST", "/api/assembly", body, project=project)
+            current = self.state(project)
+            stored = self.store.read_head(project["project_id"])
+            valid = (status == 200 and solved_mates(response.get("solver"),
+                         count=count, rank=rank, dof=dof)
+                     and current["revision"] == head["revision"] + 1
+                     and current["doc"] == response.get("doc")
+                     and stored["snapshot"]["undo"][-1] == head["doc"]
+                     and not stored["snapshot"]["redo"])
+            self.check("HTTP-%s-mate-confirmed-residual-DoF" % mate.kind, valid,
+                       {"status": status, "solver": response.get("solver"),
+                        "revision": current["revision"]}, stage="mate-persistence")
+            if not valid:
+                raise AssertionError("real HTTP mate did not confirm solved candidate")
+            status, _, replay = self.call("POST", "/api/assembly", body, project=project)
+            self.check("HTTP-%s-mate-receipt-replay" % mate.kind, status == 200
+                       and replay == response
+                       and self.store.read_head(project["project_id"]) == stored,
+                       stage="mate-persistence")
+            solved_responses.append(response)
+            head = current
+        solved = solved_responses[-1]
+        self.check("HTTP-solved-pose-and-BRep-gap",
+                   all(abs(n) <= 100 for n in solved["assembly"]["components"][1][
+                       "transform"]["translation_nm"])
+                   and solved["assembly"]["components"][0] ==
+                   self.fixture_assembly.components[0].as_dict()
+                   and solved["evaluation"]["collisions"][0]["status"] == "separated"
+                   and abs(solved["evaluation"]["collisions"][0]["distance_nm"] - 1_000_000) <= 2,
+                   stage="mate-persistence")
+        confirmed = self.store.read_head(project["project_id"])
+        duplicate = replace(self.mate_controls[0], mate_id="duplicate-axis").as_dict()
+        rejected_body = self.write_body(head, {"action": "put_mate", "mate": duplicate})
+        status, _, rejected = self.call("POST", "/api/assembly", rejected_body, project=project)
+        self.check("HTTP-overconstraint-no-snapshot-or-receipt", status == 422
+                   and rejected.get("error") == "mate_overconstrained"
+                   and self.store.read_head(project["project_id"]) == confirmed
+                   and self.receipt(self.store, project, rejected_body) is None,
+                   {"status": status, "error": rejected.get("error")}, stage="mate-persistence")
+        save_body = self.write_body(head, {})
+        status, _, saved = self.call("POST", "/api/save", save_body, project=project)
+        saved_head = self.store.read_head(project["project_id"])
+        self.check("HTTP-solved-assembly-save-confirmed", status == 200
+                   and saved.get("saved") is True and saved["revision"] == head["revision"] + 1
+                   and saved["sha256"] == saved_head["sha256"]
+                   and saved_head["snapshot"] == confirmed["snapshot"], stage="mate-persistence")
+        status, _, exported = self.call("GET", "/api/assembly?action=export", project=project)
+        self.check("HTTP-solved-assembly-export-read-only", status == 200
+                   and exported["assembly_json"] == solved["assembly_json"]
+                   and self.store.read_head(project["project_id"]) == saved_head,
+                   stage="mate-persistence")
+        with self.store_module.ProjectStore(self.store.root) as reopened_store:
+            reopened_head = reopened_store.read_head(project["project_id"])
+            receipt = self.receipt(reopened_store, project, save_body, "/api/save")
+            mate_receipt = self.receipt(reopened_store, project, body)
+            self.check("DB-reopen-solved-assembly-exact-head-and-receipts",
+                       reopened_head == saved_head and receipt is not None
+                       and receipt["response"] == {"ok": True, "saved": True}
+                       and receipt["revision"] == saved["revision"]
+                       and mate_receipt is not None and mate_receipt["response"]["doc"] == solved["doc"]
+                       and mate_receipt["response"]["solver"] == solved["solver"],
+                       {"revision": reopened_head["revision"], "snapshot_sha256": reopened_head["sha256"]},
+                       stage="mate-persistence")
+        status, _, replay_save = self.call("POST", "/api/save", save_body, project=project)
+        self.check("HTTP-save-old-base-replays-exact-confirmation", status == 200
+                   and replay_save == saved and self.store.read_head(project["project_id"]) == saved_head,
+                   stage="mate-persistence")
+        restored_project = self.create("Reopened solved assembly")
+        status, _, restored = self.call("POST", "/api/open", self.write_body(restored_project,
+            {"doc": saved_head["snapshot"]["doc"]}), project=restored_project)
+        status_read, _, restored_read = self.call("GET", "/api/assembly", project=restored_project)
+        self.check("HTTP-solved-L1-reopen-exact-parts-mates-mesh",
+                   status == 200 and status_read == 200 and restored["doc"] == solved["doc"]
+                   and restored_read["assembly_json"] == solved["assembly_json"]
+                   and restored_read["evaluation"] == solved["evaluation"]
+                   and restored_read["bom"] == solved["bom"], stage="mate-persistence")
+        # Two actual HTTP requests race from the same acknowledged version.
+        # Removing either mate is a distinct valid edit; only one may commit.
+        race_head = self.state(project)
+        race_bodies = [self.write_body(race_head, {
+            "action": "remove_mate", "mate_id": mate.mate_id}) for mate in self.mate_controls]
+        barrier = threading.Barrier(2)
+
+        def race_request(request_body):
+            barrier.wait(timeout=10)
+            status, _, response = self.call("POST", "/api/assembly", request_body, project=project)
+            return {"status": status, "response": response}
+
+        with ThreadPoolExecutor(max_workers=2) as clients:
+            races = list(clients.map(race_request, race_bodies))
+        race_after = self.store.read_head(project["project_id"])
+        winners = [i for i, r in enumerate(races) if r["status"] == 200]
+        losers = [i for i, r in enumerate(races) if r["status"] == 409]
+        race_valid = (len(winners) == len(losers) == 1
+                      and races[losers[0]]["response"].get("error") == "revision_conflict"
+                      and race_after["revision"] == race_head["revision"] + 1
+                      and race_after["snapshot"]["doc"] == races[winners[0]]["response"]["doc"]
+                      and race_after["snapshot"]["undo"][-1] == race_head["doc"]
+                      and self.receipt(self.store, project, race_bodies[winners[0]]) is not None
+                      and self.receipt(self.store, project, race_bodies[losers[0]]) is None)
+        self.check("HTTP-two-clients-same-version-one-CAS-winner", race_valid,
+                   {"statuses": [r["status"] for r in races],
+                    "revision_before": race_head["revision"], "revision_after": race_after["revision"]},
+                   stage="mate-persistence")
+        write(self.out / "mate-persistence.json", {
+            "imports": imported, "displaced": displaced, "solved": solved_responses,
+            "overconstraint": rejected, "saved": saved, "saved_head": saved_head,
+            "exported": exported, "reopened_head": reopened_head, "restored": restored_read,
+            "race": races, "race_head_after": race_after,
+            "scope": "real loopback HTTP and new SQLite connections; no service crash/restart"})
+
     def browser(self):
         browser_module = load("assembly_private_browser",
             self.source / "oss-alternatives/tools/cad3d/viewer_controls_check.py")
@@ -811,6 +996,21 @@ def selftest(out):
     scoped = deepcopy(good)
     scoped["production_requests"] = 1
     case("production-scope-rejected", scoped, ["production-scope"])
+    solver = {"status": "solved", "jacobian_rank": 5, "dof": 1,
+              "residuals": [{"linear_residual_nm": 1, "angular_residual_rad": 1e-9}] * 2}
+    for name, variant, expected in (
+        ("numeric-mate-solver-valid", solver, True),
+        ("empty-mate-residuals-rejected", dict(solver, residuals=[]), False),
+        ("wrong-mate-DoF-rejected", dict(solver, dof=2), False),
+        ("large-mate-residual-rejected", dict(solver, residuals=[
+            {"linear_residual_nm": 101, "angular_residual_rad": 0}] * 2), False),
+        ("nonfinite-mate-residual-rejected", dict(solver, residuals=[
+            {"linear_residual_nm": float("nan"), "angular_residual_rad": 0}] * 2), False),
+        ("boolean-mate-residual-rejected", dict(solver, residuals=[
+            {"linear_residual_nm": True, "angular_residual_rad": 0}] * 2), False),
+    ):
+        observed = solved_mates(variant, count=2, rank=5, dof=1)
+        cases.append({"name": name, "pass": observed is expected, "observed": observed})
     passed = all(c["pass"] for c in cases)
     write(out / "result.json", {"verdict": "PASS" if passed else "FAIL", "checks": cases,
         "scope": "validator selftest only; not product acceptance",
@@ -863,6 +1063,7 @@ def main():
                 review.start_http(Path(directory))
                 review.stage("persistence", review.private_persistence)
                 review.stage("assembly-http", review.assembly_routes)
+                review.stage("mate-persistence", review.assembly_mate_persistence)
                 review.stage("browser", review.browser)
                 review.close()
         except Exception:

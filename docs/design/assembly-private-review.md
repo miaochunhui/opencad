@@ -28,7 +28,7 @@ source drift, stage errors or missing real dependencies; no skips are introduced
 `--verify-result PATH --source-root /data/dev/opencad` rereads source and artifact
 hashes without starting a browser, kernel or server. A verified historical FAIL
 remains FAIL, not a successful product acceptance.
-`--selftest` exercises ten validator positive/negative controls without a CAD
+`--selftest` exercises sixteen validator positive/negative controls without a CAD
 worker, browser or HTTP service. `--inspect-result PATH` prints only existing
 undo/redo JSON differences; it does not reapprove an old result.
 
@@ -51,8 +51,24 @@ validated on every import/history restore path before durable confirmation.
 The actual `/api/assembly` GET/POST routes must operate on an authorized private
 workspace, with writes using request receipts and atomic CAS. Existing routes
 are tested for mesh/BOM/collision, replay, stale versions, bad mate rejection,
-undo and export/reopen. Missing routes are dependency failures, not replaced by
-a test gateway subclass.
+undo and export/reopen. A separate generated project imports each independent
+immutable part through actual HTTP before it submits a displaced pose and
+measured axis/plane mates. Residual count, finite numeric values, rank and DoF
+are mandatory; empty, boolean, nonfinite and oversized residuals fail the
+validator selftests. Overconstraint rejection must leave both the entire
+stored head and the request receipt unchanged.
+
+The solved assembly is explicitly saved through `/api/save`; a newly opened
+SQLite connection must recover the identical full snapshot and original
+mate/save receipts. Replaying the saved request from its old base must recover
+the exact confirmation without a new revision. A fresh project reopens the
+saved L1 and must rebuild identical parts, mates, BOM and measured mesh.
+Two concurrent real HTTP edits then start from one acknowledged version:
+exactly one may commit, with one revision advance, exact prior undo bytes, a
+winner receipt and no loser receipt. These are local connection/HTTP tests,
+not a crash, service restart or production durability claim.
+
+Missing routes are dependency failures, not replaced by a test gateway subclass.
 
 The actual private page must load and mount the panel when its lazy `details`
 is opened through a real browser click. A browser
@@ -67,27 +83,29 @@ overflow observations are retained.
 ## Source-Bound Result
 
 Latest actual evidence:
-`/hf3fs-jd/data/tmp/opencad-assembly-private-review-20261011/20261011T032136413927Z/result.json`.
-Finished at `2026-10-11T03:21:50.130955+00:00`: **FAIL**, 52 checks,
-50 passed, two failed, zero stage errors, zero source drift, no skips.
+`/hf3fs-jd/data/tmp/opencad-assembly-private-review-20261011/20261011T034318423209Z/result.json`.
+Finished at `2026-10-11T03:43:38.436933+00:00`: **FAIL**, 70 checks,
+68 passed, two failed, zero stage errors, zero source drift, no skips.
+The 19.988-second run is new-source diagnostic evidence, not an attempt to
+declare the two known failures usable. No automatic retry was performed.
 Result SHA256:
-`8ede58b4a7db737ebd25f2cbd1875b26918e993e6656a9a54a4055a513c3ba6e`.
+`3e30b07b2f1a7ce9919b7421096d25c5e0e538ca38a5654cb364fa8dbfc375ed`.
 Owned tool SHA256:
-`bd205cf4bdcd5cbd162b64f2edf7a67be32fd635eecad8433fd8ddac6f4400ac`.
-Ten validator selftests passed at
-`20261011T032136170465Z/result.json` under the same evidence parent.
+`4f8b4761da8251777869edcc119a1b9a05b94950820fc857b5d5a3c423166040`.
+Sixteen validator selftests passed at
+`20261011T034249812447Z/result.json` under the same evidence parent.
 The result verifier reread all source/artifact hashes and returned
 `evidence_valid=True`, retaining FAIL with exit code 1.
 
-The read-only chair source root is `/data/dev/opencad`. HEAD `5c86c01` alone
+The read-only chair source root is `/data/dev/opencad`. HEAD `40dae2c` alone
 does not bind the newly untracked integration files. Exact tested SHA256 values:
 
 | File under `oss-alternatives/apps/opencad/` | SHA256 |
 | --- | --- |
 | `project_gateway.py` | `3665d3d9b0b0b35d109919f02867bada70520ba42169981f2f774950aca6e9a8` |
-| `secure_web.py` | `36a06e8d5ab21dcde96ec493d53653181b698b9e101ed0f5172c9d99a9eb78c9` |
+| `secure_web.py` | `80781a5ee7cf85ff405fa6b53288c5ef0455d423b088dd5dff10138913feafac` |
 | `web/js/industrial-panels.js` | `2c2fd1dac64625406f2a53d04691f5905df319f217b3f73f4bd0a2b2f4ad7a93` |
-| `web/js/project-session.js` | `871d93a42f16fe7636b8854d9b322f8dea8510f53e291e2e20ee6ce23a58d7ce` |
+| `web/js/project-session.js` | `7caec535cda662eff23b310b0eab8784fbda712c231ff86dbcdde74eea1110e8` |
 | `server.py` | `459119589183e0fad538fe98f3691a19fb994dd8da00e18e675ca6041a14ebbf` |
 
 These are test coordinates, not a claim that the chair has frozen the product.
@@ -141,6 +159,23 @@ assembly positive control. Changing project standard from `iso` to `gbt` leaves
 the independent part configurations untouched. A newly opened local store
 reads the exact last confirmation. This is not a service restart/crash test.
 
+The new real HTTP project separately imported ring and pin with distinct
+immutable SHA references. Its displaced pin interfered with the ring wall.
+Axis mate submission confirmed rank 4, DoF 2 and a 2 nm linear residual;
+axis plus plane confirmed rank 5, DoF 1, linear residuals 0/3 nm and angular
+residuals 0. The corrected BRep retained the measured 1 mm radial gap.
+Duplicate axis overconstraint returned 422 `mate_overconstrained`, without
+changing any head bytes or inserting a receipt.
+
+`/api/save` confirmed revision 7 with an unchanged solved snapshot. A new store
+connection recovered identical head bytes and both mate/save receipts. The
+old-base save replay returned the same confirmation without a new revision.
+A second project reopened the solved L1 and rebuilt equal part bindings,
+stored mates, BOM and measured mesh. Two concurrently submitted mate removals
+then returned 409/200 from revision 7, producing only revision 8 and only the
+winning receipt. Full measured responses and store snapshots are retained in
+`mate-persistence.json`; generated session secrets are never retained.
+
 The browser opened the real private panel with generated HttpOnly-cookie
 authentication. Its actual pose form committed and updated measured geometry;
 a second-client pose edit then made the next real form submit stale. The
@@ -162,6 +197,10 @@ Earlier evidence is retained, not overwritten: `20261011T030324578948Z` and
 boundary. `20261011T031355310539Z` captured a gateway source change and is
 explicitly not stable-source acceptance. The current result supersedes the
 missing-wiring finding only; its two independent P1 controls remain red.
+The previous `20261011T032136413927Z` result remains historical 52-check
+evidence. The current 70-check run rebinds the updated transport/session and
+independently reproduces the same two failures; CLI alias repair does not
+repair either semantic confirmation boundary.
 
 ## Integration Contract
 
