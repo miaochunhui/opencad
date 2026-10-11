@@ -5,7 +5,9 @@ No network, installs, account access or source writes. Outputs are exclusive
 external 3FS evidence. --inspect-body reads HTML while excluding navigation,
 scripts and footer; SOLIDWORKS Help uses its decoded helpText article instead.
 --selftest checks rejection controls; default verifies the completion ledger
-and preserves the baseline source/failure entries byte-semantically.
+and preserves the baseline source/failure entries byte-semantically, only in
+the original research worktree. Anchors and references do not prove that a
+statement follows semantically from the official body.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ import traceback
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
+ORIGINAL_RESEARCH_ROOT = Path("/data/dev/wt-opencad-research-complete-20261012")
 BASE = "941005d7c45a35f8cbbe8d2dc65c68093a790a3b"
 LEDGER = "docs/research/official-sources.json"
 OWNED = (LEDGER, "docs/research/competitive-matrix.md",
@@ -51,6 +54,64 @@ def write(path, value):
 
 def normalized(text):
     return re.sub(r"\s+", " ", unescape(text)).strip()
+
+
+def owned_fingerprints(root=ROOT):
+    values, errors = {}, []
+    for path in OWNED:
+        values[path] = None
+        try:
+            values[path] = sha((root / path).read_bytes())
+        except Exception as exc:
+            errors.append("owned-source-unreadable:%s:%s" % (path, exc))
+    return values, errors
+
+
+def ownership_error(root):
+    if root.resolve() != ORIGINAL_RESEARCH_ROOT.resolve():
+        return "ownership-root-not-original-research-tree"
+    return None
+
+
+def bound_selftest_result(cases, before, after, git_before, git_after,
+                          errors=(), first_cause=None):
+    drift = sorted(path for path in before.keys() | after.keys()
+                   if before.get(path) != after.get(path))
+    binding_errors = list(errors)
+    for phase, values in (("before", before), ("after", after)):
+        if set(values) != set(OWNED) or any(
+                not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
+                for value in values.values()):
+            binding_errors.append("incomplete-owned-source-binding:" + phase)
+    head_drift = (git_before is not None and git_after is not None
+                  and git_before != git_after)
+    if git_before is None or git_after is None:
+        binding_errors.append("incomplete-git-binding")
+    failed = [case["name"] for case in cases if not case["pass"]]
+    if not cases:
+        binding_errors.append("empty-selftest")
+    if first_cause is None:
+        first_cause = (failed or binding_errors or
+                       (["owned-source-drift"] if drift else []) or
+                       (["git-binding-drift"] if head_drift else []) or [None])[0]
+    passed = bool(cases) and not (
+        failed or binding_errors or drift or head_drift or first_cause)
+    return {
+        "verdict": "PASS" if passed else "FAIL", "actual_rc": 0 if passed else 1,
+        "checks": cases, "count": len(cases), "passed": sum(c["pass"] for c in cases),
+        "source_before": before, "source_after": after, "source_drift": drift,
+        "owned_paths": list(OWNED), "source_file_count": len(before),
+        "source_fingerprint": sha(json.dumps(before, sort_keys=True).encode()),
+        "source_fingerprint_after": sha(json.dumps(after, sort_keys=True).encode()),
+        "tool_sha256": before.get("tools/official_research_verify.py"),
+        "git_binding_before": git_before, "git_binding_after": git_after,
+        "head": git_before["head"] if git_before is not None else None,
+        "head_after": git_after["head"] if git_after is not None else None,
+        "git_binding_drift": head_drift, "errors": binding_errors,
+        "first_cause": first_cause,
+        "source_binding_verified": not (binding_errors or drift or head_drift),
+        "scope": "offline semantic validator; owned-source binding, no product test",
+    }
 
 
 class BodyParser(HTMLParser):
@@ -177,8 +238,8 @@ def git_binding():
                 ("commits", ["rev-list", "--reverse", BASE + "..HEAD"]))
     values = {}
     for name, argv in commands:
-        process = subprocess.run(["git", *argv], cwd=ROOT, capture_output=True,
-                                 text=True, check=True)
+        process = subprocess.run(["git", "--no-replace-objects", *argv], cwd=ROOT,
+                                 capture_output=True, text=True, check=True)
         values[name] = process.stdout.strip()
     values["commits"] = values["commits"].splitlines()
     values["range"] = BASE + ".." + values["head"]
@@ -382,8 +443,7 @@ def verify_ledger(ledger, original, documents=None):
     return errors, rows
 
 
-def selftest(out):
-    cases = []
+def selftest_cases(cases):
     good = b"<html><title>Subject</title><nav>wrong</nav><main><h1>Subject</h1><p>fact</p></main></html>"
     parsed = article(good)
     cases.append({"name": "semantic-positive", "pass": parsed["blocks"][1]["text"] == "fact"})
@@ -493,16 +553,87 @@ def selftest(out):
     found, unused = verify_ledger(ledger, original, bad_documents)
     cases.append({"name": "document-unknown-fact-rejected", "pass":
                   any("document-unbound-facts" in e for e in found)})
-    write(out / "result.json", {"verdict": "PASS" if all(c["pass"] for c in cases) else "FAIL",
-                               "actual_rc": 0 if all(c["pass"] for c in cases) else 1,
-                               "checks": cases, "count": len(cases),
-                               "passed": sum(c["pass"] for c in cases), "finished_at": now(),
-                               "scope": "offline semantic validator; no product test"})
+
+
+def binding_controls(cases, out):
+    fixture = out / "binding-controls"
+    fixture.mkdir()
+    for path in OWNED:
+        target = fixture / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        write(target, {"fixture": path})
+    before, before_errors = owned_fingerprints(fixture)
+    with (fixture / OWNED[0]).open("a", encoding="utf-8") as stream:
+        stream.write("\n")
+    after, after_errors = owned_fingerprints(fixture)
+    git = {"head": "1" * 40, "branch": "fixture", "commits": [], "range": "fixture"}
+    positive = [{"name": "fixture-positive", "pass": True}]
+    stable = bound_selftest_result(positive, before, before, git, git)
+    changed = bound_selftest_result(positive, before, after, git, git,
+                                   before_errors + after_errors)
+    changed.update(source_root=str(fixture), finished_at=now(),
+                   expected_failure=True, control="real-file-byte-drift")
+    write(out / "binding-drift-negative.json", changed)
+    cases.append({"name": "owned-source-drift-rejected", "pass":
+                  stable["verdict"] == "PASS" and changed["verdict"] == "FAIL"
+                  and changed["actual_rc"] == 1 and changed["source_drift"] == [OWNED[0]]
+                  and not changed["source_binding_verified"],
+                  "evidence": str(out / "binding-drift-negative.json")})
+    first = "fixture-original-failure"
+    failure = bound_selftest_result(positive, before, after, git,
+                                   {**git, "head": "2" * 40},
+                                   ["fixture-later-evidence-error"], first)
+    failure.update(finished_at=now(), expected_failure=True,
+                   control="first-cause-and-head-drift")
+    write(out / "binding-failure-negative.json", failure)
+    cases.append({"name": "binding-failure-preserves-first-cause", "pass":
+                  failure["first_cause"] == first and failure["actual_rc"] == 1
+                  and failure["git_binding_drift"] and failure["source_drift"] == [OWNED[0]]
+                  and failure["errors"] == ["fixture-later-evidence-error"]})
+    cases.append({"name": "default-original-research-root-only", "pass":
+                  ownership_error(ORIGINAL_RESEARCH_ROOT) is None
+                  and ownership_error(fixture) == "ownership-root-not-original-research-tree"})
+
+
+def selftest(out):
+    result = {"started_at": now(), "source_root": str(ROOT)}
+    cases, errors, first_cause = [], [], None
+    before, before_errors = owned_fingerprints()
+    errors.extend(before_errors)
+    if before_errors:
+        first_cause = before_errors[0]
+    git_before = git_after = None
+    try:
+        git_before = git_binding()
+        if not before_errors:
+            selftest_cases(cases)
+            binding_controls(cases, out)
+    except Exception:
+        execution_error = traceback.format_exc()
+        errors.append("selftest-execution-failed:" + execution_error)
+        first_cause = (first_cause or next(
+            (case["name"] for case in cases if not case["pass"]), None)
+            or execution_error)
+    after, after_errors = owned_fingerprints()
+    errors.extend(after_errors)
+    try:
+        git_after = git_binding()
+    except Exception:
+        errors.append("git-binding-after-failed:" + traceback.format_exc())
+    result.update(bound_selftest_result(cases, before, after, git_before, git_after,
+                                        errors, first_cause), finished_at=now())
+    write(out / "result.json", result)
+    line = "OFFICIAL_SELFTEST verdict=%s count=%d passed=%d rc=%d drift=%d head_drift=%s at=%s" % (
+        result["verdict"], result["count"], result["passed"], result["actual_rc"],
+        len(result["source_drift"]), result["git_binding_drift"], result["finished_at"])
     with (out / "selftest.log").open("x") as stream:
-        stream.write("OFFICIAL_SELFTEST count=%d passed=%d rc=%d at=%s\n" % (
-            len(cases), sum(c["pass"] for c in cases),
-            0 if all(c["pass"] for c in cases) else 1, now()))
-    return 0 if all(c["pass"] for c in cases) else 1
+        stream.write(line + "\n")
+        if result["first_cause"]:
+            stream.write(result["first_cause"] + "\n")
+        for error in result["errors"]:
+            stream.write(error + "\n")
+    print(line)
+    return result["actual_rc"]
 
 
 def main():
@@ -541,6 +672,18 @@ def main():
         for link in content["links"][:100]:
             print("LINK %s %s" % (link["text"][:100], link["href"]))
         return 0
+    refused = ownership_error(ROOT)
+    if refused:
+        result = {"verdict": "FAIL", "actual_rc": 1, "first_cause": refused,
+                  "source_root": str(ROOT), "ownership_root": str(ORIGINAL_RESEARCH_ROOT),
+                  "finished_at": now(), "scope": "default original-tree ownership gate"}
+        write(out / "result.json", result)
+        with (out / "verification.log").open("x") as stream:
+            stream.write("OFFICIAL_RESEARCH verdict=FAIL rc=1 cause=%s at=%s\n" % (
+                refused, result["finished_at"]))
+        print("OFFICIAL_RESEARCH verdict=FAIL rc=1 cause=%s result=%s" % (
+            refused, out / "result.json"))
+        return 1
     before = fingerprints()
     result = {"verdict": "FAIL", "started_at": now(), "base_commit": BASE,
               "source_before": before, "source_root": str(ROOT),

@@ -93,7 +93,11 @@ Path：02:14:29 +08:00 捕获 41569 bytes，传输 rc=0，02:15:35 +08:00
 旧 Onshape/AutoCAD Web/FreeCAD/OCCT 源仍可在原 ledger 查到，本轮未重新
 核其运行边界，也没有用重复市场介绍计为新增 workflow。
 
-独立复验（`--out` 每次使用新目录）：
+独立复验（`--out` 每次使用新目录）。默认 ledger 模式的 ownership 门只允许
+原研究树 `/data/dev/wt-opencad-research-complete-20261012`，继续按固定基线
+核独占写集，不提供放宽或绕过参数。整合树/其他 worktree 会明确 FAIL；
+不能将此模式当通用发布门，也不能为消除 FAIL 清理他人的 untracked 文件。
+`--selftest` 可在独立树运行，但不认证该树符合默认 ownership 门。
 
 ```bash
 sudo -n -u infra python3 -B tools/official_research_verify.py --selftest --out /hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/selftest-next
@@ -102,6 +106,15 @@ sudo -n -u infra python3 -B tools/official_research_verify.py --out /hf3fs-jd/da
 
 工具核正文/anchor、捕获时刻、日志/bytes/SHA、引用闭包、十域、正负控、
 历史账本不变、独占写集与全工作树前后指纹。不执行网络、购买或厂商 CAD。
+anchor 存在与 fact ID 闭包只是字节/引用一致性，不证明整条 statement 的
+语义蕴涵，也不自动证明 role/license、runtime、版本与流程归属；仍须人工
+逐项审核。删空 remaining 或选择 COMPLETE 不能替代完整研究验收。
+`--selftest` 单独输出四件 owned 源的完整 before/after SHA、工具 SHA、
+Git HEAD/绑定首尾及 drift；未读件保留 null 与异常，漂移或异常必须 FAIL。
+已完成控制及首因不会被后续证据读取失败覆盖，输出目录使用独占新建，
+原失败不重写。绑定负控仅改本次新外置夹具的字节，保留预期 FAIL 结果；
+原 33 controls 不删减。CLI 原退出仍需调用方亲收，JSON 的 actual_rc
+不是独立进程签收，源码绑定也不是厂商正文签名或语义/产品认证。
 正文筛选优先单一内容 `article`，多卡产品页保留 `main`；排除导航 role、
 breadcrumb 与文章 footer。旧 `inspect-*/article.json` 原样保留；其外围
 文字不能采事实，新的 ledger 在筛选后的主体重新给出 anchor block 索引。
