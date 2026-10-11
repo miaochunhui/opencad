@@ -803,7 +803,13 @@ def _check_geom_point(value: Any, path: str, problems: list[str]) -> None:
         return
     for index, coordinate in enumerate(value):
         if type(coordinate) is not int:
-            problems.append("geom_length_not_integer:%s[%d] value=%r" % (path, index, coordinate))
+            child = "%s[%d]" % (path, index)
+            if isinstance(coordinate, (list, tuple)) or (
+                    isinstance(coordinate, int) and not isinstance(coordinate, bool)):
+                problems.append("geom_length_not_integer:%s value=%r" % (child, coordinate))
+            else:
+                # Keep the public nm_* codes without recursively accepting nested points.
+                _check_nm_value(coordinate, child, "coordinate", problems)
 
 
 def _entity_geometry_problems(entity: Mapping[str, Any], path: str) -> list[str]:

@@ -144,6 +144,20 @@ class DocumentInputIntegrityTests(unittest.TestCase):
                     kind="polyline", geom={"points": points})
                 self.rejected(candidate)
 
+    def test_point_coordinates_keep_existing_nanometre_diagnostic_codes(self):
+        for key in ("points", "points_nm"):
+            for value, prefix in ((0.5, "nm_not_integer:"), (True, "nm_is_bool:"),
+                                  (None, "nm_is_null:"), ("1", "nm_not_a_number:")):
+                with self.subTest(key=key, value=value):
+                    candidate = payload()
+                    candidate["sketches"][0]["entities"][0].update(
+                        kind="polyline", geom={key: [[value, 0], [100, 0]]})
+                    expected_path = f"$.sketches[0].entities[0].geom.{key}[0][0]"
+                    problems = docmodel.check_invariants(candidate)
+                    self.assertTrue(any(item.startswith(prefix + expected_path)
+                                        for item in problems), problems)
+                    self.rejected(candidate, prefix)
+
     def test_closed_polyline_boolean_and_noncollapsed(self):
         for geom in ({"points": [[0, 0], [100, 0]], "closed": True},
                      {"points": [[0, 0], [100, 0], [100, 100]], "closed": "false"}):
@@ -387,7 +401,8 @@ def run():
         with redirect_stdout(log), redirect_stderr(log):
             suite = unittest.defaultTestLoader.loadTestsFromTestCase(DocumentInputIntegrityTests)
             if ARGS.regressions:
-                for module in ("tests.test_docmodel", "tests.test_fixtures"):
+                for module in ("tests.test_docmodel", "tests.test_fixtures",
+                               "tests.test_b6_product_defects"):
                     suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(importlib.import_module(module)))
             result = unittest.TextTestRunner(stream=log, verbosity=2).run(suite)
             failed = {getattr(test, "test_case", test).id()
