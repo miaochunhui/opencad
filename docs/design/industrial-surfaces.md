@@ -85,6 +85,45 @@ scale acceptance is claimed. OCC/FreeCAD exceptions retain their original
 type/message and traceback; a failed operation is not automatically retried.
 Gateway integration and project/version transactions remain chair-owned.
 
+## Web Candidate Adapter
+
+`apps/opencad/industrial_surfaces.py` exports read-only
+`read_surfaces(workspace, body={})` and
+`prepare_surfaces(workspace, body={"recipe": recipe})`.
+The latter returns `SurfaceCandidate(before_document_sha256, doc, response)`.
+It does not publish the document, change caches, or maintain either history.
+The caller must compare the current complete-document SHA while publishing,
+then confirm its authorized durable project revision CAS. A stale candidate
+must not be assigned to a shared live Workspace before the durable commit.
+
+The recipe persists in `doc.extra["x_industrial_surfaces"]`, schema 1. It is
+independent of the existing solid-feature tree: no boolean merge is implied.
+GET returns a captured-document SHA, persisted recipe and rebuilt exact BRep
+properties/mesh/STEP-BRep roundtrip results; it does not edit cache/history.
+Temporary artifact filesystem paths and tracebacks are not public response
+fields. HTTP exposes artifact digests/byte counts, not an export route yet.
+Null volume means an open surface, never a zero-volume solid.
+
+Read-only numeric checks accept
+`{"action":"check_seam","left":recipe,"right":recipe,"seam":settings}` through
+`read_surfaces`. They return `passed=false` for discontinuous seams without
+editing. This measurement must not create a project revision. Actual sew
+with declared failing seams is rejected before publication.
+
+The chair wires GET `/api/surfaces` to read and versioned POST to preparation,
+stripping the gateway-owned `expected_revision/expected_sha/request_id` fields
+before calling the adapter. Existing project/CSRF authorization must remain
+in force; the adapter itself is not an authenticated endpoint.
+
+`web/js/surfaces-panel.js` exports `OpenCADSurfaces.mount(host, options)`, never
+auto-edits the viewer page. `options.request(path, body)` can supply the
+authorized gateway transport; default fetch uses the existing project-session
+adapter. `options.labels` supplies UI localization. `options.onMesh(mesh,
+response)` receives actual tessellation for chair-owned viewer integration.
+The panel includes an independent WebGL preview, integer-nm recipe editor,
+plane/rational-cylinder presets, rectangular trim/thicken wrapping and a
+declared two-plane G2 sew preset. No mesh is used as modeling input.
+
 ## Acceptance
 
 Run from the independent repository/worktree, as infra:
@@ -101,3 +140,15 @@ closed-cube sewing, gaps/unclosed/disconnected refusal, plane offset/thicken,
 manifold solid mesh/analytic volume, export roundtrips and raw worker schema.
 Final counts and acceptance status come only from the same run's `tests.log`,
 `result.json`, process exit code and zero source drift, not this document.
+
+Adapter acceptance uses an isolated real Workspace HTTP reference route (not
+the production gateway), actual FreeCAD and actual desktop/mobile Chromium
+clicks/pixels:
+
+```bash
+sudo -n -u infra python3 -B oss-alternatives/apps/opencad/tests/test_industrial_surfaces.py --repository-check --evidence-dir /hf3fs-jd/data/tmp/opencad-industrial-surfaces-20261011/seat-surfaces-web
+```
+
+Durable gateway integration, authentication for the new route, localized UI
+strings and whole-product tests require chair acceptance. This bounded suite
+does not certify them or whole industrial CAD parity.

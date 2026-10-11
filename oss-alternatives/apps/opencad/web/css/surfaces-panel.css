@@ -1,0 +1,51 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+.surfaces-panel {
+  --surface-ink: #203a3d;
+  --surface-line: #b7cbcd;
+  --surface-accent: #276675;
+  color: var(--surface-ink);
+  background: linear-gradient(145deg, #f5f8f7, #e8eff0);
+  border: 1px solid var(--surface-line);
+  border-radius: 12px;
+  padding: clamp(12px, 2vw, 22px);
+  max-width: 840px;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.surfaces-panel h2 { margin: 0 0 8px; font-family: Georgia, serif; }
+.surfaces-note { font-size: 0.9rem; line-height: 1.5; margin: 8px 0 12px; }
+.surfaces-status { display: block; min-height: 1.5em; overflow-wrap: anywhere; }
+.surfaces-tools, .surfaces-actions, .surfaces-parameters {
+  display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0;
+}
+.surfaces-panel label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.surfaces-panel input, .surfaces-panel textarea {
+  background: #fff; border: 1px solid var(--surface-line); color: var(--surface-ink);
+  padding: 8px; border-radius: 5px; box-sizing: border-box;
+}
+.surfaces-recipe {
+  width: 100%; resize: vertical; font: 0.82rem/1.5 "Liberation Mono", monospace;
+  min-height: 180px;
+}
+.surfaces-panel button {
+  min-height: 40px; padding: 8px 12px; border: 1px solid var(--surface-line);
+  border-radius: 6px; background: #f9fbfa; color: var(--surface-ink); cursor: pointer;
+}
+.surfaces-actions [data-surface-action="apply"] {
+  background: var(--surface-accent); color: #fff; border-color: var(--surface-accent);
+}
+.surfaces-panel button:disabled { opacity: 0.6; cursor: progress; }
+.surfaces-panel :focus-visible { outline: 3px solid #c68c3b; outline-offset: 2px; }
+.surfaces-panel[data-surface-state="error"] .surfaces-status { color: #9d2e25; }
+.surfaces-preview { display: block; width: 100%; height: 280px; border-radius: 8px; }
+.surfaces-metrics {
+  white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; max-height: 240px;
+  overflow: auto; padding: 10px; background: #f9fbfa; border-radius: 6px;
+}
+@media (max-width: 560px) {
+  .surfaces-parameters { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .surfaces-tools button, .surfaces-actions button { flex: 1 1 44%; }
+  .surfaces-panel input { width: 100%; }
+  .surfaces-panel input[type="checkbox"] { width: auto; align-self: flex-start; }
+  .surfaces-preview { height: 230px; }
+}
