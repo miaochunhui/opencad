@@ -3,7 +3,8 @@
 
 Fixed account, repository and main ref; same existing credential. GitLab and
 Gitee are updated first. Exact existing Git objects only, no rewritten commits,
-force, deletion, new host keys, proxy change, automatic fallback or retry.
+force, ref deletion, new host keys, proxy change, automatic fallback or retry.
+Existing regular-file deletions use exact parent-tree entries and null SHA.
 """
 from __future__ import annotations
 
@@ -112,6 +113,21 @@ def local_commit(evidence, source, sha):
             "author": person(fields["author"]), "committer": person(fields["committer"])}
 
 
+def regular_entry(evidence, source, commit, path):
+    tree = sync.git(evidence, source, "--literal-pathspecs", "ls-tree", "-z",
+                    commit, "--", path).stdout.split(b"\0")
+    if tree == [b""]:
+        return None
+    sync.need(len(tree) == 2 and tree[0], "AMBIGUOUS_TREE_ENTRY_REFUSED")
+    metadata, separator, actual = tree[0].decode().partition("\t")
+    fields = metadata.split()
+    sync.need(separator and actual == path and len(fields) == 3, "TREE_ENTRY_INVALID")
+    mode, kind, blob = fields
+    sync.need(kind == "blob" and mode in {"100644", "100755"}
+              and SHA.fullmatch(blob), "NONREGULAR_ENTRY_REFUSED")
+    return {"path": path, "mode": mode, "type": "blob", "sha": blob}
+
+
 def prepare_tail(evidence, source, before, head):
     sync.need(sync.git(evidence, source, "merge-base", "--is-ancestor", before, head,
                        check=False).returncode == 0, "GITHUB_DIVERGED_OR_MISSING")
@@ -128,22 +144,18 @@ def prepare_tail(evidence, source, before, head):
         sync.need(len(paths) <= MAX_FILES, "API_FILE_CAPACITY")
         entries = []
         for path in paths:
-            tree = sync.git(evidence, source, "--literal-pathspecs", "ls-tree", "-z",
-                            sha, "--", path).stdout.split(b"\0")
-            sync.need(len(tree) == 2 and tree[0], "DELETION_OR_AMBIGUOUS_ENTRY_REFUSED")
-            metadata, separator, actual = tree[0].decode().partition("\t")
-            fields = metadata.split()
-            sync.need(separator and actual == path and len(fields) == 3,
-                      "TREE_ENTRY_INVALID")
-            mode, kind, blob = fields
-            sync.need(kind == "blob" and mode in {"100644", "100755"}
-                      and SHA.fullmatch(blob), "NONREGULAR_ENTRY_REFUSED")
-            raw = sync.git(evidence, source, "cat-file", "blob", blob).stdout
+            current = regular_entry(evidence, source, sha, path)
+            previous = regular_entry(evidence, source, parent, path)
+            sync.need(current is not None or previous is not None,
+                      "DELETION_PARENT_ENTRY_REQUIRED")
+            entry = current if current is not None else previous
+            raw = sync.git(evidence, source, "cat-file", "blob", entry["sha"]).stdout
             sync.need(len(raw) <= MAX_BLOB, "API_BLOB_CAPACITY")
             sync.need(hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest()
-                      == blob, "LOCAL_BLOB_SHA")
-            entries.append({"path": path, "mode": mode, "type": "blob",
-                            "sha": blob, "raw": raw})
+                      == entry["sha"], "LOCAL_BLOB_SHA")
+            # Null removes an existing base-tree file; it is not a blob upload.
+            entries.append({**entry, "raw": raw} if current is not None else
+                           {**entry, "sha": None})
         parent_tree = sync.git(evidence, source, "rev-parse", parent + "^{tree}"
                                ).stdout.decode().strip()
         prepared.append((sha, payload, parent_tree, entries))
@@ -185,10 +197,11 @@ def run(evidence, source, commit, mutate=False):
                   payload["parents"][0], "parent")
             tree_entries = []
             for entry in entries:
-                blob = request(evidence, "POST", "/blobs",
-                               {"encoding": "base64",
-                                "content": base64.b64encode(entry["raw"]).decode()})
-                exact(blob, entry["sha"], "blob")
+                if entry["sha"] is not None:
+                    blob = request(evidence, "POST", "/blobs",
+                                   {"encoding": "base64",
+                                    "content": base64.b64encode(entry["raw"]).decode()})
+                    exact(blob, entry["sha"], "blob")
                 tree_entries.append({k: v for k, v in entry.items() if k != "raw"})
             if tree_entries:
                 exact(request(evidence, "POST", "/trees",

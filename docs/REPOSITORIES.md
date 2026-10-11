@@ -194,8 +194,27 @@ automatic fallback or scheduled mirror. Run it as infra with `--action plan`
 first, then `--action sync`, `--source` pointing to a clean reviewed worktree,
 its full `--commit` and a fresh external `--out`. It only supports up to eight
 ordinary linear commits, 32 changed regular files per commit and 1 MiB per
-file. Root, merge, signed/extended commits and deletions are refused before
-publication. The same existing GitHub account, repository and PAT are used.
+file, including deletions in those capacity limits. An existing regular file
+may be deleted using a tree entry with `sha: null` and its exact parent mode
+(`100644` or `100755`); it is not uploaded as a blob. The parent path must
+exist as a regular blob. Missing/ambiguous paths, symlinks, gitlinks and other
+nonregular entries are refused before publication, including when deleting or
+replacing them. GitHub's Git Trees API specifies that null deletes an existing
+file and a nonexistent deletion is an error:
+`https://docs.github.com/en/rest/git/trees#create-a-tree`.
+The 2026-10-12 03:50:38 +08:00 public HTTPS capture is preserved in
+`/hf3fs-jd/data/tmp/opencad-github-exact-deletions-official-20261012-v1/trees.html`
+(307122 bytes, SHA256
+`d6b597acc817f8b292db8237bdb7301dc000114b871b896448e0afa7317ae024`).
+Its original transport log records HTTP 200, wget rc=0 and matching endpoint
+hashes; this is captured-source binding, not a publisher-signed checksum.
+The offline parsed main body is in
+`opencad-github-exact-deletions-official-body-20261012-v1/article.json`;
+block 18 rejects nonexistent deletion, and blocks 107-113 specify null SHA.
+Root, merge and signed/extended commits remain refused. Required LICENSE/server
+deletion is rejected by source preflight; all reachable history, including
+deleted secrets, is still scanned. The same existing GitHub account,
+repository and PAT are used.
 GitLab and Gitee are updated by the original checked Git path before GitHub.
 The API upload must return the exact existing blob, tree and commit IDs before
 the named main ref is fast-forwarded with `force=false`. All three refs are
@@ -204,8 +223,12 @@ already published objects or retry. Never run two synchronization invocations
 concurrently. This entry does not install a cross-tool synchronization lease.
 
 Local tests independently reconstruct API blobs, trees and commits using real
-Git, and cover dirty input, unsupported headers/deletions, wrong object IDs,
-remote drift, primary failure, read-only planning and forbidden force/scope.
+Git with a separate index, and cover mixed additions/deletions, nested and
+executable deletions, delete-only trees retaining other files, missing parent
+paths, unsupported entries/headers, required-file and historical-secret
+deletions, wrong object IDs, remote drift, primary failure, GET-only planning
+and forbidden force/scope. Tree or commit mismatch stops before any main PATCH;
+regular-file deletion never permits DELETE requests or ref deletion.
 Run `python3 -B tools/test_github_api_sync.py --out NEW_EXTERNAL_DIRECTORY`.
 The original v1 test fixture incorrectly deleted required LICENSE and hit the
 earlier source-integrity guard; its failed result remains preserved. Synthetic
