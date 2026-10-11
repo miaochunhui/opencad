@@ -56,11 +56,28 @@ def normalized(text):
 class BodyParser(HTMLParser):
     """Only collect semantic article/main blocks, not matching navigation text."""
 
-    def __init__(self):
+    def __init__(self, article_only=False):
         super().__init__(convert_charrefs=True)
         self.stack, self.blocks, self.links = [], [], []
         self.title, self.next_data = "", ""
         self.next_script = False
+        self.article_only = article_only
+        self.primary_article_count = 0
+
+    @staticmethod
+    def primary_article(tag, attrs):
+        classes = set(attrs.get("class", "").split())
+        return (tag == "article"
+                and not any("card" in name.split("-") for name in classes)
+                and "compact-large-no-image-wrapper" not in classes)
+
+    @staticmethod
+    def peripheral(tag, attrs):
+        classes = attrs.get("class", "").split()
+        return (tag in {"script", "style", "nav", "header", "footer", "noscript"}
+                or attrs.get("role") in {"navigation", "banner", "contentinfo"}
+                or any("breadcrumb" in name or name == "ds-article__footer"
+                       for name in classes))
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
@@ -69,6 +86,9 @@ class BodyParser(HTMLParser):
         if tag not in {"area", "base", "br", "col", "embed", "hr", "img", "input",
                        "link", "meta", "param", "source", "track", "wbr"}:
             self.stack.append((tag, attrs))
+        if (self.primary_article(tag, attrs)
+                and not any(self.peripheral(t, a) for t, a in self.stack)):
+            self.primary_article_count += 1
         if self.allowed() and tag == "a" and attrs.get("href"):
             self.links.append({"href": attrs["href"], "text": ""})
 
@@ -81,9 +101,10 @@ class BodyParser(HTMLParser):
                 break
 
     def allowed(self):
-        if any(tag in {"script", "style", "nav", "header", "footer", "noscript"}
-               for tag, attrs in self.stack):
+        if any(self.peripheral(tag, attrs) for tag, attrs in self.stack):
             return False
+        if self.article_only:
+            return any(self.primary_article(tag, attrs) for tag, attrs in self.stack)
         return any(tag in {"main", "article"} or attrs.get("role") == "main"
                    for tag, attrs in self.stack)
 
@@ -123,10 +144,15 @@ def article(raw):
             return {"title": normalized(inner.title) or normalized(outer.title),
                     "method": "__NEXT_DATA__.props.pageProps.helpContentData.helpText",
                     "blocks": inner.blocks, "links": inner.links}
-    if not outer.blocks:
+    # Product cards also use article tags; only a content article takes priority.
+    preferred = BodyParser(article_only=True)
+    preferred.feed(raw.decode("utf-8"))
+    selected = preferred if preferred.primary_article_count == 1 else outer
+    if not selected.blocks:
         raise ValueError("no semantic main/article body; navigation is not evidence")
     return {"title": normalized(outer.title), "method": "main/article excluding navigation",
-            "blocks": outer.blocks, "links": outer.links}
+            "body_selection": "content-article" if selected is preferred else "semantic-main",
+            "blocks": selected.blocks, "links": selected.links}
 
 
 def fingerprints():
@@ -288,6 +314,7 @@ def verify_ledger(ledger, original, documents=None):
             rows.append({"id": source["id"], "errors": problems,
                          "facts": len(source["facts"]), "bytes": source["bytes"],
                          "sha256": content["sha256"], "semantic_method": content["method"],
+                         "body_selection": content.get("body_selection", "decoded-help"),
                          "canonical_url": source["canonical_url"],
                          "captured_at": source["captured_at"],
                          "facts_readback": source["facts"]})
@@ -382,6 +409,39 @@ def selftest(out):
     cases.append({"name": "void-tags-do-not-leak-nav", "pass": article(
         b"<main><img><p>fact</p></main><nav>noise</nav>")["blocks"] ==
         [{"kind": "p", "text": "fact"}]})
+    cases.append({"name": "breadcrumb-class-excluded", "pass": article(
+        b'<main><div class="ds-breadcrumb"><a>noise</a></div><p>fact</p></main>'
+    )["blocks"] == [{"kind": "p", "text": "fact"}]})
+    cases.append({"name": "navigation-role-excluded", "pass": article(
+        b'<main><div role="navigation">noise</div><p>fact</p></main>'
+    )["blocks"] == [{"kind": "p", "text": "fact"}]})
+    cases.append({"name": "article-preferred-over-main-shell", "pass": article(
+        b"<main><p>promotion</p><article><p>fact</p></article><p>related</p></main>"
+    )["blocks"] == [{"kind": "p", "text": "fact"}]})
+    try:
+        article(b"<main><p>promotion</p><article></article></main>")
+    except ValueError:
+        empty_article_rejected = True
+    else:
+        empty_article_rejected = False
+    cases.append({"name": "empty-article-not-replaced-by-shell",
+                  "pass": empty_article_rejected})
+    cases.append({"name": "product-card-does-not-hide-main-body", "pass": article(
+        b'<main><p>fact</p><article class="card-wrapper"><p>card</p></article></main>'
+    )["blocks"] == [{"kind": "p", "text": "fact"}, {"kind": "p", "text": "card"}]})
+    cases.append({"name": "article-footer-class-excluded", "pass": article(
+        b'<article class="ds-article"><p>fact</p><div class="ds-article__footer">'
+        b'<a>related</a></div></article>'
+    )["blocks"] == [{"kind": "p", "text": "fact"}]})
+    cases.append({"name": "multiple-store-articles-retain-main", "pass": article(
+        b"<main><p>offer</p><article><p>card1</p></article>"
+        b"<article><p>card2</p></article></main>"
+    )["blocks"] == [{"kind": "p", "text": "offer"},
+                   {"kind": "p", "text": "card1"}, {"kind": "p", "text": "card2"}]})
+    cases.append({"name": "role-card-class-retains-main", "pass": article(
+        b'<main><p>roles</p><article class="compact-large-card-wrapper">'
+        b'<p>role</p></article></main>'
+    )["blocks"] == [{"kind": "p", "text": "roles"}, {"kind": "p", "text": "role"}]})
     ledger = json.loads((ROOT / LEDGER).read_text())
     original = baseline()
     documents = {path: (ROOT / path).read_text() for path in OWNED if path.endswith(".md")}
@@ -434,6 +494,7 @@ def selftest(out):
     cases.append({"name": "document-unknown-fact-rejected", "pass":
                   any("document-unbound-facts" in e for e in found)})
     write(out / "result.json", {"verdict": "PASS" if all(c["pass"] for c in cases) else "FAIL",
+                               "actual_rc": 0 if all(c["pass"] for c in cases) else 1,
                                "checks": cases, "count": len(cases),
                                "passed": sum(c["pass"] for c in cases), "finished_at": now(),
                                "scope": "offline semantic validator; no product test"})

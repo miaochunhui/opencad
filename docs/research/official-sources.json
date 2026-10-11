@@ -493,6 +493,7 @@
     "status": "PARTIAL",
     "industrial_parity": "NOT_ASSESSED",
     "recorded_at": "2026-10-12T01:56:52+08:00",
+    "supplement_readback_at": "2026-10-12T02:18:17+08:00",
     "verification_scope": "Offline primary-body, exact-byte/hash/log and fact-reference reconciliation. Official descriptions and documented procedures, not purchased entitlement, vendor execution, publisher-signed checksums or OpenCAD parity. Original top-level fields and failures are preserved.",
     "remaining": [
       "CATIA V5 named configuration/license and explicit installed/browser runtime documentation",
@@ -504,6 +505,15 @@
       "Vendor workflow execution, representative industrial scale and OpenCAD parity"
     ],
     "web_attempts": [
+      {
+        "observed_at": "2026-10-12T02:18:17+08:00",
+        "commands": [
+          "web.run open https://www.solidworks.com/product/solidworks-xdesign",
+          "web.run official-domain searches for xDesign browser, flat patterns and CATIA Creative visual scripting"
+        ],
+        "observation": "Resumed seat received empty messages for both open and search, with no body or source IDs. This readback timestamp follows the calls; no exact transport duration is available. No new network fallback or retry was run during this resume; already retained captures below were read directly.",
+        "source_ids": [], "accepted_facts": [], "status": "NOT_CAPTURED"
+      },
       {
         "observed_at": "2026-10-12T01:32:00+08:00",
         "commands": [
@@ -519,6 +529,12 @@
         "observed_at": "2026-10-12T01:41:43+08:00",
         "commands": ["web.run official searches for V5, Connected installation and Designcenter deployment"],
         "observation": "Empty tool message, no body or source IDs.",
+        "source_ids": [], "accepted_facts": [], "status": "NOT_CAPTURED"
+      },
+      {
+        "observed_at": "2026-10-12T02:11:51+08:00",
+        "commands": ["web.run open https://www.solidworks.com/product/solidworks-xdesign supplied by chair"],
+        "observation": "This seat still received an empty tool message. Chair reports their own successful web capture, but no source IDs/body were supplied here, so their message is a candidate locator rather than this seat's capture. Supplementary official URLs were independently fetched below.",
         "source_ids": [], "accepted_facts": [], "status": "NOT_CAPTURED"
       },
       {
@@ -545,6 +561,17 @@
       "rate_measurement": "New accepted captures at 1500k, serial, tries=1. Highest sampled remote/local byte windows 0.710/0.964 MiB/s. Wget buffered tails exceed configured rate; no packet-level peak certification or publisher-signed checksum."
     },
     "rejected_attempts": [
+      {
+        "id": "v5-success-path-shell",
+        "url": "https://3dswym.3dexperience.3ds.com/wiki/catia-user-community/success-path-collaborative-designer-for-catia-v5-cloud-services_67KfEI2_TB-9SDXdU9nIig?capture=opencad-research-complete-20261012-v1-chair-v5-path",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-021429-1284907-7f70549e.log",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/official/catia-v5-success-path.html",
+        "bytes": 41569, "sha256": "464697ba35d5b50b5584acc22f44978389c2ae82f2d48910db3d519882421bad",
+        "actual_rc": 0, "semantic_rc": 1,
+        "semantic_error": "no semantic main/article body",
+        "status": "CAPTURED_NONARTICLE",
+        "reason": "Chair-supplied official community URL fetched HTTP200, but this seat's raw HTML has no semantic article. No V5 configuration/runtime/workflow facts accepted; original body and failed inspect result retained."
+      },
       {
         "id": "v5-original-lock-refusal",
         "url": "https://www.3ds.com/products/catia/catia-v5?capture=opencad-research-complete-20261012-v1-v5",
@@ -759,6 +786,42 @@
         ]
       },
       {
+        "id": "catia-creative-workflow-new",
+        "canonical_url": "https://www.3ds.com/cloud/catia-product-design-experience/streamline-your-design-workflows",
+        "capture_method": "existing_astrill_url_fetch",
+        "capture_started_at": "2026-10-12T02:12:29+08:00", "captured_at": "2026-10-12T02:12:29+08:00",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/official/catia-workflows.html",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-021229-1118622-e33dfb85.log",
+        "bytes": 503175, "sha256": "377c0e2b62db488c394eff7371246cb9ed0acc6966c4621c0ebade02cc4dad86",
+        "actual_rc": 0, "wget_rc": 0, "subject_anchor": "Streamline Your Design Workflows",
+        "semantic_method": "main/article excluding navigation",
+        "facts": [
+          {"id": "c-creative-browser", "kind": "runtime", "anchor": "methodologies and cloud collaboration from your browser", "statement": "Creative Design page explicitly describes browser design/collaboration with nothing to install/configure.", "scope": "Online Creative Design portfolio only, not full Mechanical, V5 or every CATIA role; exact included roles NOT_VERIFIED.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-creative-subdivision", "kind": "workflow", "anchor": "simple and complex shapes using flexible subdivision surface technology", "statement": "Creative workflow describes sketching and subdivision shape variation.", "scope": "Sketch/model/shape portfolio description, not command manual, continuity test or executed workflow.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "c-creative-algorithm", "kind": "workflow", "anchor": "visual scripting", "statement": "Shaping/styling body describes algorithmic design and visual scripting for shape variants.", "scope": "Creative Design description, no single-role inclusion or measured optimization.", "evidence_level": "OFFICIAL_DESCRIPTION"}
+        ]
+      },
+      {
+        "id": "xdesign-workflow-blog-new",
+        "canonical_url": "https://blogs.solidworks.com/products/solidworks/solidworks-xdesign-all-the-fun-in-one/",
+        "capture_method": "existing_astrill_url_fetch",
+        "capture_started_at": "2026-10-12T02:13:44+08:00", "captured_at": "2026-10-12T02:13:44+08:00",
+        "body_path": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/official/xdesign-workflows.html",
+        "fetch_log": "/hf3fs-jd/data/tmp/opencad-official-research-complete-20261012-v1/fetch-logs/url-fetch-20261012-021344-1217285-b900f5a5.log",
+        "bytes": 29766, "sha256": "78eb6dc9b2e474f9f487f1baa30aa660d6f3ec3e2b28a7544624d09fff1b0d77",
+        "actual_rc": 0, "wget_rc": 0, "subject_anchor": "Key capabilities include:",
+        "semantic_method": "main/article excluding navigation",
+        "facts": [
+          {"id": "x-integrated-offer", "kind": "entitlement", "anchor": "previously available as separate a-la-carte roles", "statement": "Official product-manager article describes parametric/subdivision/sheet/frame/mold/drawing/MBD/rendering capabilities together in one browser interface.", "scope": "Article description cross-checked with captured store; not all SOLIDWORKS portfolio. Displayed article date is not used to infer release day.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-flat-associative", "kind": "workflow", "anchor": "flat patterns for manufacturing that always stay up to date with the folded geometry", "statement": "Sheet section describes generating 2D flat patterns and retaining association to folded geometry.", "scope": "Functional workflow description, no K-factor/tolerance/command manual certified.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-frame-input", "kind": "workflow", "anchor": "structure members based on model edges, 2D sketch elements or curves", "statement": "Structure section describes members from edges/sketches/curves and corner/end trim operations.", "scope": "Structure workflow description, not CATIA composites/airframe scope.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-cutlist", "kind": "workflow", "anchor": "Automatically generate a cut list based on the design", "statement": "Structure section explicitly describes fabrication cut-list generation.", "scope": "Cut list, not proof of full assembly BOM commands or tested quantity reconciliation.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-mold-operations", "kind": "workflow", "anchor": "parting lines, shutoff surfaces, parting surfaces, and mold splitting", "statement": "Mold section describes parting/shutoff/splitting, draft/undercut checks and core/cavity/insert outputs.", "scope": "Mold geometry workflow, not CNC/post/machine acceptance.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-drawing-beta", "kind": "workflow", "anchor": "Generate Drawing Views (Beta)", "statement": "Article names Sheet option Generate Drawing Views (Beta), producing scaled/positioned standard model views.", "scope": "Named beta option in article, not verified current availability or stable GA behavior.", "evidence_level": "OFFICIAL_DESCRIPTION"},
+          {"id": "x-hole-callout", "kind": "workflow", "anchor": "hole callouts are automatically generated using actual geometry", "statement": "Article describes geometry-derived cylindrical hole callouts.", "scope": "Described functionality, not GD&T standard conformance or executed annotation regression.", "evidence_level": "OFFICIAL_DESCRIPTION"}
+        ]
+      },
+      {
         "id": "designcenter-mbd-new",
         "canonical_url": "https://www.siemens.com/en-us/products/designcenter/cad-software/mcad/model-based-definition-mbd/",
         "capture_method": "existing_astrill_url_fetch",
@@ -775,6 +838,7 @@
       }
     ],
     "offerings": [
+      {"id": "catia-creative", "name": "3DEXPERIENCE CATIA online Creative Design portfolio", "runtime": "EXPLICIT_BROWSER_PORTFOLIO", "purchase_boundary": "Creative Design browser portfolio only; individual role/app mapping and prices NOT_VERIFIED. Do not map this runtime to Mechanical/V5/all catalogue roles.", "fact_ids": ["c-creative-browser", "c-creative-subdivision", "c-creative-algorithm"], "server_frame_topology": "NOT_VERIFIED"},
       {"id": "catia-v5", "name": "CATIA V5 / Connected Engineering", "runtime": "NOT_VERIFIED", "purchase_boundary": "Modular V5 portfolio; exact configurations and license allocation NOT_VERIFIED. Cloud connectivity and web learning are not browser CAD.", "fact_ids": ["v5-modules", "v5-connect"], "server_frame_topology": "NOT_VERIFIED"},
       {"id": "catia-mechanical", "name": "3DEXPERIENCE CATIA Mechanical Design & Engineering portfolio", "runtime": "NOT_VERIFIED", "purchase_boundary": "Multiple specialized applications and add-on analyses; not one all-inclusive role.", "fact_ids": ["c-role-packaging", "c-dfm-addons"], "server_frame_topology": "NOT_VERIFIED"},
       {"id": "3d-innovator", "name": "CATIA 3D Innovator", "runtime": "EXPLICIT_BROWSER", "purchase_boundary": "Separately packaged role; exact SKU/price/included apps NOT_VERIFIED.", "fact_ids": ["c-role-packaging", "c-innovator-web"], "server_frame_topology": "NOT_VERIFIED"},
@@ -819,7 +883,7 @@
         "positive_controls": ["Meeting fixture continuity retained after reopen"],
         "negative_controls": ["Introduce 0.1 mm gap and tangent break; report failure rather than smooth appearance"],
         "purchase_boundary": "V5 shape and CATIA advanced surfaces need exact licenses; xDesign subdivision description is different technology, not equivalent Class-A proof.",
-        "fact_ids": ["v5-shape", "c-surface", "x-freeform", "c-shape-web"], "execution_status": "NOT_EXECUTED"
+        "fact_ids": ["v5-shape", "c-surface", "x-freeform", "c-shape-web", "c-creative-subdivision"], "execution_status": "NOT_EXECUTED"
       },
       {
         "id": "w-interference", "domain": "assembly", "basis": "OFFICIAL_PROCEDURE",
@@ -839,7 +903,7 @@
         "positive_controls": ["Selection inventory matches documented conversion scope; no orphan semantic references"],
         "negative_controls": ["Unselected sheet remains unconverted; broken model reference must be reported, not only a visible label"],
         "purchase_boundary": "Designcenter MBD conversion described, exact module/core entitlement must be verified. CATIA annotation role and xDesign drawings are not proven equivalent converters.",
-        "fact_ids": ["n-pmi-convert", "n-gdt", "c-tolerance-role", "x-drawing"], "execution_status": "NOT_EXECUTED"
+        "fact_ids": ["n-pmi-convert", "n-gdt", "c-tolerance-role", "x-drawing", "x-drawing-beta", "x-hole-callout"], "execution_status": "NOT_EXECUTED"
       },
       {
         "id": "w-sheet", "domain": "sheet-metal", "basis": "RESEARCHER_PROTOCOL",
@@ -849,7 +913,7 @@
         "positive_controls": ["Fixture allowance and constant thickness within chosen tolerance"],
         "negative_controls": ["Self-overlapping flange or contradictory bend rule cannot export a silent valid flat"],
         "purchase_boundary": "CATIA specialized app/add-on versus xDesign included tools and Design store all-tier tools. K-factor convention is this protocol, not vendor documentation.",
-        "fact_ids": ["c-unfold", "c-dfm-addons", "x-sheet", "s-standard"], "execution_status": "NOT_EXECUTED"
+        "fact_ids": ["c-unfold", "c-dfm-addons", "x-sheet", "s-standard", "x-flat-associative"], "execution_status": "NOT_EXECUTED"
       },
       {
         "id": "w-structure", "domain": "structure", "basis": "RESEARCHER_PROTOCOL",
@@ -858,8 +922,8 @@
         "outputs": ["Member/trim geometry", "Expected four-member cut inventory", "BOM/cut-list if supported by separately verified command"],
         "positive_controls": ["Member count and cut lengths reconcile with geometry"],
         "negative_controls": ["Duplicate ID and absent profile cannot quietly yield a complete cut list"],
-        "purchase_boundary": "xDesign frame/weldment and Design store tools described. CATIA Body Structure and composites are distinct roles. BOM-specific command documentation still NOT_VERIFIED.",
-        "fact_ids": ["x-structure", "s-standard", "c-body-role", "c-composite-design", "c-composite-manufacture"], "execution_status": "NOT_EXECUTED"
+        "purchase_boundary": "xDesign official article supports edges/sketches/curves, trims and cut-list workflow; Design store tools described. CATIA Body Structure and composites are distinct roles. Full BOM-specific command documentation still NOT_VERIFIED.",
+        "fact_ids": ["x-structure", "s-standard", "c-body-role", "c-composite-design", "c-composite-manufacture", "x-frame-input", "x-cutlist"], "execution_status": "NOT_EXECUTED"
       },
       {
         "id": "w-tooling", "domain": "tooling-cam", "basis": "RESEARCHER_PROTOCOL",
@@ -869,7 +933,7 @@
         "positive_controls": ["Thin wall flagged; tool/stock coordinate records reconciled"],
         "negative_controls": ["Missing CAM license, wrong postprocessor or tool-stock collision must fail, not emit production-ready claim"],
         "purchase_boundary": "CATIA DFM add-ons and V5 CAM portfolio; xDesign mold geometry only; Design NC card does not name all CAM modules. Never operate a production machine in this research.",
-        "fact_ids": ["c-wall-draft", "c-dfm-addons", "v5-cam", "x-mold", "s-nc"], "execution_status": "NOT_EXECUTED"
+        "fact_ids": ["c-wall-draft", "c-dfm-addons", "v5-cam", "x-mold", "s-nc", "x-mold-operations"], "execution_status": "NOT_EXECUTED"
       },
       {
         "id": "w-cae", "domain": "cae", "basis": "RESEARCHER_PROTOCOL",
