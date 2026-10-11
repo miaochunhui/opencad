@@ -474,11 +474,17 @@ try:
     result["ok"] = True
 except Exception:
     result["first_cause"] = traceback.format_exc()
-    print(result["first_cause"])
+    print(result["first_cause"], flush=True)
 Path(os.environ["SURFACE_EXPORT_RESULT"]).write_text(json.dumps(result, indent=2))
-print("SURFACE_EXPORT_READBACK verdict=" + ("PASS" if result["ok"] else "FAIL"))
+print("SURFACE_EXPORT_READBACK verdict=" + ("PASS" if result["ok"] else "FAIL"), flush=True)
 raise SystemExit(0 if result["ok"] else 3)
 """
+
+
+def readback_terminal(outcome):
+    return (type(outcome.rc) is int and outcome.rc == 0 and outcome.rc_measured is True
+            and outcome.timed_out is False and not outcome.launch_error
+            and "SURFACE_EXPORT_READBACK verdict=PASS" in outcome.stdout.splitlines())
 
 
 def run_readback(source, runtime, review):
@@ -502,14 +508,78 @@ def run_readback(source, runtime, review):
             handle.write(text)
     execution.update(rc=outcome.rc, rc_measured=outcome.rc_measured,
                      timed_out=outcome.timed_out, launch_error=outcome.launch_error, finished_at=stamp())
-    review.check("readback/measured-cli-terminal", outcome.rc == 0 and outcome.rc_measured
-                 and not outcome.timed_out and not outcome.launch_error
-                 and "SURFACE_EXPORT_READBACK verdict=PASS" in outcome.stdout,
-                 execution=execution)
+    if (out / "readback.json").is_file():
+        report["readback"] = read_json(out / "readback.json")
+    review.check("readback/measured-cli-terminal", readback_terminal(outcome), execution=execution)
     report["readback"] = read_json(out / "readback.json")
     review.check("readback/exact-geometry-ledger", report["readback"]["ok"] is True
                  and [item["name"] for item in report["readback"]["checks"]] == ledger()["geometry_checks"]
                  and all(item["passed"] is True for item in report["readback"]["checks"]))
+
+
+def diagnose_readback(evidence, runtime, review):
+    """Paired real FreeCAD replay of retained downloads, never HTTP or publication."""
+    original = read_json(evidence_file(evidence, "result.json"))
+    check_that(original["verdict"] == "FAIL" and original["rc"] == 1
+               and "readback/measured-cli-terminal" in original["first_cause"],
+               "Diagnosis requires the retained original terminal-marker failure")
+    check_that(inventory(evidence) == original["files"], "Original evidence closure changed")
+    original_script = evidence_file(evidence, "download-readback.py").read_text()
+    unflushed = READBACK.replace('print(result["first_cause"], flush=True)',
+                                'print(result["first_cause"])').replace(
+        'else "FAIL"), flush=True)', 'else "FAIL"))')
+    check_that(original_script == unflushed, "Original script differs beyond the explicit flush fix")
+    inputs = read_json(evidence_file(evidence, "readback-input.json"))
+    check_that(inputs == {"evidence_root": str(evidence), "exports": original["exports"],
+                          "ledger": ledger()}, "Original readback input detached")
+    for item in inputs["exports"]:
+        raw = evidence_file(evidence, item["artifact"]).read_bytes()
+        check_that(len(raw) == item["bytes"] and sha(raw) == item["artifact_sha256"],
+                   "Original download bytes changed")
+    baseline = inventory(evidence)
+    _, _, _, _, subproc = common.import_product(ROOT)
+    executable = subproc.find_executable()
+    check_that(executable and Path(executable).is_file(), "No existing diagnostic FreeCAD executable")
+    executions = []
+    review.report["diagnosis"] = {"original_result": str(evidence / "result.json"),
+        "original_result_sha256": sha((evidence / "result.json").read_bytes()),
+        "referenced_downloads": len(inputs["exports"]), "executions": executions}
+    for label, script_text in (("original-unflushed", original_script), ("fixed-flushed", READBACK)):
+        out = review.out / label
+        out.mkdir(exist_ok=False)
+        script = out / "download-readback.py"
+        with script.open("x") as handle:
+            handle.write(script_text)
+        write_json(out / "readback-input.json", inputs)
+        env = common.product_env(ROOT, runtime)
+        env.update(SURFACE_EXPORT_INPUT=str(out / "readback-input.json"),
+                   SURFACE_EXPORT_RESULT=str(out / "readback.json"))
+        argv = [executable, str(script)]
+        execution = {"label": label, "argv": argv, "started_at": stamp(),
+            "executable_sha256": sha(Path(executable).read_bytes()),
+            "script_sha256": sha(script.read_bytes())}
+        executions.append(execution)
+        outcome = subproc._run(argv, cwd=str(runtime), env=env, timeout_s=90)
+        for name, text in (("readback-stdout.log", outcome.stdout), ("readback-stderr.log", outcome.stderr)):
+            with (out / name).open("x") as handle:
+                handle.write(text)
+        execution.update(rc=outcome.rc, rc_measured=outcome.rc_measured,
+                         timed_out=outcome.timed_out, launch_error=outcome.launch_error,
+                         finished_at=stamp(), terminal_gate=readback_terminal(outcome))
+        payload = read_json(evidence_file(out, "readback.json"))
+        execution["readback"] = payload
+        check_that(payload["ok"] is True and not payload.get("first_cause")
+                   and [item["name"] for item in payload["checks"]] == ledger()["geometry_checks"]
+                   and all(item["passed"] is True for item in payload["checks"])
+                   and [item["name"] for item in payload["shapes"]] == ledger()["exports"],
+                   "Diagnostic full geometry/readback failed")
+        expected_gate = label == "fixed-flushed"
+        review.check("diagnosis/" + label, outcome.rc == 0 and outcome.rc_measured
+                     and not outcome.timed_out and not outcome.launch_error
+                     and readback_terminal(outcome) is expected_gate,
+                     measured_rc=outcome.rc, terminal_gate=readback_terminal(outcome),
+                     geometry=len(payload["checks"]), shapes=len(payload["shapes"]))
+    review.check("diagnosis/original-evidence-unchanged", inventory(evidence) == baseline)
 
 
 def workflow(source, runtime, review):
@@ -691,7 +761,8 @@ def evidence_contract(source, evidence, report):
     check_that(canonical(read_json(evidence_file(evidence, "readback.json"))) == canonical(report["readback"])
                and evidence_file(evidence, "download-readback.py").read_text() == READBACK
                and "SURFACE_EXPORT_READBACK verdict=PASS" in
-               evidence_file(evidence, "readback-stdout.log").read_text(), "Readback script/result/terminal mismatch")
+               evidence_file(evidence, "readback-stdout.log").read_text().splitlines(),
+               "Readback script/result/terminal mismatch")
     inputs = read_json(evidence_file(evidence, "readback-input.json"))
     check_that(inputs == {"evidence_root": str(evidence), "exports": report["exports"], "ledger": ledger()},
                "Readback input detached from actual exported HTTP artifacts")
@@ -714,7 +785,8 @@ def evidence_contract(source, evidence, report):
 
 
 def verify_saved(source, evidence, expected_sha, review, selected, executor):
-    evidence = common.external(evidence, source).resolve(strict=True)
+    evidence = common.external(evidence, source)
+    check_that(evidence.is_dir(), "Original evidence directory missing")
     path = evidence_file(evidence, "result.json")
     check_that(valid_sha(expected_sha) and sha(path.read_bytes()) == expected_sha,
                "Independent original result SHA required/mismatched")
@@ -775,6 +847,7 @@ class Controls(unittest.TestCase):
     executor = None
     diagnostics = 0
     original_counterexample = None
+    original_readback_failure = None
 
     def sample(self):
         return control_report(self.selected, self.executor)
@@ -1076,6 +1149,53 @@ class Controls(unittest.TestCase):
                 parse_args(arguments)
             self.assertEqual(failure.exception.code, 2)
 
+    def test_readback_rc_json_cannot_replace_stdout_terminal(self):
+        good = SimpleNamespace(rc=0, rc_measured=True, timed_out=False, launch_error="",
+                               stdout="SURFACE_EXPORT_READBACK verdict=PASS\n")
+        self.assertTrue(readback_terminal(good))
+        for field, value in (("stdout", "FreeCAD banner only\n"), ("rc", 3), ("rc", True),
+                             ("rc_measured", False), ("timed_out", True), ("launch_error", "failed"),
+                             ("stdout", "SURFACE_EXPORT_READBACK verdict=PASS-forged\n")):
+            bad = copy.copy(good)
+            setattr(bad, field, value)
+            self.assertFalse(readback_terminal(bad))
+            type(self).diagnostics += 1
+        self.assertIn('else "FAIL"), flush=True)', READBACK)
+
+    def test_retained_real_readback_failure(self):
+        if self.original_readback_failure is None:
+            self.skipTest("Supply --selftest-readback-failure to pin the retained real marker failure")
+        evidence = self.original_readback_failure
+        paths = [evidence_file(evidence, name) for name in
+                 ("result.json", "readback.json", "readback-stdout.log", "readback-stderr.log")]
+        before = {path.name: sha(path.read_bytes()) for path in paths}
+        original = read_json(paths[0])
+        payload = read_json(paths[1])
+        self.assertEqual((original["verdict"], original["rc"]), ("FAIL", 1))
+        self.assertIn("readback/measured-cli-terminal", original["first_cause"])
+        self.assertNotIn("producer_save_load", original)
+        execution = original["readback_execution"]
+        outcome = SimpleNamespace(**{key: execution[key] for key in
+                                     ("rc", "rc_measured", "timed_out", "launch_error")},
+                                  stdout=paths[2].read_text())
+        self.assertEqual(outcome.rc, 0)
+        self.assertTrue(payload["ok"])
+        self.assertEqual([item["name"] for item in payload["checks"]], ledger()["geometry_checks"])
+        self.assertTrue(all(item["passed"] is True for item in payload["checks"]))
+        self.assertEqual([item["name"] for item in payload["shapes"]], ledger()["exports"])
+        self.assertFalse(readback_terminal(outcome))
+        inputs = read_json(evidence_file(evidence, "readback-input.json"))
+        self.assertEqual(str(common.external(evidence, ROOT)), inputs["evidence_root"])
+        self.assertEqual(canonical(inputs), canonical(
+            {"evidence_root": str(evidence), "exports": original["exports"], "ledger": ledger()}))
+        self.assertEqual({path.name: sha(path.read_bytes()) for path in paths}, before)
+        write_json(self.out / "retained-readback-failure-control.json",
+                   {"original_evidence": str(evidence), "original_hashes": before,
+                    "original_rc": 1, "child_rc": outcome.rc, "verifier_rc": 1,
+                    "first_cause": "readback/measured-cli-terminal",
+                    "geometry": len(payload["checks"]), "shapes": len(payload["shapes"])})
+        type(self).diagnostics += 1
+
 
 def parse_args(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1088,15 +1208,23 @@ def parse_args(arguments=None):
     modes.add_argument("--preflight", action="store_true")
     modes.add_argument("--selftest", action="store_true")
     modes.add_argument("--verify-result", type=Path)
+    modes.add_argument("--diagnose-readback", type=Path,
+                       help="paired FreeCAD-only replay of original failed evidence, no HTTP")
     parser.add_argument("--reference-sha", help="independently supplied original result SHA, not self-derived")
     parser.add_argument("--selftest-counterexample", type=Path,
                         help="read-only original false PASS result.json, only with selftest")
+    parser.add_argument("--selftest-readback-failure", type=Path,
+                        help="read-only retained real terminal-marker failure, only with selftest")
     args = parser.parse_args(arguments)
     if bool(args.verify_result) != bool(args.reference_sha):
         parser.error("--verify-result and --reference-sha must be supplied together")
     if args.selftest_counterexample and not args.selftest:
         parser.error("--selftest-counterexample requires --selftest")
-    if not (args.preflight or args.selftest or args.verify_result):
+    if args.selftest_readback_failure and not args.selftest:
+        parser.error("--selftest-readback-failure requires --selftest")
+    if args.diagnose_readback and not args.runtime_root:
+        parser.error("--diagnose-readback requires a fresh runtime-root")
+    if not (args.preflight or args.selftest or args.verify_result or args.diagnose_readback):
         if not args.runtime_root or not args.expect_head or not args.expect_source_sha:
             parser.error("real execution requires runtime-root, expect-head and expect-source-sha")
     return args
@@ -1143,6 +1271,8 @@ def main(arguments=None):
             Controls.diagnostics = 0
             Controls.original_counterexample = (common.external(args.selftest_counterexample, source)
                 if args.selftest_counterexample else None)
+            Controls.original_readback_failure = (common.external(args.selftest_readback_failure, source)
+                if args.selftest_readback_failure else None)
             with (out / "selftest.log").open("x") as log:
                 result = unittest.TextTestRunner(stream=log, verbosity=2).run(
                     unittest.defaultTestLoader.loadTestsFromTestCase(Controls))
@@ -1154,6 +1284,15 @@ def main(arguments=None):
         elif args.verify_result:
             verify_saved(source, args.verify_result, args.reference_sha, review, selected, executor)
             report.update(verdict="PASS", acceptance="OFFLINE_READBACK_ONLY")
+        elif args.diagnose_readback:
+            evidence = common.external(args.diagnose_readback, source)
+            check_that(evidence.is_dir(), "Original diagnostic evidence directory missing")
+            runtime = common.external(args.runtime_root, source, local=True)
+            check_that(not runtime.exists(), "Diagnostic runtime exists; no reuse or cleanup")
+            runtime.mkdir(parents=True, exist_ok=False)
+            report["runtime_root"] = str(runtime)
+            diagnose_readback(evidence, runtime, review)
+            report.update(verdict="PASS", acceptance="READBACK_DIAGNOSTIC_ONLY")
         else:
             check_that(selected["status"] == "" and executor["status"] == "",
                        "Real execution requires clean frozen source and executor")

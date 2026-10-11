@@ -193,3 +193,48 @@ counts and independent byte readback, and exercise offline verification with
 the separately recorded result SHA. Until then real HTTP/geometry and browser
 panel integration are untested. A small analytic fixture is not large assembly,
 industrial parity, new-source GPU performance or production acceptance.
+
+## Retained Real Readback Failure
+
+The first combined-source producer at clean
+`8306a1fb6068c522e1864a41a8f8e402ab83f2f6`, source manifest
+`cb43171ea9cc057868653bea21bd4ec4b6d70a814f96b9fa23740191cfa26243`,
+ended 2026-10-12 06:38:03.788263+08 with original session 95939 rc 1:
+56 HTTP, 14 downloads, 178 checks/177 passed. Evidence remains unchanged at
+`/hf3fs-jd/data/tmp/opencad-surface-private-release-download-20261012-v1/`.
+The exact first cause is `readback/measured-cli-terminal`: the real FreeCAD
+child returned measured rc 0 with only its banner on stdout and empty stderr.
+Its 28259-byte JSON contains 113 successful geometry checks and 14 shapes,
+but the required stdout PASS marker is absent. This is FAIL, not a saved
+producer PASS; no producer candidate/save-load gate was reached.
+
+The repair explicitly flushes success/failure prints before SystemExit.
+The rc, exact stdout terminal and complete JSON/geometry gates remain required;
+the JSON is now recorded even if the terminal gate fails. The selftest rejects
+rc 0 without the marker, unmeasured/nonzero exit and forged marker text.
+`--selftest-readback-failure <original-failed-evidence>` reads the unchanged
+real result/stdout/stderr/JSON, checks their hashes, and proves rc 0 plus a
+complete successful geometry JSON still fails the terminal gate.
+The one controlled diagnostic command compares the original unflushed script
+and repaired script against the same retained, hash-checked real HTTP downloads:
+
+```text
+--out /hf3fs-jd/data/tmp/<new-readback-diagnosis>
+  --runtime-root /data/tmp/<new-readback-diagnosis>
+  --diagnose-readback /hf3fs-jd/data/tmp/opencad-surface-private-release-download-20261012-v1
+```
+
+It retains both actual child rc/stdout/stderr/JSON and verifies original evidence
+unchanged. READBACK_DIAGNOSTIC_ONLY is not a new HTTP/product measurement or
+retroactive acceptance of the original FAIL. A causal buffer-loss claim requires
+the original replay to lack the marker and the flush-only replay to retain it;
+unexpected behavior fails loudly rather than retrying or dropping the marker.
+
+The first diagnostic stopped before launching any FreeCAD child with
+`Original readback input detached`: resolving the approved `/hf3fs-jd` alias
+changed the literal evidence root to `/3fs/research3fs`. That failed diagnostic
+is retained at `opencad-surface-export-readback-flush-diagnosis-20261012-v1`.
+Diagnosis and offline verification now retain the validated caller path, as
+the producer does; the recorded input/argv root still must match exactly.
+The retained-input selftest checks this alias binding without accepting a
+different root or changing the original evidence.
