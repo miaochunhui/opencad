@@ -8,10 +8,12 @@ checks source drift, and never touches production or existing credentials.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
 import hashlib
 import json
+import multiprocessing
 import os
 from pathlib import Path
 import secrets
@@ -27,13 +29,61 @@ ROOT = APP.parents[2]
 CORE = ROOT / "oss-alternatives/packages/cadcore"
 sys.path.insert(0, str(APP))
 from access_control import AuthController, AuthError, ExternalIdentity, Principal, PRODUCT
+from project_store import ProjectStore
+
+
+def _revoker_process(root, operation, target, ready, start, channel):
+    """Probe the real SQLite lock, then run the public revocation API."""
+    auth = None
+    try:
+        options = {"operator_mode": True} if operation != "logout" else {}
+        auth = AuthController(root, **options)
+        ready.set()
+        if not start.wait(10):
+            raise RuntimeError("revoker scheduling signal missing")
+        with sqlite3.connect(auth.path, timeout=0) as db:
+            try:
+                db.execute("BEGIN IMMEDIATE")
+            except sqlite3.OperationalError as exc:
+                # Python 3.10 has no sqlite_errorcode; this exact BEGIN error
+                # still distinguishes the writer lock from unrelated failures.
+                if str(exc) != "database is locked":
+                    raise
+                acquired = False
+            else:
+                acquired = True
+                if operation == "logout":
+                    db.execute("UPDATE sessions SET revoked=1 WHERE token_hash=? AND product=?",
+                               (auth._digest(target), PRODUCT))
+                else:
+                    db.execute("UPDATE sessions SET revoked=1 WHERE user_id=? AND product=?",
+                               (target, PRODUCT))
+                db.commit()
+        channel.send({"phase": "probe", "acquired": acquired})
+        if operation == "logout":
+            auth.logout(target)
+        elif operation == "revoke_all":
+            auth.revoke_all_sessions(target)
+        elif operation == "disable":
+            auth.disable_user(target)
+        else:
+            raise RuntimeError("invalid revoker operation")
+        channel.send({"phase": "done"})
+    except BaseException as exc:
+        channel.send({"phase": "error", "type": type(exc).__name__})
+        raise
+    finally:
+        if auth is not None:
+            auth.close()
+        channel.close()
 
 
 class AuthTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="opencad-auth-test-")
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        # Retain isolated SQLite fixtures, including failed-case state, for readback.
+        self.root = Path(tempfile.mkdtemp(
+            prefix="opencad-auth-test-",
+            dir=os.environ.get("OPENCAD_TEST_RUNTIME_ROOT", "/data/tmp")))
         self.clock = [10000]
         self.auth = AuthController(self.root / "auth", allow_registration=True,
                                    clock=lambda: self.clock[0], session_ttl_seconds=60)
@@ -254,6 +304,345 @@ class AuthTests(unittest.TestCase):
             external.login("carol", self.secret)
         self.assertIsInstance(raised.exception.__cause__, RuntimeError)
         self.assertEqual(raised.exception.status, 503)
+
+    @contextmanager
+    def _write_guard(self, principal, owner):
+        if hasattr(self.auth, "authorized_transaction"):
+            with self.auth.authorized_transaction(principal, owner_id=owner) as live:
+                yield live
+        else:
+            # A fixed pre-fix control: the old API releases auth before project commit.
+            self.auth.authorize(principal, owner_id=owner)
+            yield principal
+
+    def _store(self):
+        store = ProjectStore(self.root / "projects")
+        self.addCleanup(store.close)
+        payload = {"doc": "{}", "undo": [], "redo": [], "standard": "gbt"}
+        head = store.create_project(self.alice["user_id"], title="race-fixture",
+                                    request_id="create-fixture", payload=payload)
+        return store, head, payload
+
+    def _commit(self, store, head, payload, request_id="guarded-save"):
+        request = {"expected_revision": head["revision"], "expected_sha": head["sha256"],
+                   "operation": "fixture-save"}
+        receipt = store.commit(
+            head["project_id"], expected_revision=head["revision"],
+            expected_sha=head["sha256"], request_id=request_id,
+            request_payload=request, payload=payload, response={"ok": True})
+        return receipt, request
+
+    def _start_revoker(self, operation, target):
+        context = multiprocessing.get_context("spawn")
+        ready, start = context.Event(), context.Event()
+        parent, child = context.Pipe()
+        process = context.Process(target=_revoker_process,
+                                  args=(str(self.auth.data_root), operation, target,
+                                        ready, start, child))
+        process.start()
+        child.close()
+        self.addCleanup(parent.close)
+
+        def finish():
+            start.set()
+            process.join(6)
+            if process.is_alive():
+                process.terminate()
+                process.join(2)
+                raise AssertionError("revoker exceeded bounded deadlock detector")
+
+        self.addCleanup(finish)
+        self.assertTrue(ready.wait(5), "revoker did not initialize")
+        return process, start, parent
+
+    def _message(self, channel, phase):
+        self.assertTrue(channel.poll(5), "revoker progress marker missing")
+        message = channel.recv()
+        self.assertEqual(message["phase"], phase)
+        return message
+
+    def _guard_wins(self, operation):
+        ticket = self.login()
+        store, head, payload = self._store()
+        target = ticket.token if operation == "logout" else ticket.principal.user_id
+        process, start, channel = self._start_revoker(operation, target)
+        with self._write_guard(ticket.principal, ticket.principal.user_id) as live:
+            self.assertEqual(live.as_dict(), ticket.principal.as_dict())
+            start.set()
+            probe = self._message(channel, "probe")
+            if not probe["acquired"]:
+                self.assertFalse(channel.poll(0.1), "revocation completed inside guard")
+            receipt, request = self._commit(store, head, payload)
+            self.assertEqual(receipt["revision"], 2)
+        self._message(channel, "done")
+        process.join(5)
+        self.assertEqual(process.exitcode, 0)
+        self.assertEqual(store.read_head(head["project_id"])["revision"], 2)
+        self.assertEqual(store.read_receipt(head["project_id"], "guarded-save",
+                                           request_payload=request), receipt)
+        self.error("revoked_token", lambda: self.auth.authenticate(ticket.token))
+        self.assertFalse(probe["acquired"],
+                         "TOCTOU: external revocation committed before a successful project save")
+
+    def test_logout_guard_wins_real_process_commit_boundary(self):
+        self._guard_wins("logout")
+
+    def test_revoke_all_guard_wins_real_process_commit_boundary(self):
+        self._guard_wins("revoke_all")
+
+    def test_disable_guard_wins_real_process_commit_boundary(self):
+        self._guard_wins("disable")
+
+    def test_revoke_first_denies_save_without_receipt_across_processes(self):
+        for operation in ("logout", "revoke_all", "disable"):
+            with self.subTest(operation=operation):
+                operator = AuthController(self.auth.data_root, operator_mode=True)
+                operator.enable_user(self.alice["user_id"])
+                operator.close()
+                ticket = self.login()
+                store, head, payload = self._store()
+                process, start, channel = self._start_revoker(
+                    operation, ticket.token if operation == "logout" else ticket.principal.user_id)
+                start.set()
+                self.assertTrue(self._message(channel, "probe")["acquired"])
+                self._message(channel, "done")
+                process.join(5)
+                self.assertEqual(process.exitcode, 0)
+                request_id = "revoked-first-" + operation
+                with self.assertRaises(AuthError) as denied:
+                    with self.auth.authorized_transaction(
+                            ticket.principal, owner_id=ticket.principal.user_id):
+                        self._commit(store, head, payload, request_id)
+                self.assertEqual(denied.exception.code, "revoked_token")
+                self.assertEqual(denied.exception.status, 401)
+                self.assertEqual(store.read_head(head["project_id"]), head)
+                with sqlite3.connect(store.db_path) as db:
+                    self.assertEqual(db.execute(
+                        "SELECT COUNT(*) FROM receipts WHERE project_id=?",
+                        (head["project_id"],)).fetchone()[0], 0)
+
+    def test_guarded_create_finishes_before_external_logout(self):
+        ticket = self.login()
+        store = ProjectStore(self.root / "created-project")
+        self.addCleanup(store.close)
+        process, start, channel = self._start_revoker("logout", ticket.token)
+        with self.auth.authorized_transaction(ticket.principal, owner_id=ticket.principal.user_id):
+            start.set()
+            self.assertFalse(self._message(channel, "probe")["acquired"])
+            payload = {"doc": "{}", "undo": [], "redo": [], "standard": "gbt"}
+            head = store.create_project(ticket.principal.user_id, title="guarded-create",
+                                        request_id="guarded-create", payload=payload)
+        self._message(channel, "done")
+        process.join(5)
+        self.assertEqual(process.exitcode, 0)
+        self.assertEqual(store.read_create_receipt(
+            ticket.principal.user_id, "guarded-create", title="guarded-create",
+            payload=payload), head)
+        self.error("revoked_token", lambda: self.auth.authenticate(ticket.token))
+
+    def test_revoke_first_denies_create_and_existing_receipt_replay(self):
+        ticket = self.login()
+        store, head, payload = self._store()
+        receipt, request = self._commit(store, head, payload)
+        self.auth.logout(ticket.token)
+        with self.assertRaises(AuthError) as denied:
+            with self.auth.authorized_transaction(ticket.principal, owner_id=ticket.principal.user_id):
+                store.create_project(ticket.principal.user_id, title="forbidden-create",
+                                     request_id="forbidden-create", payload=payload)
+        self.assertEqual(denied.exception.code, "revoked_token")
+        with self.assertRaises(AuthError) as denied:
+            with self.auth.authorized_transaction(ticket.principal, owner_id=ticket.principal.user_id):
+                store.read_receipt(head["project_id"], "guarded-save", request_payload=request)
+        self.assertEqual(denied.exception.code, "revoked_token")
+        self.assertEqual(len(store.list_projects(ticket.principal.user_id)), 1)
+        self.assertIsNone(store.read_create_receipt(
+            ticket.principal.user_id, "forbidden-create", title="forbidden-create", payload=payload))
+        self.assertEqual(store.read_receipt(head["project_id"], "guarded-save",
+                                           request_payload=request), receipt)
+
+    def test_shared_same_connection_validation_and_guard_security(self):
+        ticket = self.login()
+        with self.auth._db() as db:
+            self.assertEqual(self.auth._authorize_in_db(
+                db, ticket.principal, owner_id=ticket.principal.user_id).as_dict(), self.alice)
+        for principal, owner, allow_admin, code, status in (
+                (Principal(ticket.principal.user_id), ticket.principal.user_id, False,
+                 "invalid_principal", 401),
+                (replace(ticket.principal, admin=True), self.bob["user_id"], True,
+                 "invalid_principal", 401),
+                (replace(ticket.principal, user_id=self.bob["user_id"]), self.bob["user_id"], False,
+                 "invalid_principal", 401),
+                (ticket.principal, self.bob["user_id"], False, "project_forbidden", 403),
+                (ticket.principal, "", False, "invalid_authorization", 400),
+                (ticket.principal, ticket.principal.user_id, "true", "invalid_authorization", 400)):
+            with self.subTest(code=code):
+                with self.assertRaises(AuthError) as raised:
+                    with self.auth.authorized_transaction(
+                            principal, owner_id=owner, allow_admin=allow_admin):
+                        self.fail("invalid guard was entered")
+                self.assertEqual((raised.exception.code, raised.exception.status), (code, status))
+        with self.auth._db() as db:
+            db.execute("UPDATE users SET admin=1 WHERE user_id=?", (ticket.principal.user_id,))
+        admin = self.login()
+        with self.auth.authorized_transaction(admin.principal, owner_id=self.bob["user_id"],
+                                              allow_admin=True) as live:
+            self.assertTrue(live.admin)
+        with self.auth._db() as db:
+            db.execute("UPDATE users SET admin=0 WHERE user_id=?", (admin.principal.user_id,))
+        with self.assertRaises(AuthError) as raised:
+            with self.auth.authorized_transaction(admin.principal, owner_id=self.bob["user_id"],
+                                                  allow_admin=True):
+                self.fail("stale admin guard was entered")
+        self.assertEqual(raised.exception.code, "invalid_principal")
+        self.clock[0] = ticket.expires_at
+        with self.assertRaises(AuthError) as raised:
+            with self.auth.authorized_transaction(ticket.principal, owner_id=ticket.principal.user_id):
+                self.fail("expired guard was entered")
+        self.assertEqual(raised.exception.code, "expired_token")
+
+    def test_guard_failure_releases_lock_and_preserves_project_failure_cause(self):
+        ticket = self.login()
+        store, head, payload = self._store()
+        failure = sqlite3.OperationalError("fixture project operation failure")
+        with self.assertRaises(sqlite3.OperationalError) as raised:
+            with self.auth.authorized_transaction(ticket.principal, owner_id=ticket.principal.user_id):
+                raise failure
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(store.read_head(head["project_id"]), head)
+        self.auth.logout(ticket.token)
+        self.error("revoked_token", lambda: self.auth.authenticate(ticket.token))
+
+    def test_real_project_sqlite_failure_keeps_head_receipts_and_auth_lock_reusable(self):
+        from project_store import StorageFailure
+        ticket = self.login()
+        store, head, payload = self._store()
+        with sqlite3.connect(store.db_path) as db:
+            db.execute("""CREATE TRIGGER deny_fixture_receipt BEFORE INSERT ON receipts
+                          BEGIN SELECT RAISE(ABORT, 'fixture_receipt_rejected'); END""")
+        with self.assertRaises(StorageFailure) as raised:
+            with self.auth.authorized_transaction(ticket.principal, owner_id=ticket.principal.user_id):
+                self._commit(store, head, payload)
+        self.assertIsInstance(raised.exception.__cause__, sqlite3.Error)
+        self.assertEqual(store.read_head(head["project_id"]), head)
+        with sqlite3.connect(store.db_path) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 0)
+        self.auth.logout(ticket.token)
+        self.error("revoked_token", lambda: self.auth.authenticate(ticket.token))
+
+    def test_failed_auth_commit_preserves_sqlite_cause_and_rolls_back_operator_changes(self):
+        def authorizer(operation, argument, *_):
+            return (sqlite3.SQLITE_DENY if operation == sqlite3.SQLITE_TRANSACTION
+                    and argument == "COMMIT" else sqlite3.SQLITE_OK)
+
+        with self.assertRaises(AuthError) as raised:
+            with self.auth._db() as db:
+                db.execute("UPDATE users SET enabled=0 WHERE user_id=?", (self.alice["user_id"],))
+                db.set_authorizer(authorizer)
+        self.assertEqual((raised.exception.code, raised.exception.status), ("auth_unavailable", 503))
+        self.assertIsInstance(raised.exception.__cause__, sqlite3.Error)
+        self.assertEqual(self.auth.authenticate(self.login().token).as_dict(), self.alice)
+
+    def test_guard_rejects_auth_reentry_and_authorize_does_not_leave_long_lock(self):
+        ticket = self.login()
+        self.auth.authorize(ticket.principal, owner_id=ticket.principal.user_id)
+        with sqlite3.connect(self.auth.path, timeout=0) as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.rollback()
+        with self.auth.authorized_transaction(ticket.principal, owner_id=ticket.principal.user_id):
+            self.error("auth_transaction_active", lambda: self.auth.get_preferences(
+                ticket.principal.user_id), 503)
+            self.error("auth_transaction_active", lambda: self.auth.set_preferences(
+                ticket.principal.user_id, locale="ja"), 503)
+            self.error("auth_transaction_active", lambda: self.auth.authenticate(ticket.token), 503)
+            with self.assertRaises(AuthError) as raised:
+                with self.auth.authorized_transaction(ticket.principal, owner_id=ticket.principal.user_id):
+                    self.fail("nested guard entered")
+            self.assertEqual(raised.exception.code, "auth_transaction_active")
+        self.assertEqual(self.auth.get_preferences(ticket.principal.user_id), {"locale": "en"})
+
+    def _operator(self):
+        operator = AuthController(self.auth.data_root, operator_mode=True,
+                                  clock=lambda: self.clock[0])
+        self.addCleanup(operator.close)
+        return operator
+
+    def test_operator_controls_require_explicit_configuration_and_valid_target(self):
+        for method in (self.auth.disable_user, self.auth.enable_user, self.auth.revoke_all_sessions):
+            self.error("operator_required", lambda: method(self.alice["user_id"]), 403)
+        operator = self._operator()
+        for method in (operator.disable_user, operator.enable_user, operator.revoke_all_sessions):
+            self.error("unknown_user", lambda: method("unknown-user"), 404)
+            self.error("invalid_user_id", lambda: method(None), 400)
+        self.error("auth_configuration", lambda: AuthController(
+            self.root / "operator-bad", operator_mode="true"), 503)
+
+    def test_disable_enable_is_repeatable_and_never_revives_old_sessions_or_admin(self):
+        first, second = self.login(), self.login()
+        operator = self._operator()
+        disabled = operator.disable_user(first.principal.user_id)
+        self.assertEqual(disabled["sessions_revoked"], 2)
+        self.assertFalse(disabled["enabled"])
+        self.assertFalse(disabled["admin"])
+        self.assertEqual(operator.disable_user(first.principal.user_id)["sessions_revoked"], 0)
+        self.error("invalid_credentials", lambda: self.login())
+        enabled = operator.enable_user(first.principal.user_id)
+        self.assertTrue(enabled["enabled"])
+        self.assertFalse(enabled["admin"])
+        self.assertEqual(operator.enable_user(first.principal.user_id)["sessions_revoked"], 0)
+        for ticket in (first, second):
+            self.error("revoked_token", lambda: self.auth.authenticate(ticket.token))
+        fresh = self.login()
+        operator.enable_user(fresh.principal.user_id)
+        self.assertEqual(self.auth.authenticate(fresh.token).as_dict(), self.alice)
+
+    def test_enable_legacy_disabled_row_revokes_old_sessions_and_preserves_demoted_role(self):
+        with self.auth._db() as db:
+            db.execute("UPDATE users SET admin=1 WHERE user_id=?", (self.alice["user_id"],))
+        ticket = self.login()
+        with self.auth._db() as db:
+            db.execute("UPDATE users SET enabled=0,admin=0 WHERE user_id=?", (self.alice["user_id"],))
+        result = self._operator().enable_user(ticket.principal.user_id)
+        self.assertEqual(result["sessions_revoked"], 1)
+        self.assertFalse(result["admin"])
+        self.error("revoked_token", lambda: self.auth.authenticate(ticket.token))
+        self.assertFalse(self.login().principal.admin)
+
+    def test_revoke_all_is_repeatable_product_scoped_and_survives_restart(self):
+        tickets = [self.login(), self.login()]
+        bob = self.login("bob")
+        with self.auth._db() as db:
+            db.execute("INSERT INTO sessions VALUES (?, 'foreign', ?, 10060, 0)",
+                       (secrets.token_hex(32), self.alice["user_id"]))
+        operator = self._operator()
+        self.assertEqual(operator.revoke_all_sessions(self.alice["user_id"])["sessions_revoked"], 2)
+        self.assertEqual(operator.revoke_all_sessions(self.alice["user_id"])["sessions_revoked"], 0)
+        self.auth.close()
+        self.auth = AuthController(self.auth.data_root, clock=lambda: self.clock[0])
+        self.addCleanup(self.auth.close)
+        for ticket in tickets:
+            self.error("revoked_token", lambda: self.auth.authenticate(ticket.token))
+        self.assertEqual(self.auth.authenticate(bob.token).as_dict(), self.bob)
+        with self.auth._db() as db:
+            self.assertEqual(db.execute(
+                "SELECT revoked FROM sessions WHERE product='foreign'").fetchone()[0], 0)
+        self.assertEqual(self.auth.authenticate(self.login().token).as_dict(), self.alice)
+
+    def test_operator_cli_repeatable_real_sqlite_without_password_or_role_change(self):
+        ticket = self.login()
+        user_id = ticket.principal.user_id
+        for flag, verdict in (("--disable-user", "DISABLED"), ("--disable-user", "DISABLED"),
+                              ("--enable-user", "ENABLED"), ("--enable-user", "ENABLED"),
+                              ("--revoke-all", "REVOKED"), ("--revoke-all", "REVOKED")):
+            process = subprocess.run(
+                [sys.executable, "-B", str(APP / "access_control.py"),
+                 "--data-root", str(self.auth.data_root), flag, user_id],
+                stdin=subprocess.DEVNULL, capture_output=True, text=True)
+            self.assertEqual(process.returncode, 0)
+            self.assertIn("OPENCAD_ACCOUNT verdict=" + verdict, process.stdout)
+            self.assertNotIn(self.secret, process.stdout + process.stderr)
+            self.assertNotIn(ticket.token, process.stdout + process.stderr)
+        self.error("revoked_token", lambda: self.auth.authenticate(ticket.token))
+        self.assertFalse(self.login().principal.admin)
 
 
 OWNED = (
