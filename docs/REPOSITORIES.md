@@ -111,7 +111,37 @@ Complete CAD regression v1 ran 2245 tests: 2232 passed, 13 original skips,
 zero test failures/errors, plus the original 15-check HTTP selftest. Its
 overall verdict is FAIL because the three new sync sources changed during
 the run. V2 also started before the last reviewed tool correction; neither
-run can certify a stable final source. A new all-stage run must bind the
-final committed worktree. Do not promote phase-level green or repository
-synchronization into industrial parity, private production readiness, or
-full regression acceptance.
+run certifies a stable final source. These earlier failures remain recorded.
+
+V3 finished on 2026-10-11 at 20:56:23 Asia/Shanghai with
+`INDEPENDENT_ACCEPTANCE verdict=PASS stage=all`: 2245 tests, 2232 passed,
+13 original skips, zero failures/errors, and 15 HTTP selftest checks.
+All 368 source files remained unchanged during the run. Its source fingerprint
+was `f6f8cfad2cb39074e954c7cd48fc62b54e2ccd08a979e950c408382a02108adc`.
+Evidence is under `/hf3fs-jd/data/tmp/opencad-repository-full-20261011-v3/`.
+This certifies that dated source snapshot; later product edits require new
+acceptance and must not inherit it.
+
+The subsequent actual three-target synchronization finished at 21:02:54
+Asia/Shanghai. GitLab, Gitee and GitHub each returned
+`60756563f5b57138693a1c54220737921465c632` for main; 680 reachable objects
+were scanned. Evidence is under
+`/hf3fs-jd/data/tmp/opencad-repository-live-sync-20261011-v3/`.
+The v2 synchronization attempt failed with `REMOTE_QUERY_RC_128`; its failure
+is preserved, not reclassified as a successful push.
+
+At 22:58 Asia/Shanghai the resumed account inspection, three-target plan and
+fresh ref queries again confirmed the configured roles and the same main SHA.
+The existing GitLab SSH route returned hostname `r640-61`; this verifies the
+endpoint response, not physical HA failover. GitHub authentication confirmed
+`miaochunhui` and `PRESENT_PUBLIC_WRITABLE`, using the user-specified PAT file
+without exporting its value. New evidence is under
+`/hf3fs-jd/data/tmp/opencad-repository-resume-account-20261011-v1/` and
+`/hf3fs-jd/data/tmp/opencad-repository-resume-plan-20261011-v1/`.
+
+This follow-up changes only the repository status documentation. Explicit
+synchronization is still not an installed automatic mirror. Gitee's default
+branch is still the retained historical master; use main for current code.
+No credential permissions, host keys, service state, or private-entry files
+were changed. Complete CAD regression is not industrial parity, private
+production readiness, or deployment acceptance. The broader goal stays active.
