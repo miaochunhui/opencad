@@ -28,6 +28,31 @@ The original `/data/dev/opencad` local main and its nine untracked private
 entry assets remain untouched. Do not force a checkout over those assets.
 Code synchronization does not deploy the production Web service.
 
+## Actual Source Publication
+
+The eight-commit batch, including this handoff's first version, was actually
+synchronized to main at
+`889e885a4a3935ee593b9e18afef04faff60e294` on 2026-10-12
+07:39:52.725887 Asia/Shanghai, with original parent rc 0 and SYNCED/PASS.
+Evidence:
+`/hf3fs-jd/data/tmp/opencad-surface-private-release-docs-sync-20261012-v1/`.
+The 1020-object history scan completed with original rc 0. GitLab was pushed
+first, then Gitee, both with actual push rc 0 and exact main readback. GitHub
+verified all eight original commit IDs before one non-forced ref update;
+PATCH and final GET commit both returned HTTP 200. All three main refs
+returned 889e at 07:39:49-07:39:51. Source and configuration remained stable.
+
+A separate GET/ref-only check at 07:43:00-07:43:01 again returned 889e for
+all three main refs, with an empty tail and original parent rc 0:
+`/hf3fs-jd/data/tmp/opencad-surface-private-release-postsync-refcheck-20261012-v1/`.
+That PLANNED/PASS read does not itself constitute another push.
+Aquinas independently checked 17 publication conditions at 07:43:35,
+with no P0/P1 findings. GitLab's default HEAD is main. Gitee's historical
+default HEAD/master remains `2918a471b2d9584b7f43dbf0b3e524989f8b728a`;
+current code is on main. Automatic mirroring is not installed.
+This receipt amendment is a later documentation-only commit, not part of
+the recorded 889e batch, and requires its own forward synchronization.
+
 ## Final Source Acceptance
 
 The final all-stage regression against the frozen 83e source completed at
@@ -44,6 +69,14 @@ OCP/OCCT checks and one inapplicable injection-fixture teardown check.
 The earlier 8306 result is separate and is not inherited by 83e.
 This byte/length fingerprint differs from the byte/mode fingerprint below;
 neither is a Git commit ID or proof of industrial parity.
+Fermat's subsequent mechanical review retained original rc 1/FAIL at
+07:37:49 because the older publication reviewer hard-coded 2341/2328
+totals. Evidence:
+`/hf3fs-jd/data/tmp/opencad-surface-private-release-all-fermat-review-20261012-v1/`.
+Its source/log hashes remained unchanged, but its complete mechanical
+sign-off did not pass. A separate dynamic-count reviewer repair is in
+progress; do not promote that old FAIL to PASS or confuse this reviewer
+defect with a failure in the final product test run.
 
 Actual private downloads completed at 06:52:53.925128 with original parent
 rc 0: 181 workflow checks, 56 HTTP requests, 14 downloaded STEP/BRep files
