@@ -30,6 +30,8 @@
 from __future__ import annotations
 
 import hashlib
+from contextlib import contextmanager
+from contextvars import ContextVar
 import json
 import logging
 import os
@@ -40,6 +42,7 @@ import threading
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Callable, Mapping, Sequence
 
 __all__ = [
@@ -49,11 +52,13 @@ __all__ = [
     "LocaleUnavailable",
     "Catalog",
     "CatalogInfo",
+    "CatalogContext",
     "LanguageChange",
     "active_catalog",
     "active_chain",
     "active_locale",
     "available_locales",
+    "bind",
     "clear_cache",
     "default_dirs",
     "export_po",
@@ -664,7 +669,8 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _activate(locale: str, dirs_t: tuple[str, ...], *, warn_on_empty: bool) -> dict[str, Any]:
+def _activate(locale: str, dirs_t: tuple[str, ...], *, warn_on_empty: bool,
+              strict: bool = False) -> dict[str, Any]:
     """装载 locale 回退链上所有可用语言包，写入模块状态；**不抛错**（懒加载期绝不让 `t()` 崩）。
 
     链 = 纯截断链（`resolve_chain`）+ 各级语言包自己声明的 `_meta.fallback`
@@ -675,7 +681,7 @@ def _activate(locale: str, dirs_t: tuple[str, ...], *, warn_on_empty: bool) -> d
     index = 0
     while index < len(chain):
         candidate = chain[index]
-        catalog = _load_exact(candidate, dirs_t, strict=False)
+        catalog = _load_exact(candidate, dirs_t, strict=strict)
         if catalog is not None:
             catalogs[candidate] = catalog
             declared = _normalize(catalog.fallback())
@@ -708,6 +714,123 @@ def _ensure_state() -> dict[str, Any]:
         return _state
 
 
+_CONTEXT: ContextVar[CatalogContext | None] = ContextVar("cadcore_catalog_context", default=None)
+
+
+def _frozen(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _frozen(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_frozen(item) for item in value)
+    return value
+
+
+class CatalogContext:
+    """Fixed language/catalog snapshot for one request or explicit background job.
+
+    Binding redirects implicit module APIs without changing the legacy global
+    locale, listeners or counters. Create a new instance after a preference or
+    catalog update; changing the locale within a fixed snapshot is an error.
+    """
+
+    def __init__(self, locale: str, *, dirs: Sequence[str] | None = None):
+        if not isinstance(locale, str) or not _KEY_SHAPE_RE.fullmatch(locale) or len(locale) > 64:
+            raise CatalogError("context locale must be a valid nonempty language tag")
+        requested = _normalize(locale)
+        self._dirs = _as_dirs(dirs)
+        with _LOCK:
+            loaded = _activate(requested, self._dirs, warn_on_empty=False, strict=True)
+        if not loaded["catalogs"]:
+            raise LocaleUnavailable("no usable catalog for context locale")
+        loaded["catalogs"] = MappingProxyType({
+            code: replace(cat, strings=_frozen(cat.strings), meta=_frozen(cat.meta))
+            for code, cat in loaded["catalogs"].items()
+        })
+        self._state = MappingProxyType(loaded)
+        self._lock = threading.RLock()
+        self._stats = {key: 0 for key in _stats}
+        self._missing_keys: dict[str, int] = {}
+        self._logged_fallbacks: set[tuple[str, str, str]] = set()
+
+    @property
+    def locale(self) -> str:
+        return self._state["locale"]
+
+    @contextmanager
+    def bind(self):
+        token = _CONTEXT.set(self)
+        try:
+            yield self
+        finally:
+            _CONTEXT.reset(token)
+
+    def active_locale(self) -> str:
+        return self.locale
+
+    def active_catalog(self) -> Catalog | None:
+        return self._state["catalogs"].get(self._state["resolved"])
+
+    def active_chain(self) -> list[str]:
+        return list(self._state["chain"])
+
+    def set_locale(self, code: str, *, dirs: Sequence[str] | None = None) -> LanguageChange:
+        if (not isinstance(code, str) or _normalize(code) != self.locale
+                or (dirs is not None and _as_dirs(dirs) != self._dirs)):
+            raise CatalogError("fixed catalog context cannot change locale or directories")
+        primary = self.active_catalog()
+        return LanguageChange(
+            previous=self.locale, current=self.locale, resolved=self._state["resolved"],
+            chain=tuple(self.active_chain()), catalog_present=primary is not None,
+            changed=False, keys=len(primary.strings) if primary is not None else -1,
+            timestamp=_now_iso(),
+        )
+
+    def t(self, key: str, /, **args: Any) -> str:
+        with self.bind():
+            return t(key, **args)
+
+    def stats(self) -> dict[str, Any]:
+        with self.bind():
+            return stats()
+
+    def untranslated_keys(self) -> list[tuple[str, int]]:
+        with self._lock:
+            return sorted(self._missing_keys.items(), key=lambda item: (-item[1], item[0]))
+
+    def default_dirs(self) -> list[str]:
+        return list(self._dirs)
+
+    def available_locales(self, *, dirs: Sequence[str] | None = None) -> list[str]:
+        return available_locales(dirs=self._dirs if dirs is None else dirs)
+
+    def load_catalog(self, code: str, *, dirs: Sequence[str] | None = None) -> Catalog:
+        return load_catalog(code, dirs=self._dirs if dirs is None else dirs)
+
+    @staticmethod
+    def scan_catalogs(dirs: Sequence[str]) -> list[CatalogInfo]:
+        return scan_catalogs(dirs)
+
+    @staticmethod
+    def resolve_chain(code: str) -> list[str]:
+        return resolve_chain(code)
+
+
+@contextmanager
+def bind(locale: str, *, dirs: Sequence[str] | None = None):
+    """Construct and bind a fixed catalog snapshot; yield the legacy adapter."""
+    context = CatalogContext(locale, dirs=dirs)
+    with context.bind():
+        yield context
+
+
+def _runtime():
+    context = _CONTEXT.get()
+    if context is not None:
+        return (context._lock, context._state, context._stats,
+                context._missing_keys, context._logged_fallbacks)
+    return _LOCK, _ensure_state(), _stats, _missing_keys, _logged_fallbacks
+
+
 def _dispatch(change: LanguageChange) -> None:
     """广播；**订阅者抛错不许影响切换本身，也不许影响别的订阅者**。"""
     if getattr(_TLS, "broadcasting", False):
@@ -736,6 +859,9 @@ def set_locale(code: str, *, dirs: Sequence[str] | None = None) -> LanguageChang
       `t()` 继续可用（返回由 key 派生的人读兜底串），并记一条警告；
     - 语言码没变且落点没变 ⇒ 返回 `changed=False` 且**不广播**（避免无谓重绘）。
     """
+    context = _CONTEXT.get()
+    if context is not None:
+        return context.set_locale(code, dirs=dirs)
     dirs_t = _as_dirs(dirs)
     requested = _normalize(code) or DEFAULT_LANGUAGE
     with _LOCK:
@@ -775,6 +901,8 @@ def set_locale(code: str, *, dirs: Sequence[str] | None = None) -> LanguageChang
 
 def on_language_changed(callback: Callable[[LanguageChange], None]) -> Callable[[], None]:
     """订阅语言切换，返回**退订闭包**（重复调用退订是 no-op）。"""
+    if _CONTEXT.get() is not None:
+        raise CatalogError("fixed catalog contexts do not subscribe to global language changes")
     if not callable(callback):
         raise TypeError("on_language_changed expects a callable")
     with _LOCK:
@@ -792,6 +920,9 @@ def on_language_changed(callback: Callable[[LanguageChange], None]) -> Callable[
 
 def active_locale() -> str:
     """当前活动 BCP-47 标签（请求码原样保留，`zh-CN` 与 `zh-TW` 各是各的）。"""
+    context = _CONTEXT.get()
+    if context is not None:
+        return context.active_locale()
     with _LOCK:
         _ensure_state()
         return str(_state["locale"])
@@ -799,6 +930,9 @@ def active_locale() -> str:
 
 def active_catalog() -> Catalog | None:
     """当前主语言包；`None` ⇒ 未采（降级态，`t()` 走派生兜底串）。"""
+    context = _CONTEXT.get()
+    if context is not None:
+        return context.active_catalog()
     with _LOCK:
         _ensure_state()
         resolved = _state["resolved"]
@@ -807,6 +941,9 @@ def active_catalog() -> Catalog | None:
 
 def active_chain() -> list[str]:
     """当前生效的回退链（含 `_meta.fallback` 注入项，以源串语言收尾）。"""
+    context = _CONTEXT.get()
+    if context is not None:
+        return context.active_chain()
     with _LOCK:
         _ensure_state()
         return list(_state["chain"])
@@ -838,12 +975,12 @@ def t(key: str, /, **args: Any) -> str:
     - 占位符替换失败（译文写坏 `{}`）不抛异常：记 WARNING + `stats()["format_errors"]`，返回未替换的原文。
     """
     text_key = str(key)
-    with _LOCK:
-        _ensure_state()
-        catalogs: Mapping[str, Catalog] = _state["catalogs"]
-        chain: Sequence[str] = _state["chain"]
+    lock, state, counters, missing, logged = _runtime()
+    with lock:
+        catalogs: Mapping[str, Catalog] = state["catalogs"]
+        chain: Sequence[str] = state["chain"]
         primary = chain[0] if chain else DEFAULT_LANGUAGE
-        _stats["lookups"] += 1
+        counters["lookups"] += 1
         raw: str | None = None
         hit: str | None = None
         for candidate in chain:
@@ -855,7 +992,7 @@ def t(key: str, /, **args: Any) -> str:
                 if value.strip():
                     raw, hit = value, candidate
                     break
-                _stats["empty_values"] += 1
+                counters["empty_values"] += 1
                 LOG.warning("i18n: empty translation for %r in catalog %s (treated as missing)",
                             text_key, candidate)
                 continue
@@ -863,18 +1000,18 @@ def t(key: str, /, **args: Any) -> str:
                 LOG.warning("i18n: non-string translation for %r in catalog %s (ignored)",
                             text_key, candidate)
         if raw is None:
-            _stats["misses"] += 1
-            _missing_keys[text_key] = _missing_keys.get(text_key, 0) + 1
+            counters["misses"] += 1
+            missing[text_key] = missing.get(text_key, 0) + 1
             raw = _derive_source_string(text_key)
             LOG.warning(
                 "i18n: no translation for %r in chain %s -- served derived source string %r",
                 text_key, list(chain), raw,
             )
         elif hit != primary:
-            _stats["fallbacks"] += 1
+            counters["fallbacks"] += 1
             marker = (text_key, primary, str(hit))
-            if marker not in _logged_fallbacks:
-                _logged_fallbacks.add(marker)
+            if marker not in logged:
+                logged.add(marker)
                 LOG.warning("i18n: key %r missing in %s -- served from fallback %s",
                             text_key, primary, hit)
     if not args:
@@ -882,8 +1019,8 @@ def t(key: str, /, **args: Any) -> str:
     try:
         return raw.format(**args)
     except (KeyError, IndexError, ValueError, AttributeError) as exc:
-        with _LOCK:
-            _stats["format_errors"] += 1
+        with lock:
+            counters["format_errors"] += 1
         LOG.warning("i18n: placeholder substitution failed for %r (%s: %s) -- raw text returned",
                     text_key, type(exc).__name__, exc)
         return raw
@@ -897,20 +1034,20 @@ def t(key: str, /, **args: Any) -> str:
 def stats() -> dict[str, Any]:
     """运行期计数（只读快照）。全部计数**始终在采**，故 `0` 是真为零；
     唯一可能为 `-1` 的是 `active_catalog_keys`（未采：没有语言包可数）。"""
-    with _LOCK:
-        _ensure_state()
-        catalog = _state["catalogs"].get(_state["resolved"]) if _state["resolved"] else None
-        snapshot: dict[str, Any] = dict(_stats)
+    lock, state, counters, missing, _ = _runtime()
+    with lock:
+        catalog = state["catalogs"].get(state["resolved"]) if state["resolved"] else None
+        snapshot: dict[str, Any] = dict(counters)
         snapshot.update(
             {
-                "active_locale": _state["locale"],
-                "resolved": _state["resolved"],
+                "active_locale": state["locale"],
+                "resolved": state["resolved"],
                 "catalog_present": catalog is not None,
                 "active_catalog_keys": len(catalog.strings) if catalog is not None else -1,
-                "listeners": len(_listeners),
-                "catalogs_loaded": len(_state["catalogs"]),
+                "listeners": len(_listeners) if _CONTEXT.get() is None else 0,
+                "catalogs_loaded": len(state["catalogs"]),
                 "cached_json_files": len(_JSON_CACHE),
-                "distinct_missing_keys": len(_missing_keys),
+                "distinct_missing_keys": len(missing),
             }
         )
         return snapshot
@@ -918,6 +1055,9 @@ def stats() -> dict[str, Any]:
 
 def untranslated_keys() -> list[tuple[str, int]]:
     """链上任何一级都没查到的 key 及次数（按次数降序、key 升序）；空列表 = 真为零。"""
+    context = _CONTEXT.get()
+    if context is not None:
+        return context.untranslated_keys()
     with _LOCK:
         return sorted(_missing_keys.items(), key=lambda item: (-item[1], item[0]))
 
