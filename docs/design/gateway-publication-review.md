@@ -270,3 +270,56 @@ AST夹具/真实Git提交保留于
 sudo -n -u infra python3 -B /data/dev/wt-opencad-dynamic-reviewer-p2-20261012/tools/test_gateway_publication_review.py --source-root /data/dev/wt-opencad-surface-private-release-20261012 --expect-head 83e66d1c98918a5197c71e6bf30436513ba06efc --sqlite-source-root /data/dev/wt-opencad-sqlite-runtime-isolation-20261012 --failed-source-root /data/dev/wt-opencad-config-integration-20261012 --failed-all-evidence /hf3fs-jd/data/tmp/opencad-config-integration-all-20261012-v1 --all-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v2 --baseline-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v1 --original-failure /hf3fs-jd/data/tmp/opencad-surface-private-release-all-fermat-review-20261012-v1/result.json --out /hf3fs-jd/data/tmp/opencad-dynamic-reviewer-p2-final-20261012-next
 ```
 每次out须fresh；最终数字/退出码以新盘面result为准，不继承首轮29/78。
+
+## Aquinas 后继 P2 修复
+
+独占树 `/data/dev/wt-opencad-dynamic-reviewer-reachability-terminal-20261012`，
+分支 `codex/dynamic-reviewer-reachability-terminal-20261012`，严格基于
+`596fa368cf61c09bc53030cbc57d4f3100219cd5`；写集仍仅本页与两件工具。
+不改596/69/60a冻结树，不跑产品all、HTTP或GPU，不push。
+
+修前先只加真实CLI反证，reviewer保持原SHA256
+`e9015dc262de667d43c1b7e1f618ceef1c8491ba8bfbddf5571c0790fbefa647`。
+北京时间2026-10-12 09:59:40.634247亲收原rc1，3tests/3failures：
+受管try的commands初始化前插入all条件return0，真实plan CLI原rc0；
+两条末读故障CLI原rc1，已完成正控/先发生test failure均丢result。
+原FAIL/日志/变异源/子进程argv及rc保留于
+`/hf3fs-jd/data/tmp/opencad-dynamic-reviewer-reachability-terminal-before-20261012-v1/`。
+原31tests/83neg与Aquinas原账不改、不追认覆盖这两处新缺口。
+
+`check_all_reachability`先核main前置parser、两条原子CLI分流、报告初始化、
+受管try内runtime/source/scan前缀，再允许构造/执行all计划。未知statement、
+early return/SystemExit、条件helper或args.stage/report重绑定拒绝。
+只兼容原五child和当前六child两种确切受管结构；SQLite临时prefix两种已知
+拼写规范化不改变执行路径。不是任意Python程序/外部helper等价性证明。
+未来受管入口改形态须明确更新白名单和真实反证，不根据日志猜安全。
+
+测试runner即时捕捉test failure/error/subtest等首因；后续异常进
+`secondary_failures`，不覆盖首因。运行中断保留observed计数并标
+`counts_complete=false`；空suite拒绝。末读逐项保护source/SQLite/failed
+source/executor bytes-mode、HEAD/status、inputs及digest/log，未知after/hash/
+drift是null而非空集。null返回也拒绝。终态保存使用exclusive结果；部分写入
+失败另写`terminal-failure.json`，不回写原result。末日志/输出失败另留具名
+terminal failure，原退出码1；候选日志不是最终PASS凭证。介质完全不可写时
+仍退出1，但无法保证新证据可保存，不能宣称成功。actor只故障注入本进程，
+不改产品/凭据/权限/原账；每条保留实际子进程rc/stdout/stderr和结果。
+
+所有可复用入口均留仓内：常规自测沿上节完整参数，仅替换executor为本树、
+out为fresh；`--terminal-actor`为离线反证，`--verify-run`仅机读新终态。
+完整自测保留原31/83、原failed-all拒绝及新增真实CLI反例；数量以该次
+result及tests.log完整标签实读为准，选测不得升级完整验收。
+
+```bash
+sudo -n -u infra python3 -B /data/dev/wt-opencad-dynamic-reviewer-reachability-terminal-20261012/tools/test_gateway_publication_review.py --verify-run /hf3fs-jd/data/tmp/opencad-dynamic-reviewer-reachability-terminal-committed-20261012-v1 --out /hf3fs-jd/data/tmp/opencad-dynamic-reviewer-reachability-terminal-readback-20261012-v1
+```
+
+复核要求clean当前HEAD与测试首尾完整bytes/mode相等、日志hash/完整标签/
+discovery/footer/counts一致、原源与输入零漂移、旧31/83/Aquinas账hash未变；
+存在terminal failure旁件即拒。仅认证reviewer离线自测，不继承产品all或
+远端同步。后续主席整合必须保留独立`69efa185aeb41ce46fd102e32ac66d4b56ffd745`
+single/multitail修复；本596后继不包含69，也不整文件覆盖该小修。
+
+开发final-v2于北京时间10:08:24.094375原rc1，38tests/1failure：
+新增ownership预检多读HEAD，末读故障actor按次数误在before注入。原账
+`opencad-dynamic-reviewer-reachability-terminal-final-20261012-v2`保留；
+改actor按实际executor after-manifest阶段注入，不放宽before/after判据。

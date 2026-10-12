@@ -647,6 +647,101 @@ def check_all_executor(block, end, guarded):
          "ALL_STAGE_EXECUTOR_SUCCESS_PATH")
 
 
+def check_all_reachability(main, block, begin, guarded):
+    """Only the managed prelude can precede all; unknown exits are not inferred safe."""
+    prelude = """
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--stage", choices=("scan", "smoke", "coupling", "core", "web", "all"), default="smoke")
+parser.add_argument("--out", type=Path)
+parser.add_argument("--runtime-root", type=Path, help="new local-disk external directory for SQLite WAL tests")
+parser.add_argument("--suite", type=Path, help=argparse.SUPPRESS)
+parser.add_argument("--pattern", default="test*.py", help=argparse.SUPPRESS)
+parser.add_argument("--top", type=Path, help=argparse.SUPPRESS)
+parser.add_argument("--case", help=argparse.SUPPRESS)
+parser.add_argument("--http-selftest", type=Path, help=argparse.SUPPRESS)
+args = parser.parse_args()
+if args.http_selftest:
+    return http_selftest(args.http_selftest)
+if args.suite:
+    if args.top is None:
+        parser.error("--suite requires --top")
+    return 0 if run_suite(args.suite, args.pattern, args.top, args.case)["successful"] else 1
+stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+out = (args.out or Path("/hf3fs-jd/data/tmp/opencad-bootstrap-s7") / (stamp + "-" + args.stage)).resolve()
+if out == ROOT or ROOT in out.parents:
+    parser.error("evidence must be outside the source tree")
+out.mkdir(parents=True, exist_ok=False)
+"""
+    if not guarded:
+        prelude += '(out / "tmp").mkdir()\n(out / "workspace").mkdir()\n'
+    prelude += """
+report = {"verdict": "FAIL", "stage": args.stage, "at": bootstrap.now(), "steps": [],
+          "production_deployment": "NOT_ASSESSED", "industrial_parity": "NOT_ASSESSED",
+          "multi_tenant_readiness": "NOT_ASSESSED"}
+before = None
+"""
+    legacy = """
+runtime = (args.runtime_root or (Path(os.environ.get(
+    "OPENCAD_TEST_RUNTIME_ROOT", "/data/tmp/opencad-test-runtime")) / stamp)).resolve()
+if runtime == ROOT or ROOT in runtime.parents or runtime == out or out in runtime.parents:
+    raise ValueError("SQLite test runtime must be local and outside source/evidence")
+runtime.mkdir(parents=True, exist_ok=False)
+filesystem = subprocess.check_output(["stat", "-f", "-c", "%T", str(runtime)], text=True).strip()
+report["test_runtime"] = {"root": str(runtime), "filesystem": filesystem, "env": "OPENCAD_TEST_RUNTIME_ROOT"}
+if filesystem.startswith("fuse") or filesystem in {"tmpfs", "ramfs", "nfs", "nfs4", "smb2", "cifs"}:
+    raise ValueError(f"SQLite test runtime is not local persistent storage: {filesystem}")
+print(f"INDEPENDENT_RUNTIME root={runtime} filesystem={filesystem}")
+before = source_manifest(ROOT)
+report["source_before"] = before
+report["scan"] = scan(ROOT)
+"""
+    current = """
+declared = os.environ.get("OPENCAD_TEST_RUNTIME_ROOT")
+if args.runtime_root is not None:
+    runtime = local_runtime_path(args.runtime_root, fresh=True, short=True)
+    runtime.mkdir()
+elif declared is not None:
+    if not declared:
+        raise ValueError("empty explicit SQLite runtime declaration")
+    runtime = local_runtime_path(Path(declared) / stamp, fresh=True, short=True)
+    runtime.mkdir()
+else:
+    runtime = Path(tempfile.mkdtemp(prefix="oc-a-", dir=LOCAL_RUNTIME_PARENT))
+if runtime == out or runtime in out.parents or out in runtime.parents:
+    raise ValueError("SQLite test runtime overlaps evidence")
+(runtime / "workspace").mkdir()
+guard = configure_runtime(runtime)
+filesystem = guard.summary()["filesystem"]
+report["test_runtime"] = {"root": str(runtime), "filesystem": filesystem,
+                        "env": "OPENCAD_TEST_RUNTIME_ROOT", "TMPDIR": str(runtime)}
+print(f"INDEPENDENT_RUNTIME root={runtime} filesystem={filesystem}")
+report["source_head_before"] = subprocess.check_output(
+    ["git", "--no-replace-objects", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
+report["source_status_before"] = subprocess.check_output(
+    ["git", "--no-replace-objects", "-C", str(ROOT), "status", "--porcelain"], text=True)
+before = source_manifest(ROOT)
+report["source_before"] = before
+report["scan"] = scan(ROOT)
+"""
+
+    def normalized(nodes):
+        tree = ast.Module(body=deepcopy(nodes), type_ignores=[])
+        # The fixture prefix changed during the SQLite-only repair; neither
+        # spelling affects reachability. All other syntax remains exact.
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and ast.unparse(node.func) == "tempfile.mkdtemp":
+                for keyword in node.keywords:
+                    if keyword.arg == "prefix" and isinstance(keyword.value, ast.Constant) \
+                            and keyword.value.value in {"oc-a-", "oc-a"}:
+                        keyword.value.value = "oc-a-"
+        return ast.dump(tree, include_attributes=False)
+
+    index = main.body.index(block)
+    need(normalized(main.body[:index]) == normalized(ast.parse(prelude).body)
+         and normalized(block.body[:begin]) == normalized(ast.parse(
+             current if guarded else legacy).body), "ALL_STAGE_EXECUTOR_REACHABILITY")
+
+
 def all_stage_plan(root, sources, evidence, runtime):
     """Read the managed all-stage command builder, never execute acceptance.py."""
     name = "tools/acceptance.py"
@@ -714,6 +809,7 @@ def all_stage_plan(root, sources, evidence, runtime):
     need(len(candidates) == 1, "ALL_STAGE_PLAN_REQUIRED")
     block, begin, end = candidates[0]
     need(block in main[0].body, "ALL_STAGE_EXECUTOR_CONDITIONAL")
+    check_all_reachability(main[0], block, begin, guarded)
     check_all_executor(block, end, guarded)
     permitted = {node for statement in block.body[begin:end + 1] for node in ast.walk(statement)}
     need(all(node in permitted for node in ast.walk(main[0])
