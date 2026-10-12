@@ -89,6 +89,9 @@ def main(argv=None):
             "web/js/viewer3d.js", "web/js/advanced3d.js", "viewer3d_page.py",
             "web/js/parametric-panel.js", "web/js/drawing-panel.js",
             "web/js/industrial-panels.js", "web/js/app.js", "server.py",
+            "web/js/locale-service.js", "web/js/private-locale.js",
+            "web/js/surfaces-panel.js", "web/js/assembly-panel.js", "web/js/render-panel.js",
+            "web/panel-i18n.json", "web/index.html",
         )
     ] + [Path(__file__).resolve()]
 
@@ -137,15 +140,19 @@ def main(argv=None):
                         "window.__loseCommand=false;throw Error('Injected lost response');}return r;};"})
                     browser.call("Page.navigate", {"url": origin + "/web/3d.html"})
                     browser.wait("!!document.querySelector('dialog[open] input[name=username]')")
-                    browser.click("input[name=username]")
+                    browser.click("dialog[open] input[name=username]")
                     browser.call("Input.insertText", {"text": "browser-user"})
-                    browser.click("input[name=password]")
+                    browser.click("dialog[open] input[name=password]")
                     browser.call("Input.insertText", {"text": password})
                     browser.click("dialog button[type=submit]")
-                    browser.wait("!!document.querySelector('input[aria-label=\"新项目名称\"]')")
-                    browser.click("input[aria-label=\"新项目名称\"]")
+                    project_name = ('dialog[data-session-entry] input'
+                                    '[data-panel-i18n-placeholder="panel.session.new_project_name"]')
+                    create_project = ('dialog[data-session-entry] button'
+                                      '[data-panel-i18n="panel.session.create_project"]')
+                    browser.wait("!!document.querySelector(%s)" % json.dumps(project_name))
+                    browser.evaluate("document.querySelector(%s).focus()" % json.dumps(project_name))
                     browser.call("Input.insertText", {"text": "Browser " + str(width)})
-                    browser.click("dialog button:nth-of-type(2)")
+                    browser.evaluate("document.querySelector(%s).click()" % json.dumps(create_project))
                     browser.wait("!document.querySelector('dialog')")
                     state = browser.evaluate(
                         "fetch('/api/state').then(r=>r.json()).then(s=>"
