@@ -1,22 +1,24 @@
 /* Bounded Web-only assembly panel. Gateway transport owns authentication/CAS. */
 (function () {
   "use strict";
-  const defaults = {
-    title: "真实装配", part: "独立零件 L1 文件", partId: "零件 ID",
-    componentId: "实例 ID", load: "加载零件", components: "层级实例",
-    pose: "局部位姿与父级", apply: "应用位姿", mate: "平面 / 轴配合",
-    addMate: "应用配合", solve: "求解配合", save: "保存项目版本",
-    download: "下载装配 JSON", reopen: "重开装配 JSON", refresh: "刷新",
-    empty: "尚未加载独立零件", ready: "已同步", busy: "处理中",
-    bom: "物料清单", collision: "真实 BRep 碰撞与间隙",
-    faces: "绑定零件 SHA 的面索引", separated: "分离", touching: "接触",
-    penetrating: "相交", error: "错误", preview: "装配三角网格视图",
-    committed: "项目版本已提交", current: "当前项目版本",
-    componentJson: "层级实例 JSON", mateJson: "配合 JSON", translation: "平移（mm）",
-    solver: "配合求解残差与自由度"
-  };
   const mm = 1000000;
   const sha = /^[a-f0-9]{64}$/;
+
+  function inputError(message, key, args) {
+    const error = new Error(message);
+    error.localeKey = key;
+    error.localeArgs = args;
+    return error;
+  }
+
+  function parseInput(value) {
+    try { return JSON.parse(value); }
+    catch (error) {
+      error.localeKey = "json_invalid";
+      error.localeArgs = {detail: error.message};
+      throw error;
+    }
+  }
 
   async function digest(text) {
     const value = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -24,11 +26,11 @@
   }
 
   function nmVector(value) {
-    const vector = JSON.parse(value);
+    const vector = parseInput(value);
     if (!Array.isArray(vector) || vector.length !== 3 ||
         vector.some(x => typeof x !== "number" || !Number.isFinite(x) ||
           !Number.isSafeInteger(Math.round(x * mm)) || Math.abs(x * mm) > 1e12)) {
-      throw new Error("translation requires three bounded numbers in mm");
+      throw inputError("translation requires three bounded numbers in mm", "translation_invalid");
     }
     return vector.map(x => Math.round(x * mm));
   }
@@ -42,51 +44,52 @@
         typeof options.transport !== "function") {
       throw new Error("assembly mount requires a root and gateway transport");
     }
-    const labels = Object.assign({}, defaults, options.labels || {});
-    const text = key => labels[key] || key;
+    const locale = window.OpenCADLocale;
+    if (!locale || !locale.ready || typeof locale.t !== "function" ||
+        typeof locale.bind !== "function" || typeof locale.snapshot !== "function") {
+      throw new Error("assembly_locale_service_required");
+    }
+    const text = (key, args) => locale.t("panel.assembly." + key, args);
     root.classList.add("assembly-panel");
     root.innerHTML = `
-      <h2 data-label="title"></h2>
+      <h2 data-panel-i18n="panel.assembly.title"></h2>
       <p data-role="status" role="status" aria-live="polite"></p>
       <div class="assembly-layout">
         <section class="assembly-controls">
           <form data-form="import">
-            <label><span data-label="part"></span><input name="file" type="file" accept=".json,.l1" required></label>
-            <label><span data-label="partId"></span><input name="part_id" required maxlength="128"></label>
-            <label><span data-label="componentId"></span><input name="component_id" required maxlength="128"></label>
-            <button data-label="load"></button>
+            <label><span data-panel-i18n="panel.assembly.part"></span><input name="file" type="file" accept=".json,.l1" required data-panel-i18n-aria="panel.assembly.part"></label>
+            <label><span data-panel-i18n="panel.assembly.part_id"></span><input name="part_id" required maxlength="128" data-panel-i18n-aria="panel.assembly.part_id"></label>
+            <label><span data-panel-i18n="panel.assembly.component_id"></span><input name="component_id" required maxlength="128" data-panel-i18n-aria="panel.assembly.component_id"></label>
+            <button data-panel-i18n="panel.assembly.load"></button>
           </form>
-          <h3 data-label="components"></h3><ul data-role="tree"></ul>
+          <h3 data-panel-i18n="panel.assembly.components"></h3><ul data-role="tree"></ul>
           <form data-form="pose">
-            <h3 data-label="pose"></h3>
-            <label><span data-label="componentJson"></span><textarea name="component" rows="9" required></textarea></label>
-            <label><span data-label="translation"></span><input name="translation_mm" value="[0,0,0]" required></label>
-            <button data-label="apply"></button>
+            <h3 data-panel-i18n="panel.assembly.pose"></h3>
+            <label><span data-panel-i18n="panel.assembly.component_json"></span><textarea name="component" rows="9" required data-panel-i18n-aria="panel.assembly.component_json"></textarea></label>
+            <label><span data-panel-i18n="panel.assembly.translation"></span><input name="translation_mm" value="[0,0,0]" required data-panel-i18n-aria="panel.assembly.translation"></label>
+            <button data-panel-i18n="panel.assembly.apply"></button>
           </form>
           <form data-form="mate">
-            <h3 data-label="mate"></h3>
-            <label><span data-label="mateJson"></span><textarea name="mate" rows="5" required></textarea></label>
-            <button data-label="addMate"></button>
+            <h3 data-panel-i18n="panel.assembly.mate"></h3>
+            <label><span data-panel-i18n="panel.assembly.mate_json"></span><textarea name="mate" rows="5" required data-panel-i18n-aria="panel.assembly.mate_json"></textarea></label>
+            <button data-panel-i18n="panel.assembly.add_mate"></button>
           </form>
           <div class="assembly-actions">
-            <button type="button" data-action="solve" data-label="solve"></button>
-            <button type="button" data-action="checkpoint" data-label="save"></button>
-            <button type="button" data-action="download" data-label="download"></button>
-            <button type="button" data-action="refresh" data-label="refresh"></button>
+            <button type="button" data-action="solve" data-panel-i18n="panel.assembly.solve"></button>
+            <button type="button" data-action="checkpoint" data-panel-i18n="panel.assembly.save"></button>
+            <button type="button" data-action="download" data-panel-i18n="panel.assembly.download"></button>
+            <button type="button" data-action="refresh" data-panel-i18n="panel.assembly.refresh"></button>
           </div>
-          <label><span data-label="reopen"></span><input data-role="reopen" type="file" accept=".json"></label>
+          <label><span data-panel-i18n="panel.assembly.reopen"></span><input data-role="reopen" type="file" accept=".json" data-panel-i18n-aria="panel.assembly.reopen"></label>
         </section>
         <section class="assembly-view">
-          <canvas data-role="canvas"></canvas>
-          <p data-role="metrics"></p><h3 data-label="bom"></h3><pre data-role="bom"></pre>
-          <h3 data-label="collision"></h3><pre data-role="collisions"></pre>
-          <h3 data-label="faces"></h3><pre data-role="faces"></pre>
-          <h3 data-label="solver"></h3><pre data-role="solver"></pre>
+          <canvas data-role="canvas" data-panel-i18n-aria="panel.assembly.preview"></canvas>
+          <p data-role="metrics"></p><h3 data-panel-i18n="panel.assembly.bom"></h3><pre data-role="bom"></pre>
+          <h3 data-panel-i18n="panel.assembly.collision"></h3><pre data-role="collisions"></pre>
+          <h3 data-panel-i18n="panel.assembly.faces"></h3><pre data-role="faces"></pre>
+          <h3 data-panel-i18n="panel.assembly.solver"></h3><pre data-role="solver"></pre>
         </section>
       </div>`;
-    root.querySelectorAll("[data-label]").forEach(node => {
-      node.textContent = text(node.dataset.label);
-    });
     const node = role => root.querySelector('[data-role="' + role + '"]');
     const poseForm = root.querySelector("[data-form=pose]");
     const mateForm = root.querySelector("[data-form=mate]");
@@ -95,9 +98,8 @@
       offset_nm: 0, aligned: true
     }, null, 2);
     const canvas = node("canvas");
-    canvas.setAttribute("aria-label", text("preview"));
     const gl = canvas.getContext("webgl");
-    if (!gl) { throw new Error("WebGL is required for the assembly mesh preview"); }
+    if (!gl) { throw new Error(text("webgl_required")); }
     function shader(kind, source) {
       const item = gl.createShader(kind);
       gl.shaderSource(item, source); gl.compileShader(item);
@@ -124,10 +126,47 @@
     gl.enable(gl.DEPTH_TEST);
     const api = {busy: false, state: null, error: null, triangles: 0};
     let chain = Promise.resolve(), selected = null, angle = -0.4, tilt = 0.7;
+    let notice = {key: "busy"}, lastError = null, unbind = null, destroyed = false;
+
+    function paintStatus() {
+      const detail = lastError && (lastError.localeKey ?
+        text(lastError.localeKey, lastError.localeArgs) : api.error);
+      node("status").textContent = lastError ? text("error_detail", {detail: detail}) :
+        text(notice.key, notice.args);
+    }
+
+    function paintLocale() {
+      if (destroyed) { return; }
+      paintStatus();
+      const evaluation = api.state && api.state.evaluation;
+      node("collisions").textContent = evaluation ? evaluation.collisions.map(pair =>
+        pair.a + " / " + pair.b + ": " + text(pair.status) +
+        " distance_nm=" + pair.distance_nm + " interference_nm3=" + pair.interference_volume_nm3
+      ).join("\n") : "";
+      node("metrics").textContent = evaluation ? text("metrics", {
+        backend: evaluation.backend, solids: evaluation.solid_count,
+        volume: evaluation.properties.volume_nm3
+      }) : api.state ? text("empty") : "";
+    }
+
+    function status(key, args) {
+      notice = {key: key, args: args};
+      lastError = null;
+      paintStatus();
+    }
+
+    function bindLabels() {
+      const next = locale.bind(root);
+      if (unbind) { unbind(); }
+      unbind = next;
+    }
 
     function fail(error) {
       api.error = String(error.message || error);
-      node("status").textContent = text("error") + ": " + api.error;
+      lastError = error;
+      if (destroyed) { return; }
+      if (locale.snapshot().status === "ready") { paintStatus(); }
+      else { node("status").textContent = api.error; }
     }
 
     function busy(value) {
@@ -141,8 +180,12 @@
       pending += 1;
       busy(true);
       const task = chain.then(async function () {
-        busy(true); api.error = null; node("status").textContent = text("busy");
-        try { return await action(); }
+        try {
+          await locale.ready;
+          if (destroyed) { throw new Error("assembly_panel_destroyed"); }
+          busy(true); api.error = null; status("busy");
+          return await action();
+        }
         catch (error) { fail(error); throw error; }
         finally { pending -= 1; busy(pending > 0); }
       });
@@ -204,8 +247,14 @@
           const item = document.createElement("li"), button = document.createElement("button");
           button.type = "button";
           button.disabled = api.busy;
-          button.textContent = component.component_id + " / " + (component.part_id || "group") +
-            (component.parent_id ? " ← " + component.parent_id : "");
+          const identifier = document.createElement("span");
+          identifier.textContent = component.component_id + " / ";
+          const part = document.createElement("span");
+          if (component.part_id) { part.textContent = component.part_id; }
+          else { part.setAttribute("data-panel-i18n", "panel.assembly.group"); }
+          const parent = document.createElement("span");
+          parent.textContent = component.parent_id ? " ← " + component.parent_id : "";
+          button.append(identifier, part, parent);
           button.addEventListener("click", function () { select(component); });
           item.append(button); node("tree").append(item);
         });
@@ -213,10 +262,6 @@
       } else { poseForm.elements.component.value = ""; }
       node("bom").textContent = JSON.stringify(value.bom, null, 2);
       const evaluation = value.evaluation;
-      node("collisions").textContent = evaluation ? evaluation.collisions.map(pair =>
-        pair.a + " / " + pair.b + ": " + text(pair.status) +
-        " distance_nm=" + pair.distance_nm + " interference_nm3=" + pair.interference_volume_nm3
-      ).join("\n") : "";
       node("faces").textContent = evaluation ? JSON.stringify(evaluation.instances.map(item => ({
         component_id: item.component_id, document_sha256: item.document_sha256, faces: item.faces
       })), null, 2) : "";
@@ -224,10 +269,9 @@
         status: value.solver.status, dof: value.solver.dof, iterations: value.solver.iterations,
         jacobian_rank: value.solver.jacobian_rank, residuals: value.solver.residuals
       }, null, 2) : "";
-      node("metrics").textContent = evaluation ?
-        "FreeCAD-BRep · solids=" + evaluation.solid_count + " · volume_nm3=" +
-          evaluation.properties.volume_nm3 : text("empty");
-      node("status").textContent = text("ready") + " · " + text("current") + " " + value.revision;
+      status("current_revision", {revision: value.revision});
+      bindLabels();
+      paintLocale();
       draw();
     }
 
@@ -313,7 +357,10 @@
     api.select = identifier => {
       const component = api.state && api.state.assembly &&
         api.state.assembly.components.find(c => c.component_id === identifier);
-      if (!component) { throw new Error("unknown component"); }
+      if (!component) {
+        throw inputError(text("component_unknown", {identifier: identifier}),
+          "component_unknown", {identifier: identifier});
+      }
       select(component);
     };
     root.querySelector("[data-form=import]").addEventListener("submit", event => {
@@ -322,8 +369,10 @@
       const file = form.elements.file.files[0];
       const partId = form.elements.part_id.value, componentId = form.elements.component_id.value;
       queued(async function () {
-        if (!file || file.size > 2 * 1024 * 1024) { throw new Error("需要不超过 2 MiB 的独立零件 L1 文件"); }
-        if (!api.state) { throw new Error("请先同步当前项目"); }
+        if (!file || file.size > 2 * 1024 * 1024) {
+          throw inputError(text("part_file_required", {limit: 2}), "part_file_required", {limit: 2});
+        }
+        if (!api.state) { throw inputError(text("sync_required"), "sync_required"); }
         const l1 = await file.text();
         const part = {part_id: partId, configuration: "default",
           l1_text: l1, document_sha256: await digest(l1)};
@@ -339,7 +388,7 @@
       const componentText = poseForm.elements.component.value;
       const translationText = poseForm.elements.translation_mm.value;
       queued(function () {
-        const component = JSON.parse(componentText);
+        const component = parseInput(componentText);
         component.transform.translation_nm = nmVector(translationText);
         return write({action: "put_component", component: component});
       }).catch(fail);
@@ -347,12 +396,15 @@
     mateForm.addEventListener("submit", event => {
       event.preventDefault();
       const mateText = mateForm.elements.mate.value;
-      queued(() => write({action: "put_mate", mate: JSON.parse(mateText)})).catch(fail);
+      queued(() => write({action: "put_mate", mate: parseInput(mateText)})).catch(fail);
     });
     node("reopen").addEventListener("change", event => {
       const file = event.target.files[0];
       queued(async function () {
-        if (!file || file.size > 8 * 1024 * 1024) { throw new Error("需要不超过 8 MiB 的装配 JSON 文件"); }
+        if (!file || file.size > 8 * 1024 * 1024) {
+          throw inputError(text("assembly_file_required", {limit: 8}),
+            "assembly_file_required", {limit: 8});
+        }
         return write({action: "reopen", assembly_json: await file.text()});
       }).catch(fail);
     });
@@ -370,7 +422,7 @@
           const anchor = document.createElement("a");
           anchor.href = url; anchor.download = "assembly.json"; anchor.click();
           URL.revokeObjectURL(url);
-          node("status").textContent = text("ready");
+          status("ready");
           return value;
         }).catch(fail);
       });
@@ -388,9 +440,18 @@
     canvas.addEventListener("pointercancel", () => { drag = null; });
     const observer = new ResizeObserver(draw); observer.observe(canvas);
     api.destroy = () => {
+      destroyed = true;
+      window.removeEventListener("opencad:locale", paintLocale);
+      if (unbind) { unbind(); }
       observer.disconnect(); gl.deleteBuffer(buffer); gl.deleteProgram(program); root.replaceChildren();
     };
-    api.ready = api.refresh();
+    busy(true);
+    api.ready = locale.ready.then(function () {
+      if (destroyed) { throw new Error("assembly_panel_destroyed"); }
+      bindLabels();
+      window.addEventListener("opencad:locale", paintLocale);
+      return api.refresh();
+    });
     api.ready.catch(fail);
     return api;
   }
