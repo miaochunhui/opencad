@@ -123,3 +123,52 @@ The final local smoke can close the repaired harness-placement gate only
 after its complete result is read. It cannot erase the old SIGBUS failure,
 attribute its native cause, inherit the separate config37/Web58 passes or
 claim full industrial, configuration UI, GPU or production acceptance.
+
+## Discovery Fixture Repair
+
+The integrated `4b3fb4b23467a3b3c42e025a04b1168f2ca9f4f4` all-stage run
+finished at `2026-10-12T00:10:37.190994Z`, retaining original rc1/FAIL.
+Its 414-file source and HEAD were unchanged. Core completed 1761 tests,
+1748 passes and 13 original skips. Web completed 589 tests: 520 passes,
+one failure and 68 errors. Evidence is immutable at:
+
+```text
+/hf3fs-jd/data/tmp/opencad-config-integration-all-20261012-v1/
+```
+
+The 27 drawing errors and 41 store errors arose from hard-coded SQLite
+fixtures under `/data/dev`, outside the correctly declared `/data/tmp`
+runtime. The guard rejected them before opening SQLite. The one long-socket
+negative failed at `external_fixture_roots_required`: its evidence output
+was local, so it never reached the socket-length gate. These are separate
+fixture defects, not a new attribution of the older SIGBUS.
+
+The repaired modules use `fixture_runtime()` in
+`tools/test_sqlite_discovery_fixtures.py`, which delegates to the unchanged
+acceptance path validator and active SQLite guard. Discovery takes the
+current declaration; standalone execution obtains the same short local
+default. An explicit root must remain inside an active declaration, and
+empty declarations, traversal, symlinks, network mounts and outside local
+roots remain refusals. Drawing defaults its read-only store dependency to
+the selected source tree, not the old main tree. The long-socket fixture
+uses fresh 3FS evidence and checks the expected terminal refusal without
+launching the CLI or browser. No product/store/auth/core or guard is changed.
+
+The dedicated runner records original child rc/counts, full source files,
+HEAD/status before and after, runtime bindings and log hashes. Its
+`--before-red` PASS means it observed three expected failing one-test
+children, each actual rc1; it is not a product PASS. `--selftest` includes
+real SQLite positives and isolated rejection children, so a caught refusal
+cannot contaminate the positive suite or disappear from evidence.
+
+```bash
+sudo -n -u infra python3 -B /data/dev/wt-opencad-sqlite-discovery-fixture-fix-20261012/tools/test_sqlite_discovery_fixtures.py --selftest --out /hf3fs-jd/data/tmp/opencad-sqlite-discovery-fixture-fix-20261012-v1/selftest --runtime-root /data/tmp/oc-sdf-self-1012-v1
+sudo -n -u infra python3 -B /data/dev/wt-opencad-sqlite-discovery-fixture-fix-20261012/tools/test_sqlite_discovery_fixtures.py --targeted --out /hf3fs-jd/data/tmp/opencad-sqlite-discovery-fixture-fix-20261012-v1/targeted --runtime-root /data/tmp/oc-sdf-target-1012-v1
+sudo -n -u infra python3 -B /data/dev/wt-opencad-sqlite-discovery-fixture-fix-20261012/tools/test_sqlite_discovery_fixtures.py --web --out /hf3fs-jd/data/tmp/opencad-sqlite-discovery-fixture-fix-20261012-v1/web --runtime-root /data/tmp/oc-sdf-web-1012-v1
+```
+
+Use new absent destinations for later runs. Final acceptance requires
+complete markers, reconciled counts, no new skips or rejected positive
+SQLite connections and zero source/HEAD/status drift. Web-only acceptance
+does not inherit core/full results, erase the original FAIL, prove absence
+of all global environment pollution or establish production readiness.

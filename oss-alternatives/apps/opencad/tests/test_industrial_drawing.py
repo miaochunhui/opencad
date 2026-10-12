@@ -34,6 +34,9 @@ ROOT = APP.parents[2]
 PACKAGES = ROOT / "oss-alternatives/packages"
 for path in (APP, PACKAGES / "cadcore", PACKAGES / "dxf", PACKAGES / "vault"):
     sys.path.insert(0, str(path))
+sys.path.insert(0, str(ROOT / "tools"))
+
+from test_sqlite_discovery_fixtures import fixture_runtime
 
 import industrial_drawing as drawing
 import server
@@ -41,7 +44,7 @@ from cadcore import docmodel
 from cadcore.errors import CadError
 
 OUT = None
-DEPENDENCY_ROOT = Path(os.environ.get("OPENCAD_DRAWING_DEPENDENCY_ROOT", "/data/dev/opencad"))
+DEPENDENCY_ROOT = Path(os.environ.get("OPENCAD_DRAWING_DEPENDENCY_ROOT", str(ROOT)))
 BROWSER = "/home/mch2/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome"
 
 
@@ -277,7 +280,7 @@ class IndustrialDrawingTests(unittest.TestCase):
     def setUp(self):
         self.out = OUT / self._testMethodName
         self.out.mkdir()
-        runtime = Path("/data/dev/opencad-drawing-web-fixtures-20261011") / uuid.uuid4().hex
+        runtime = Path(tempfile.mkdtemp(prefix="drawing-", dir=fixture_runtime()))
         self.store = self.store_module.ProjectStore(runtime)
         self.addCleanup(self.store.close)
         self.head = self.store.create_project(

@@ -31,17 +31,27 @@ import uuid
 APP = Path(__file__).resolve().parents[1]
 ROOT = APP.parents[2]
 sys.path.insert(0, str(APP))
+sys.path.insert(0, str(ROOT / "tools"))
+from test_sqlite_discovery_fixtures import fixture_runtime
+
 import project_store as module
 from project_store import (
     IdempotencyConflict, InvalidPayload, ProjectNotFound, ProjectStore,
     RevisionConflict, StorageFailure, StoreCorrupt,
 )
 
-RUNTIME_ROOT = Path("/data/dev/opencad-durable-fixtures-20261011")
+RUNTIME_ROOT = None
 HTTP_SOURCE = None
 HTTP_BINDINGS = {}
 OBSERVATIONS = []
 _UNSET = object()
+
+
+def runtime_root():
+    global RUNTIME_ROOT
+    if RUNTIME_ROOT is None:
+        RUNTIME_ROOT = fixture_runtime()
+    return RUNTIME_ROOT
 
 
 class StoreTestResult(unittest.TextTestResult):
@@ -100,7 +110,7 @@ class RootPreflightTests(unittest.TestCase):
     """Root validation must reject before any runtime or database is created."""
 
     def setUp(self):
-        self.root = RUNTIME_ROOT / (self._testMethodName + "-" + uuid.uuid4().hex)
+        self.root = runtime_root() / (self._testMethodName + "-" + uuid.uuid4().hex)
         self.root.mkdir()
 
     @contextmanager
@@ -202,7 +212,7 @@ class RootPreflightTests(unittest.TestCase):
 
 class StoreTests(unittest.TestCase):
     def setUp(self):
-        self.runtime = RUNTIME_ROOT / (self._testMethodName + "-" + uuid.uuid4().hex)
+        self.runtime = runtime_root() / (self._testMethodName + "-" + uuid.uuid4().hex)
         self.store = ProjectStore(self.runtime)
         self.addCleanup(self.store.close)
         self.head = self.store.create_project(
@@ -738,7 +748,7 @@ class SidecarHTTPTests(unittest.TestCase):
     def setUpClass(cls):
         cls.modules, cls.core = _load_http_runtime()
         cls.auth = cls.modules["access_control"].AuthController(
-            RUNTIME_ROOT / "http-accounts", allow_registration=True)
+            runtime_root() / "http-accounts", allow_registration=True)
         cls.username, cls.credential = "sidecar-" + uuid.uuid4().hex, uuid.uuid4().hex
         cls.user = cls.auth.register(cls.username, cls.credential)["user_id"]
 
@@ -748,7 +758,7 @@ class SidecarHTTPTests(unittest.TestCase):
         cls.credential = None
 
     def setUp(self):
-        self.root = RUNTIME_ROOT / (self._testMethodName + "-" + uuid.uuid4().hex)
+        self.root = runtime_root() / (self._testMethodName + "-" + uuid.uuid4().hex)
         self.store = ProjectStore(self.root / "projects")
         self.addCleanup(self.store.close)
         self.ticket = self.auth.login(self.username, self.credential)
@@ -918,7 +928,7 @@ def main():
     global RUNTIME_ROOT, HTTP_SOURCE
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence", type=Path)
-    parser.add_argument("--runtime-root", type=Path, default=RUNTIME_ROOT)
+    parser.add_argument("--runtime-root", type=Path)
     parser.add_argument("--http-source-root", type=Path,
                         help="Explicit gateway/core dependency root for real HTTP tests")
     parser.add_argument("--crash-mode", choices=("before", "after"))
@@ -926,7 +936,7 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     HTTP_SOURCE = args.http_source_root.resolve() if args.http_source_root else None
-    RUNTIME_ROOT = args.runtime_root.resolve()
+    RUNTIME_ROOT = fixture_runtime(args.runtime_root)
     if RUNTIME_ROOT.is_relative_to(ROOT) or (
             HTTP_SOURCE is not None and RUNTIME_ROOT.is_relative_to(HTTP_SOURCE)):
         parser.error("runtime fixture root must be external")

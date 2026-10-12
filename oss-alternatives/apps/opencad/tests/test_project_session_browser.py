@@ -185,7 +185,11 @@ class BrowserSocketPreflightTests(unittest.TestCase):
     def test_long_runtime_terminal_fail_does_not_launch_cli_or_browser(self):
         with tempfile.TemporaryDirectory(prefix="oc-bi-", dir="/data/tmp") as directory:
             runtime = Path(directory) / ("long-runtime-" * 9)
-            out = self.out / "producer"
+            evidence_parent = Path(os.environ.get(
+                "OPENCAD_EVIDENCE_ROOT", "/hf3fs-jd/data/tmp"))
+            self.assertTrue(evidence_parent.resolve().is_relative_to(
+                Path("/hf3fs-jd/data/tmp").resolve()))
+            out = Path(tempfile.mkdtemp(prefix="identity-long-", dir=evidence_parent)) / "producer"
             args = REVIEW.argparse.Namespace(source_root=ROOT, out=out,
                                              runtime_root=runtime, browser="must-not-launch")
             frozen = {"head": "synthetic", "files": {}, "status": []}
@@ -194,6 +198,8 @@ class BrowserSocketPreflightTests(unittest.TestCase):
                 self.assertEqual(REVIEW.acceptance(args), 1)
                 run.assert_not_called()
             report = json.loads((out / "result.json").read_text())
+            self.assertTrue(out.resolve().is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()))
+            self.assertEqual(report["runtime_root"], str(runtime))
             self.assertEqual(report["verdict"], "FAIL")
             self.assertEqual(report["original_rc"], 1)
             self.assertEqual(report["checks"], [])
