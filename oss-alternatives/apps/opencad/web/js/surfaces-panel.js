@@ -26,30 +26,48 @@
   function mount(host, options) {
     options = options || {};
     if (!host || host.nodeType !== 1) throw new Error("surface_panel_host_required");
-    const labels = options.labels || {};
-    const text = function (key, fallback) { return labels[key] || fallback; };
+    const locale = options.locale || window.OpenCADLocale;
+    if (!locale || typeof locale.bind !== "function") throw new Error("surface_locale_required");
+    if (locale.snapshot().status !== "ready") throw new Error("locale_not_ready");
+    const keyFor = function (key) { return "panel.surfaces." + key.replace(/-/g, "_"); };
+    function caption(node, key) {
+      node.setAttribute("data-panel-i18n", keyFor(key));
+      node.textContent = locale.t(keyFor(key));
+      return node;
+    }
+    function aria(node, key) {
+      node.setAttribute("data-panel-i18n-aria", keyFor(key));
+    }
+    // Validate the full consumer contract before mounting any DOM or observers.
+    ["heading", "limits", "recipe", "plane", "cylinder", "bounds", "thickness",
+      "inward", "trim", "thicken", "sew", "apply", "reload", "preview", "metrics",
+      "status", "empty", "ready", "downloaded", "download_step", "download_brep"
+    ].forEach(function (key) { locale.t(keyFor(key)); });
+    ["error", "error_thickness", "error_webgl", "error_mesh", "error_busy", "error_export"
+    ].forEach(function (key) { locale.t(keyFor(key), {detail: ""}); });
     const root = document.createElement("section");
     root.className = "surfaces-panel";
     host.appendChild(root);
     const heading = document.createElement("h2");
-    heading.textContent = text("heading", "Exact surfaces");
+    caption(heading, "heading");
     root.appendChild(heading);
     const note = document.createElement("p");
     note.className = "surfaces-note";
-    note.textContent = text("limits", "NURBS / rectangular trim / sew / thicken. Sampled G0/G1/G2, not a whole-domain proof.");
+    caption(note, "limits");
     root.appendChild(note);
     const status = document.createElement("output");
     status.className = "surfaces-status";
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
+    aria(status, "status");
     root.appendChild(status);
     const tools = document.createElement("div");
     tools.className = "surfaces-tools";
     root.appendChild(tools);
-    function button(key, fallback, callback, parent) {
+    function button(key, callback, parent) {
       const node = document.createElement("button");
       node.type = "button"; node.dataset.surfaceAction = key;
-      node.textContent = text(key, fallback);
+      caption(node, key); aria(node, key);
       node.addEventListener("click", function () {
         Promise.resolve().then(callback).catch(fail);
       });
@@ -57,36 +75,38 @@
       return node;
     }
     const editorLabel = document.createElement("label");
-    editorLabel.textContent = text("recipe", "Exact recipe (coordinates in integer nm)");
+    editorLabel.appendChild(caption(document.createElement("span"), "recipe"));
     const editor = document.createElement("textarea");
     editor.className = "surfaces-recipe"; editor.rows = 12; editor.spellcheck = false;
     editor.dataset.surfaceField = "recipe";
+    aria(editor, "recipe");
     editorLabel.appendChild(editor); root.appendChild(editorLabel);
     function setRecipe(value) { editor.value = JSON.stringify(value, null, 2); }
     function recipe() { return JSON.parse(editor.value); }
-    button("plane", "10 mm plane", function () { setRecipe(plane()); });
-    button("cylinder", "R5 quarter cylinder", function () { setRecipe(cylinder()); });
+    button("plane", function () { setRecipe(plane()); });
+    button("cylinder", function () { setRecipe(cylinder()); });
     const parameters = document.createElement("div");
     parameters.className = "surfaces-parameters"; root.appendChild(parameters);
-    function input(name, caption, value, type) {
-      const label = document.createElement("label"); label.textContent = text(name, caption);
+    function input(name, value, type) {
+      const label = document.createElement("label");
+      label.appendChild(caption(document.createElement("span"), name));
       const node = document.createElement("input"); node.type = type || "text";
-      node.dataset.surfaceField = name; node.value = value;
+      node.dataset.surfaceField = name; node.value = value; aria(node, name);
       label.appendChild(node); parameters.appendChild(label); return node;
     }
-    const bounds = input("bounds", "Trim UV [u0,u1,v0,v1]", "[0.2,0.8,0.25,0.75]");
-    const thickness = input("thickness", "Thickness (mm)", "1", "number");
+    const bounds = input("bounds", "[0.2,0.8,0.25,0.75]");
+    const thickness = input("thickness", "1", "number");
     thickness.step = "0.001"; thickness.min = "0.000001";
-    const inward = input("inward", "Inward", "", "checkbox");
-    button("trim", "Wrap trim", function () {
+    const inward = input("inward", "", "checkbox");
+    button("trim", function () {
       setRecipe({op: "trim", surface: recipe(), bounds: JSON.parse(bounds.value)});
     });
-    button("thicken", "Wrap thicken", function () {
+    button("thicken", function () {
       const nm = Number(thickness.value) * 1000000;
       if (!Number.isSafeInteger(nm) || nm <= 0) throw new Error("thickness_requires_positive_integer_nm");
       setRecipe({op: "thicken", surface: recipe(), thickness_nm: nm, inward: inward.checked});
     });
-    button("sew", "Two-plane seam", function () {
+    button("sew", function () {
       const left = plane(), right = plane();
       right.poles_nm.forEach(function (row) { row.forEach(function (p) { p[0] += 10000000; }); });
       setRecipe({op: "sew", surfaces: [left, right], solid: false, seams: [seam()]});
@@ -94,16 +114,34 @@
     const actions = document.createElement("div");
     actions.className = "surfaces-actions"; root.appendChild(actions);
     const canvas = document.createElement("canvas");
-    canvas.className = "surfaces-preview"; canvas.setAttribute("aria-label", text("preview", "Exact surface mesh preview"));
+    canvas.className = "surfaces-preview"; aria(canvas, "preview");
     root.appendChild(canvas);
     const metrics = document.createElement("pre");
     metrics.className = "surfaces-metrics"; metrics.setAttribute("aria-live", "polite");
+    aria(metrics, "metrics");
     root.appendChild(metrics);
     const model = {busy: false, triangles: 0, draws: 0, response: null, error: ""};
     let disposed = false, sequence = 0, gl, program, buffer, mesh;
+    let notice = null;
+    function paintNotice() {
+      if (!disposed && notice) status.textContent = locale.t(keyFor(notice.key), notice.args);
+    }
+    function notify(key, args) {
+      notice = {key: key, args: args}; paintNotice();
+    }
+    function errorKey(detail) {
+      if (detail === "thickness_requires_positive_integer_nm") return "error_thickness";
+      if (detail === "webgl_unavailable" || detail === "surface_webgl_error") return "error_webgl";
+      if (["invalid_surface_extent", "invalid_surface_triangle",
+          "degenerate_surface_triangle"].includes(detail)) return "error_mesh";
+      if (detail === "surface_request_in_progress") return "error_busy";
+      if (["surface_export_failed", "surface_export_receipt_invalid",
+          "surface_export_bytes_changed"].includes(detail)) return "error_export";
+      return "error";
+    }
     function fail(error) {
       model.error = String(error.message || error);
-      status.textContent = model.error; root.dataset.surfaceState = "error";
+      notify(errorKey(model.error), {detail: model.error}); root.dataset.surfaceState = "error";
     }
     function busy(value) {
       model.busy = value; root.setAttribute("aria-busy", String(value));
@@ -192,8 +230,7 @@
         if (gl) { gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); }
         if (options.onMesh) options.onMesh(null, response);
       }
-      status.textContent = response.empty ? text("empty", "No saved surface.") :
-        text("ready", "Exact kernel result ready.");
+      notify(response.empty ? "empty" : "ready");
       root.dataset.surfaceState = "ready";
     }
     async function perform(body) {
@@ -205,8 +242,8 @@
         return response;
       } finally { if (!disposed && current === sequence) busy(false); }
     }
-    button("apply", "Validate & save candidate", function () { return perform({recipe: recipe()}); }, actions);
-    button("reload", "Read saved surfaces", function () { return perform(); }, actions);
+    button("apply", function () { return perform({recipe: recipe()}); }, actions);
+    button("reload", function () { return perform(); }, actions);
     async function download(fmt) {
       if (model.busy) throw new Error("surface_request_in_progress");
       const current = ++sequence;
@@ -238,19 +275,23 @@
           setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
         }
         model.error = "";
-        status.textContent = text("downloaded", "Saved exact surface downloaded; unsaved recipe retained.");
+        notify("downloaded");
         root.dataset.surfaceState = "ready";
       } finally { if (!disposed && current === sequence) busy(false); }
     }
-    button("download-step", "Download saved STEP", function () { return download("step"); }, actions);
-    button("download-brep", "Download saved BRep", function () { return download("brep"); }, actions);
+    button("download-step", function () { return download("step"); }, actions);
+    button("download-brep", function () { return download("brep"); }, actions);
     setRecipe(plane());
     const observer = new ResizeObserver(function () { try { draw(); } catch (error) { fail(error); } });
     observer.observe(canvas);
+    const unbind = locale.bind(root);
+    window.addEventListener("opencad:locale", paintNotice);
     return {root: root, model: model, reload: function () { return perform(); },
       apply: function () { return perform({recipe: recipe()}); }, setRecipe: setRecipe,
+      reportError: fail,
       dispose: function () {
         disposed = true; sequence += 1; observer.disconnect();
+        unbind(); window.removeEventListener("opencad:locale", paintNotice);
         if (gl) { gl.deleteBuffer(buffer); gl.deleteProgram(program); }
         root.remove();
       }};

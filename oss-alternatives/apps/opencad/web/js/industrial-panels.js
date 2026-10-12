@@ -13,13 +13,10 @@
     return value;
   }
   const surfaceLabels = {
-    heading: "精确曲面", limits: "独立曲面项目：NURBS、矩形裁剪、缝合和增厚。G0/G1/G2 为采样检查，不是全域证明。",
-    recipe: "曲面配方（整数纳米坐标）", plane: "10 mm 平面",
-    cylinder: "R5 四分之一圆柱面", bounds: "裁剪 UV 范围 [u0,u1,v0,v1]",
-    thickness: "厚度（mm）", inward: "向内", trim: "包裹裁剪",
-    thicken: "包裹增厚", sew: "两平面接缝", apply: "验证并保存",
-    reload: "重读已保存曲面", preview: "真实曲面网格预览",
-    empty: "尚未保存曲面", ready: "精确内核结果已保存"
+    locale: function () {
+      if (!window.OpenCADLocale) throw new Error("surface_locale_required");
+      return window.OpenCADLocale;
+    }
   };
   async function boot() {
     await window.OpenCADProjectSession.ready;
@@ -33,11 +30,34 @@
         const host = details.querySelector("div");
         try {
           if (host.hasAttribute("data-surfaces-host")) {
-            window.opencadSurfacesPanel = window.OpenCADSurfaces.mount(host, {
-              labels: surfaceLabels
-            });
-            window.opencadSurfacesPanel.reload().catch(function (error) {
-              host.querySelector("output").textContent = String(error.message || error);
+            const locale = surfaceLabels.locale();
+            locale.ready.then(function () {
+              window.opencadSurfacesPanel = window.OpenCADSurfaces.mount(host, {locale: locale});
+              return window.opencadSurfacesPanel.reload();
+            }).catch(function (error) {
+              const panel = window.opencadSurfacesPanel;
+              if (panel && panel.root.parentElement === host) {
+                panel.reportError(error);
+              } else {
+                mounted = false;
+                const message = document.createElement("p");
+                message.setAttribute("role", "alert");
+                message.textContent = String(error.message || error);
+                host.append(message);
+                if (locale.snapshot().status === "ready") {
+                  try {
+                    message.textContent = locale.t("panel.surfaces.error", {
+                      detail: String(error.message || error)
+                    });
+                  } catch (translationError) {
+                    const localeFailure = document.createElement("p");
+                    localeFailure.setAttribute("role", "alert");
+                    localeFailure.textContent = String(translationError.message || translationError);
+                    host.append(localeFailure);
+                  }
+                }
+                throw error;
+              }
             });
           } else if (host.hasAttribute("data-assembly-host")) {
             window.opencadAssemblyPanel = window.opencadAssembly.mount(host, {
