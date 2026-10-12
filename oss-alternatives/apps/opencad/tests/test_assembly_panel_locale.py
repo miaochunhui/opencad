@@ -659,10 +659,13 @@ def keymap_check(root, payload):
 
 def bindings(root, locale_root, catalog_root):
     locale = locale_root / LOCALE
-    require(locale.read_bytes() == command(locale_root, "show", f"{FOUNDATION}:{LOCALE}"),
+    head = command(locale_root, "rev-parse", "HEAD").decode().strip()
+    command(locale_root, "merge-base", "--is-ancestor", FOUNDATION, head)
+    require(locale.read_bytes() == command(locale_root, "show", f"{head}:{LOCALE}"),
             "foundation_source_drift")
     result = {"locale_path": str(locale), "locale_sha256": sha(locale.read_bytes()),
-              "foundation_commit": FOUNDATION, "dictionary_kind": "chair-working-catalog"}
+              "foundation_commit": FOUNDATION, "foundation_head": head,
+              "dictionary_kind": "chair-working-catalog"}
     catalog = catalog_root / WEB / "panel-i18n.json"
     result.update(catalog_path=str(catalog), catalog_sha256=sha(catalog.read_bytes()))
     return result

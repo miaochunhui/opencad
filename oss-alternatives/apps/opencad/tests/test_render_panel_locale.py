@@ -441,9 +441,10 @@ def sources(root, locale, catalog, development):
     if development:
         require(set(git(root, "diff", BASE, "HEAD", "--name-only").decode().splitlines()) <= set(OWNED),
                 "development_commit_write_scope")
-    git(locale, "merge-base", "--is-ancestor", FOUNDATION, "HEAD")
+    locale_head = git(locale, "rev-parse", "HEAD").decode().strip()
+    git(locale, "merge-base", "--is-ancestor", FOUNDATION, locale_head)
     git(catalog, "merge-base", "--is-ancestor", FOUNDATION, "HEAD")
-    original = git(locale, "cat-file", "blob", FOUNDATION + ":" + WEB + "/js/locale-service.js")
+    original = git(locale, "cat-file", "blob", locale_head + ":" + WEB + "/js/locale-service.js")
     require(original == (locale / WEB / "js/locale-service.js").read_bytes(),
             "foundation_service_drift")
     catalog_owned = (f"{WEB}/panel-i18n.json",
