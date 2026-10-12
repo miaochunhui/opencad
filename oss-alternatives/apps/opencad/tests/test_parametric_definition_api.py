@@ -285,6 +285,7 @@ class Client:
 class DefinitionHTTPTests(unittest.TestCase):
     def setUp(self):
         gate.ensure_context()
+        self.addCleanup(gate.check_discovery_source)
         gate.CONTEXT.active_test = self.id()
         self.root = gate.CONTEXT.child("http")
         self.auth = AuthController(self.root / "accounts", allow_registration=True)
@@ -511,6 +512,7 @@ class DefinitionHTTPTests(unittest.TestCase):
 class DefinitionCLITests(unittest.TestCase):
     def setUp(self):
         gate.ensure_context()
+        self.addCleanup(gate.check_discovery_source)
         gate.CONTEXT.active_test = self.id()
         self.root = gate.CONTEXT.child("cli")
         self.names = ["definition_" + uuid4().hex for _ in range(2)]

@@ -48,6 +48,8 @@ OWNED = (
 )
 MARKER = "OPENCAD_DEFINITION_ACCEPTANCE"
 CONTEXT = None
+SOURCE_SCOPE = "integration"
+EXPECTED_HEAD = None
 RESPONSE_SCHEMA = 2
 HTTP_HEADERS = {"content-type", "content-length", "cache-control",
                 "x-content-type-options", "x-opencad-document-sha256", "x-opencad-revision"}
@@ -60,6 +62,7 @@ REPAIR_PATHS = {
     "docs/design/parametric-definition-api.md",
 }
 PRODUCT_BASE = "bbdd7280d3d995f7caa97e0161bb0dfbb46091f3"
+FLOW_BASE = "c6fdd67531bc40c72982c3f912a73fa4366cc559"
 
 
 def now():
@@ -88,27 +91,211 @@ def write(path, value):
         os.fsync(handle.fileno())
 
 
+def fixture_command(argv, out, *, env=None):
+    process = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, env=env)
+    number = len(list(out.glob("command-*.json")))
+    write(out / f"command-{number:03d}.stdout", process.stdout)
+    write(out / f"command-{number:03d}.stderr", process.stderr)
+    write(out / f"command-{number:03d}.json", {
+        "argv": argv, "actual_rc": process.returncode, "at": now(),
+        "stdout_sha256": digest(process.stdout), "stderr_sha256": digest(process.stderr)})
+    return process
+
+
+def source_fixture(out, *, current=False):
+    root = out / "source"
+    commands = out / "commands"
+    commands.mkdir()
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    prefix = ["git", "--no-optional-locks", "--no-replace-objects"]
+    for argv in (
+            [*prefix, "init", str(root)],
+            [*prefix, "-C", str(root), "fetch", "--no-tags", str(ROOT), FLOW_BASE],
+            [*prefix, "-C", str(root), "switch", "--create", "fixture", "FETCH_HEAD"]):
+        result = fixture_command(argv, commands, env=env)
+        require(result.returncode == 0, "source_fixture_git_failed")
+    if current:
+        for name in sorted(REPAIR_PATHS):
+            path = root / name
+            path.write_bytes((ROOT / name).read_bytes())
+        fixture_commit(root, commands, sorted(REPAIR_PATHS), "Source binding test snapshot")
+    return root, commands
+
+
+def fixture_commit(root, commands, paths, message):
+    require(root == commands.parent / "source" and root != ROOT
+            and commands.parent.resolve().is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()),
+            "commit_requires_owned_source_fixture")
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    prefix = ["git", "--no-optional-locks", "--no-replace-objects", "-C", str(root)]
+    for argv in (
+            [*prefix, "add", "--", *paths],
+            [*prefix, "-c", "user.name=infra", "-c", "user.email=infra@ai4everyone.top",
+             "-c", "core.hooksPath=/dev/null", "commit", "-s", "-m", message, "--", *paths]):
+        result = fixture_command(argv, commands, env=env)
+        require(result.returncode == 0, "source_fixture_commit_failed")
+
+
+def run_source_before(out):
+    root, commands = source_fixture(out)
+    name = "docs/handoff/20261012-exact-loop-release.md"
+    path = root / name
+    path.write_bytes(path.read_bytes() + b"\n<!-- Local source-binding regression fixture. -->\n")
+    fixture_commit(root, commands, [name], "Docs-only source binding regression fixture")
+    head = fixture_command(["git", "-C", str(root), "rev-parse", "HEAD"], commands)
+    require(head.returncode == 0, "source_fixture_head_failed")
+    runtime = Path("/data/tmp") / ("oc-dsb-before-" + uuid4().hex[:12])
+    process = fixture_command([
+        sys.executable, "-B", str(root / REPAIR_CORE),
+        "--controls-only", "--evidence-dir", str(out / "original-cli"),
+        "--runtime-root", str(runtime)], commands)
+    reproduced = process.returncode == 1 and b"product_source_changed" in process.stderr
+    result = {"verdict": "FAIL", "intended_rc": 1, "original_cli_rc": process.returncode,
+              "regression_reproduced": reproduced,
+              "first_cause": "product_source_changed" if reproduced else "before_not_reproduced",
+              "original_source_commit": FLOW_BASE, "fixture_commit": head.stdout.decode().strip(),
+              "fixture_root": str(root), "changed_paths": [name], "runtime_root": str(runtime),
+              "finished_at": now(), "product_tests_executed": 0}
+    write(out / "result.json", result)
+    write(out / "completion.log", b"OPENCAD_SOURCE_BEFORE verdict=FAIL rc=1\n")
+    print("OPENCAD_SOURCE_BEFORE verdict=FAIL rc=1 evidence=" + str(out), flush=True)
+    return 1
+
+
+REPAIR_CORE = "oss-alternatives/packages/cadcore/tests/test_parametric_definitions.py"
+
+
 def ensure_context():
     global CONTEXT
     if CONTEXT is not None:
+        check_discovery_source()
         return
-    # Normal discovery has an external parent gate; keep its owned fixtures local.
-    runtime = Path(os.environ.get("OPENCAD_TEST_RUNTIME_ROOT", "/data/tmp/opencad-definition-discovery"))
-    require(runtime.absolute().is_relative_to(Path("/data/tmp")) and
-            all(not path.is_symlink() for path in (runtime, *runtime.parents)), "local_runtime_required")
-    runtime.mkdir(parents=True, exist_ok=True)
+    parent = discovery_parent()
+    captured = source()
+    runtime = Path(parent["runtime"]["root"])
     child = runtime / ("definition-" + uuid4().hex)
     child.mkdir()
-    out = Path("/hf3fs-jd/data/tmp") / ("opencad-definition-discovery-" + uuid4().hex)
+    out = Path(parent["evidence_root"]) / ("definition-discovery-" + uuid4().hex)
     out.mkdir()
     CONTEXT = Context(out, child)
+    CONTEXT.discovery_source = captured
+    CONTEXT.discovery_parent = parent
+    write(out / "discovery-source.json", {"source": captured, "parent_gate": parent})
 
 
-def source():
+def local_runtime(value, *, fresh=False):
+    path = Path(value)
+    require(path.is_absolute() and ".." not in path.parts and path != Path("/data/tmp")
+            and path.is_relative_to(Path("/data/tmp")), "local_runtime_required")
+    ancestor = Path("/data/tmp")
+    for part in (*reversed(path.parents), path):
+        require(not part.is_symlink(), "linked_runtime")
+        if part.exists():
+            require(part.is_dir() and not (part / ".git").exists(), "runtime_inside_source")
+            ancestor = part
+    filesystem = subprocess.check_output(
+        ["stat", "-f", "-c", "%T", str(ancestor)], text=True).strip()
+    require(filesystem in {"ext2/ext3", "ext4", "xfs", "btrfs", "zfs"},
+            "local_persistent_runtime_required")
+    require(not fresh or not path.exists(), "runtime_already_exists")
+    return path, filesystem
+
+
+def discovery_parent():
+    """Bind real normal discovery to this source's already-active acceptance gate."""
+    module = sys.modules.get("__main__")
+    path = Path(getattr(module, "__file__", "")).absolute()
+    expected = ROOT / "tools/acceptance.py"
+    require(path == expected and path.resolve() == expected, "discovery_parent_required")
+    runner = getattr(module, "run_suite", None)
+    require(getattr(module, "ROOT", None) == ROOT and runner is not None
+            and runner.__code__.co_filename == str(expected),
+            "foreign_discovery_parent")
+    parser = argparse.ArgumentParser(allow_abbrev=False, exit_on_error=False)
+    parser.add_argument("--suite", type=Path, required=True)
+    parser.add_argument("--top", type=Path, required=True)
+    parser.add_argument("--pattern", default="test*.py")
+    parser.add_argument("--case")
+    try:
+        args, unknown = parser.parse_known_args(sys.argv[1:])
+    except (argparse.ArgumentError, SystemExit):
+        raise AssertionError("discovery_parent_arguments") from None
+    require(not unknown and (args.suite, args.top) in {
+        (CORE / "tests", CORE), (APP / "tests", APP)}, "discovery_parent_arguments")
+    process = Path("/proc/self/cmdline").read_bytes().split(b"\0")
+    require(str(expected).encode() in process and
+            process[process.index(str(expected).encode()) + 1:-1] ==
+            [os.fsencode(arg) for arg in sys.argv[1:]], "discovery_process_arguments")
+    guard = getattr(sys, "_opencad_acceptance_sqlite_guard", None)
+    require(guard is not None and type(guard).__module__ == "__main__" and
+            type(guard).__name__ == "SQLiteRuntimeGuard", "discovery_sqlite_guard_required")
+    runtime = guard.summary()
+    root, filesystem = local_runtime(runtime["root"])
+    require(runtime["root"] == runtime["TMPDIR"] == runtime["tempfile"] ==
+            os.environ.get("OPENCAD_TEST_RUNTIME_ROOT") == str(root)
+            and runtime["filesystem"] == filesystem and runtime["rejected"] == [],
+            "discovery_runtime_drift")
+    evidence = Path(os.environ.get("OPENCAD_EVIDENCE_ROOT", ""))
+    require(evidence.is_absolute() and
+            evidence.resolve().is_relative_to(Path("/hf3fs-jd/data/tmp").resolve())
+            and evidence.is_dir(), "discovery_evidence_parent_required")
+    return {"entry": str(expected), "entry_sha256": digest(expected.read_bytes()),
+            "argv": list(sys.argv), "pid": os.getpid(), "runtime": {
+                key: runtime[key] for key in ("root", "TMPDIR", "tempfile", "filesystem")},
+            "evidence_root": str(evidence)}
+
+
+def check_discovery_source():
+    if CONTEXT is not None and hasattr(CONTEXT, "discovery_source"):
+        require(discovery_parent() == CONTEXT.discovery_parent, "discovery_parent_drift")
+        require(source() == CONTEXT.discovery_source, "discovery_source_drift")
+
+
+def local_git(root, *args):
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    env.update(GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", GIT_NO_REPLACE_OBJECTS="1")
+    process = subprocess.run(
+        ["git", "--no-optional-locks", "--no-replace-objects", "-C", str(root), *args],
+        stdin=subprocess.DEVNULL, capture_output=True, env=env)
+    require(process.returncode == 0, "source_git_failed:" + args[0])
+    return process.stdout
+
+
+def source_manifest(root, *, scope="integration", expected_head=None):
+    require(scope in {"integration", "repair-owner"}, "unknown_source_scope")
+    require(root.is_absolute() and root.resolve() == root and
+            all(not part.is_symlink() for part in (root, *root.parents)), "linked_source_root")
+    head = local_git(root, "rev-parse", "--verify", "HEAD").decode().strip()
+    require(len(head) == 40 and all(char in "0123456789abcdef" for char in head),
+            "invalid_source_head")
+    require(expected_head is None or expected_head == head, "source_head_not_pinned")
+    entries = {}
+    for row in local_git(root, "ls-tree", "-r", "-z", head).split(b"\0"):
+        if not row:
+            continue
+        metadata, name = row.split(b"\t", 1)
+        mode, kind, oid = metadata.decode().split()
+        relative = name.decode()
+        require(kind == "blob" and mode in {"100644", "100755"}
+                and not Path(relative).is_absolute() and ".." not in Path(relative).parts,
+                "nonregular_git_source")
+        entries[relative] = {"git_mode": mode, "oid": oid}
+    require(entries and set(OWNED) <= set(entries), "owned_source_missing")
+    index = {}
+    for row in local_git(root, "ls-files", "--stage", "-z").split(b"\0"):
+        if not row:
+            continue
+        metadata, name = row.split(b"\t", 1)
+        mode, oid, stage = metadata.decode().split()
+        relative = name.decode()
+        require(stage == "0" and relative not in index, "source_index_unmerged")
+        index[relative] = {"git_mode": mode, "oid": oid}
+    require(index == entries, "source_index_changed")
+    require(not local_git(root, "status", "--porcelain=v1", "--untracked-files=all"),
+            "source_dirty")
     files = {}
-    for directory, dirs, names in os.walk(ROOT, followlinks=False):
-        dirs[:] = sorted(name for name in dirs if name not in {
-            ".git", "__pycache__", ".pytest_cache", "node_modules", ".venv"})
+    for directory, dirs, names in os.walk(root, followlinks=False):
+        dirs[:] = sorted(name for name in dirs if name != ".git")
         require(all(not (Path(directory) / name).is_symlink() for name in dirs),
                 "linked_source_directory")
         for name in sorted(names):
@@ -117,25 +304,238 @@ def source():
             path = Path(directory) / name
             require(stat.S_ISREG(path.lstat().st_mode), "nonregular_source")
             data = path.read_bytes()
-            bootstrap.scan_bytes(path.relative_to(ROOT).as_posix(), data)
-            files[path.relative_to(ROOT).as_posix()] = {
+            relative = path.relative_to(root).as_posix()
+            require(relative in entries, "source_file_set_changed")
+            bootstrap.scan_bytes(relative, data)
+            actual_mode = "100755" if path.stat().st_mode & 0o111 else "100644"
+            require(actual_mode == entries[relative]["git_mode"], "source_mode_changed:" + relative)
+            oid = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+            require(oid == entries[relative]["oid"], "source_blob_changed:" + relative)
+            files[relative] = {
                 "sha256": digest(data), "bytes": len(data), "mode": path.stat().st_mode & 0o777}
-    require(set(OWNED) <= set(files), "owned_source_missing")
-    for module, expected in ((parametric, CORE / "cadcore/parametric.py"),
+    require(set(files) == set(entries), "source_file_set_changed")
+    if scope == "repair-owner":
+        require(set(local_git(root, "diff", "--name-only", PRODUCT_BASE, head, "--").decode()
+                    .splitlines()) <= REPAIR_PATHS, "product_source_changed")
+    require(local_git(root, "rev-parse", "HEAD").decode().strip() == head
+            and not local_git(root, "status", "--porcelain=v1", "--untracked-files=all"),
+            "source_capture_drift")
+    return {"root": str(root), "head": head,
+            "branch": local_git(root, "branch", "--show-current").decode().strip(),
+            "status": "", "files": files, "owned": {name: files[name] for name in OWNED},
+            "sha256": digest(canonical(files)), "schema": 2, "scope": scope,
+            "git_tree": local_git(root, "rev-parse", head + "^{tree}").decode().strip(),
+            "git_entries_sha256": digest(canonical(entries))}
+
+
+def source():
+    for module, expected in ((docmodel, CORE / "cadcore/docmodel.py"),
+                             (parametric, CORE / "cadcore/parametric.py"),
+                             (bootstrap, ROOT / "tools/bootstrap_from_infra.py"),
                              (sys.modules["industrial_parametric"], APP / "industrial_parametric.py"),
                              (sys.modules["cadcore.kernel.subproc"], CORE / "cadcore/kernel/subproc.py")):
         require(Path(module.__file__).resolve() == expected, "foreign_runtime_source")
-    def git(*args):
-        return subprocess.check_output(
-            ["git", "--no-optional-locks", "--no-replace-objects", "-C", str(ROOT), *args],
-            text=True).strip()
-    require(set(git("diff", "--name-only", PRODUCT_BASE, "--").splitlines()) <= REPAIR_PATHS,
-            "product_source_changed")
-    require(set(files) == set(git("ls-files").splitlines()), "source_file_set_changed")
-    return {"root": str(ROOT), "head": git("rev-parse", "HEAD"),
-            "branch": git("branch", "--show-current"), "status": git("status", "--porcelain=v1"),
-            "files": files, "owned": {name: files[name] for name in OWNED},
-            "sha256": digest(canonical(files))}
+    return source_manifest(ROOT, scope=SOURCE_SCOPE, expected_head=EXPECTED_HEAD)
+
+
+def run_source_preflight(out):
+    try:
+        captured = source()
+        runtime = None
+        if PREFLIGHT_RUNTIME is not None:
+            path, filesystem = local_runtime(PREFLIGHT_RUNTIME, fresh=True)
+            runtime = {"root": str(path), "filesystem": filesystem}
+        result = {"verdict": "SOURCE_VERIFIED", "intended_rc": 0, "source": captured,
+                  "runtime": runtime, "finished_at": now(), "first_cause": None,
+                  "product_tests_executed": 0}
+    except Exception:
+        cause = traceback.format_exc()
+        result = {"verdict": "FAIL", "intended_rc": 1, "first_cause": cause,
+                  "finished_at": now(), "product_tests_executed": 0}
+        write(out / "failure.log", cause.encode())
+    write(out / "result.json", result)
+    marker = (f"OPENCAD_SOURCE_PREFLIGHT verdict={result['verdict']} "
+              f"rc={result['intended_rc']}\n")
+    write(out / "completion.log", marker.encode())
+    print(marker.strip() + " evidence=" + str(out), flush=True)
+    return result["intended_rc"]
+
+
+PREFLIGHT_RUNTIME = None
+
+
+def run_source_controls(out):
+    """Use only this run's new local Git fixtures and actual child CLIs."""
+    root, commands = source_fixture(out, current=True)
+    core = root / REPAIR_CORE
+    def runner_snapshot():
+        changed = local_git(ROOT, "diff", "--name-only", PRODUCT_BASE, "--").decode().splitlines()
+        require(set(changed) <= REPAIR_PATHS and not local_git(
+            ROOT, "ls-files", "--others", "--exclude-standard", "-z"), "control_runner_write_scope")
+        return {"head": local_git(ROOT, "rev-parse", "HEAD").decode().strip(),
+                "status": local_git(ROOT, "status", "--porcelain=v1").decode(),
+                "owned": {name: {"sha256": digest((ROOT / name).read_bytes()),
+                                 "bytes": (ROOT / name).stat().st_size,
+                                 "mode": (ROOT / name).stat().st_mode & 0o777}
+                          for name in sorted(REPAIR_PATHS)},
+                "scope": "repair-development diagnostic only; not accepted product source"}
+    source_base = runner_snapshot()
+    outcomes = []
+
+    def case(name, *, cause=None, scope="integration", extra=()):
+        evidence = out / name
+        argv = [sys.executable, "-B", str(core), "--source-preflight",
+                "--source-scope", scope, "--evidence-dir", str(evidence), *extra]
+        child = fixture_command(argv, commands)
+        report = json.loads((evidence / "result.json").read_bytes())
+        expected = 0 if cause is None else 1
+        passed = child.returncode == report["intended_rc"] == expected and (
+            report["verdict"] == "SOURCE_VERIFIED" if cause is None else
+            cause in report["first_cause"])
+        outcomes.append({"case": name, "actual_rc": child.returncode,
+                         "expected_first_cause": cause, "pass": passed,
+                         "result": str(evidence / "result.json"),
+                         "result_sha256": digest((evidence / "result.json").read_bytes())})
+        require(passed, "source_control_failed:" + name)
+
+    try:
+        case("current-clean")
+        case("repair-owner-clean", scope="repair-owner")
+        name = "docs/handoff/20261012-exact-loop-release.md"
+        path = root / name
+        path.write_bytes(path.read_bytes() + b"\n<!-- Legitimate docs-only successor fixture. -->\n")
+        fixture_commit(root, commands, [name], "Docs-only integration source positive")
+        case("docs-successor")
+        case("docs-owner-refused", scope="repair-owner", cause="product_source_changed")
+        original = path.read_bytes()
+        path.write_bytes(original + b"\n<!-- Dirty negative. -->\n")
+        case("dirty", cause="source_dirty")
+        child = fixture_command(["git", "-C", str(root), "add", "--", name], commands)
+        require(child.returncode == 0, "source_fixture_stage_failed")
+        case("staged", cause="source_index_changed")
+        path.write_bytes(original)
+        child = fixture_command(["git", "-C", str(root), "add", "--", name], commands)
+        require(child.returncode == 0, "source_fixture_restore_index_failed")
+        child = fixture_command(["git", "-C", str(root), "config", "core.filemode", "false"],
+                                commands)
+        require(child.returncode == 0, "source_fixture_mode_setting_failed")
+        mode = path.stat().st_mode & 0o777
+        path.chmod(mode ^ 0o100)
+        case("mode-ignored-by-git", cause="source_mode_changed")
+        path.chmod(mode)
+        unknown = root / "unknown-source-negative.txt"
+        write(unknown, b"untracked negative fixture\n")
+        case("untracked", cause="source_dirty")
+        unknown.unlink()
+        ignored = root / "__pycache__"
+        ignored.mkdir()
+        write(ignored / "negative.pyc", b"generated negative fixture\n")
+        case("ignored-generated", cause="source_file_set_changed")
+        (ignored / "negative.pyc").unlink()
+        ignored.rmdir()
+        case("wrong-head", cause="source_head_not_pinned", extra=("--expect-head", "0" * 40))
+        case("runtime-network", cause="local_runtime_required",
+             extra=("--runtime-root", str(out / "network-runtime")))
+        case("runtime-dotdot", cause="local_runtime_required",
+             extra=("--runtime-root", "/data/tmp/negative/../outside"))
+        direct = out / "direct-discovery"
+        direct.mkdir()
+        env = dict(os.environ, OPENCAD_EVIDENCE_ROOT=str(direct),
+                   PYTHONPATH=str(root / "oss-alternatives/packages/cadcore"))
+        child = fixture_command([
+            sys.executable, "-B", "-m", "unittest",
+            "tests.test_parametric_definitions.GateControls.test_owned_source_count_hash_head_and_status"],
+            commands, env=env)
+        outcomes.append({"case": "discovery-without-parent", "actual_rc": child.returncode,
+                         "expected_first_cause": "discovery_parent_required",
+                         "pass": child.returncode == 1 and
+                         b"discovery_parent_required" in child.stderr})
+        require(outcomes[-1]["pass"], "source_control_failed:discovery-without-parent")
+        # Bring in the actual guarded parent only within this disposable fixture.
+        parent_name = "tools/acceptance.py"
+        raw = local_git(ROOT, "show", "60a0e9cb97950a321bf1c8a6f76dd581056b5cbc:" + parent_name)
+        (root / parent_name).write_bytes(raw)
+        fixture_commit(root, commands, [parent_name], "Actual guarded parent integration fixture")
+        case("actual-parent-source-successor")
+        runtime = Path("/data/tmp") / ("oc-dsb-parent-" + uuid4().hex[:12])
+        runtime.mkdir()
+        external = out / "parent-discovery"
+        external.mkdir()
+        env = dict(os.environ, OPENCAD_EVIDENCE_ROOT=str(external),
+                   OPENCAD_TEST_RUNTIME_ROOT=str(runtime), TMPDIR=str(runtime))
+        child = fixture_command([
+            sys.executable, "-B", str(root / parent_name), "--suite",
+            str(root / "oss-alternatives/packages/cadcore/tests"), "--top",
+            str(root / "oss-alternatives/packages/cadcore"), "--case",
+            "tests.test_parametric_definitions.GateControls.test_owned_source_count_hash_head_and_status"],
+            commands, env=env)
+        outcomes.append({"case": "actual-parent-discovery", "actual_rc": child.returncode,
+                         "pass": child.returncode == 0 and
+                         b"INDEPENDENT_TEST_COUNTS" in child.stdout,
+                         "runtime": str(runtime), "evidence": str(external)})
+        require(outcomes[-1]["pass"], "source_control_failed:actual-parent-discovery")
+        for label, script in (
+                ("core", core),
+                ("http", root / "oss-alternatives/apps/opencad/tests/test_parametric_definition_api.py")):
+            original = out / (label + "-selftest")
+            runtime = Path("/data/tmp") / ("oc-dsb-" + label + "-" + uuid4().hex[:12])
+            child = fixture_command([
+                sys.executable, "-B", str(script), "--controls-only",
+                "--evidence-dir", str(original), "--runtime-root", str(runtime)], commands)
+            result = json.loads((original / "result.json").read_bytes())
+            outcomes.append({"case": label + "-controls-cli", "actual_rc": child.returncode,
+                             "tests": result["tests"], "pass": child.returncode == 0
+                             and result["verdict"] == "PASS" and result["source_drift"] == [],
+                             "result": str(original / "result.json"),
+                             "result_sha256": digest((original / "result.json").read_bytes())})
+            require(outcomes[-1]["pass"], "source_control_failed:" + label + "-controls-cli")
+            readback = out / (label + "-readback")
+            child = fixture_command([
+                sys.executable, "-B", str(script), "--verify-evidence", str(original),
+                "--evidence-dir", str(readback)], commands)
+            result = json.loads((readback / "result.json").read_bytes())
+            outcomes.append({"case": label + "-offline-cli", "actual_rc": child.returncode,
+                             "checks": result.get("checks"), "pass": child.returncode == 0
+                             and result["verdict"] == "EVIDENCE_VERIFIED",
+                             "result": str(readback / "result.json"),
+                             "result_sha256": digest((readback / "result.json").read_bytes())})
+            require(outcomes[-1]["pass"], "source_control_failed:" + label + "-offline-cli")
+        runtime = Path("/data/tmp") / ("oc-dsb-discover-" + uuid4().hex[:12])
+        runtime.mkdir()
+        external = out / "core-discovery"
+        external.mkdir()
+        env = dict(os.environ, OPENCAD_EVIDENCE_ROOT=str(external),
+                   OPENCAD_TEST_RUNTIME_ROOT=str(runtime), TMPDIR=str(runtime))
+        child = fixture_command([
+            sys.executable, "-B", str(root / parent_name), "--suite",
+            str(root / "oss-alternatives/packages/cadcore/tests"), "--top",
+            str(root / "oss-alternatives/packages/cadcore"), "--pattern",
+            "test_parametric_definitions.py"], commands, env=env)
+        summaries = [json.loads(line.removeprefix("INDEPENDENT_TEST_COUNTS "))
+                     for line in child.stdout.decode().splitlines()
+                     if line.startswith("INDEPENDENT_TEST_COUNTS ")]
+        passed = child.returncode == 0 and len(summaries) == 1 and summaries[0]["successful"]
+        outcomes.append({"case": "actual-parent-full-core-file-discovery",
+                         "actual_rc": child.returncode, "pass": passed,
+                         "counts": summaries[0] if len(summaries) == 1 else None,
+                         "runtime": str(runtime), "evidence": str(external)})
+        require(passed, "source_control_failed:actual-parent-full-core-file-discovery")
+        require(runner_snapshot() == source_base, "source_control_runner_drift")
+        first = None
+    except Exception:
+        first = traceback.format_exc()
+        write(out / "failure.log", first.encode())
+    passed = first is None and outcomes and all(row["pass"] for row in outcomes)
+    report = {"verdict": "PASS" if passed else "FAIL", "intended_rc": 0 if passed else 1,
+              "controls": len(outcomes), "outcomes": outcomes, "first_cause": first,
+              "runner_source": source_base, "fixture_root": str(root), "finished_at": now(),
+              "http_requests": 0,
+              "scope": "actual Git/CLI source gates and targeted core discovery; not full all"}
+    write(out / "result.json", report)
+    marker = f"OPENCAD_SOURCE_CONTROLS verdict={report['verdict']} rc={report['intended_rc']}\n"
+    write(out / "completion.log", marker.encode())
+    print(marker.strip() + " evidence=" + str(out), flush=True)
+    return report["intended_rc"]
 
 
 def mesh_volume(mesh):
@@ -749,15 +1149,24 @@ def verify_http_responses(report, out):
 
 
 def run_gate(classes, *, label, argv=None, minimum_measurements=1):
-    global CONTEXT
-    parser = argparse.ArgumentParser(description=__doc__)
+    global CONTEXT, SOURCE_SCOPE, EXPECTED_HEAD, PREFLIGHT_RUNTIME
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--evidence-dir", type=Path, required=True)
     parser.add_argument("--runtime-root", type=Path)
     parser.add_argument("--controls-only", action="store_true")
     parser.add_argument("--verify-evidence", type=Path)
     parser.add_argument("--response-controls", type=Path)
     parser.add_argument("--flow-controls-before", type=Path)
+    parser.add_argument("--source-binding-before", action="store_true")
+    parser.add_argument("--source-binding-controls", action="store_true")
+    parser.add_argument("--source-preflight", action="store_true")
+    parser.add_argument("--source-scope", choices=("integration", "repair-owner"), default="integration")
+    parser.add_argument("--expect-head")
     args = parser.parse_args(argv)
+    SOURCE_SCOPE, EXPECTED_HEAD = args.source_scope, args.expect_head
+    PREFLIGHT_RUNTIME = args.runtime_root
+    require(EXPECTED_HEAD is None or len(EXPECTED_HEAD) == 40
+            and all(char in "0123456789abcdef" for char in EXPECTED_HEAD), "full_source_head_required")
     def names(items):
         return sorted(cls.__name__ + "." + name for cls in items
                       for name in unittest.defaultTestLoader.getTestCaseNames(cls))
@@ -766,6 +1175,12 @@ def run_gate(classes, *, label, argv=None, minimum_measurements=1):
     out = args.evidence_dir.resolve()
     require(out.is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()), "external_evidence_required")
     out.mkdir(parents=True, exist_ok=False)
+    if args.source_binding_before:
+        return run_source_before(out)
+    if args.source_binding_controls:
+        return run_source_controls(out)
+    if args.source_preflight:
+        return run_source_preflight(out)
     if args.flow_controls_before:
         return run_flow_before(args.flow_controls_before.resolve(), out)
     if args.response_controls:
@@ -791,16 +1206,11 @@ def run_gate(classes, *, label, argv=None, minimum_measurements=1):
                                       f"rc={result['intended_rc']}\n").encode())
         print(f"{MARKER} verdict={result['verdict']} rc={result['intended_rc']} evidence={out}")
         return result["intended_rc"]
-    runtime = args.runtime_root
-    require(runtime is not None and runtime.absolute().is_relative_to(Path("/data/tmp")) and
-            all(not p.is_symlink() for p in (runtime, *runtime.parents)), "local_runtime_required")
-    runtime = runtime.absolute()
-    runtime.mkdir(parents=True, exist_ok=False)
-    filesystem = subprocess.check_output(["stat", "-f", "-c", "%T", str(runtime)], text=True).strip()
-    require(not filesystem.startswith("fuse") and filesystem not in {
-        "nfs", "nfs4", "tmpfs", "ramfs", "cifs"}, "local_persistent_runtime_required")
-    CONTEXT = Context(out, runtime)
     before = source()
+    require(args.runtime_root is not None, "local_runtime_required")
+    runtime, filesystem = local_runtime(args.runtime_root, fresh=True)
+    runtime.mkdir(parents=True, exist_ok=False)
+    CONTEXT = Context(out, runtime)
     started = now()
     suite = unittest.TestSuite()
     for cls in ([GateControls] if args.controls_only else classes):
@@ -1078,6 +1488,30 @@ def run_response_controls(original, out, contract):
 
 
 class GateControls(unittest.TestCase):
+    def setUp(self):
+        ensure_context()
+        self.addCleanup(check_discovery_source)
+
+    def test_source_foreign_scope_and_runtime_negatives(self):
+        with patch.object(parametric, "__file__", "/data/tmp/foreign-parametric.py"):
+            with self.assertRaisesRegex(AssertionError, "foreign_runtime_source"):
+                source()
+        with self.assertRaisesRegex(AssertionError, "unknown_source_scope"):
+            source_manifest(ROOT, scope="unknown")
+        for path in ("/data/tmp/fixture/../other", "/hf3fs-jd/data/tmp/runtime", "/data/tmp"):
+            with self.subTest(path=path):
+                with self.assertRaisesRegex(AssertionError, "local_runtime_required"):
+                    local_runtime(path)
+
+    def test_source_complete_committed_byte_mode_set(self):
+        captured = source()
+        self.assertEqual(captured["status"], "")
+        self.assertEqual(captured["schema"], 2)
+        self.assertEqual(captured["scope"], SOURCE_SCOPE)
+        self.assertEqual(set(captured["files"]), set(
+            local_git(ROOT, "ls-files", "-z").decode().rstrip("\0").split("\0")))
+        self.assertEqual(captured["sha256"], digest(canonical(captured["files"])))
+
     def flow_fixture(self):
         ensure_context()
         out = CONTEXT.out / ("flow-controls-" + uuid4().hex)
@@ -1477,6 +1911,8 @@ class DefinitionCoreTests(unittest.TestCase):
         require(probe.available, "real_FreeCAD_required")
 
     def setUp(self):
+        ensure_context()
+        self.addCleanup(check_discovery_source)
         self.doc = make_configurable_plate_document(docmodel.new_document())
         self.base = docmodel.document_to_l1(self.doc)
 

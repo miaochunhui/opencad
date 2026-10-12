@@ -198,3 +198,54 @@ the repaired source; a schema 1 record is not silently filled or rebound.
 Not accepted: UI CRUD, production, GPU performance, arbitrary UUID rebinding,
 baseline suppression editing, industrial parity or all-config BRep validity.
 The previous UI slice and its original STEP download-race failure remain intact.
+
+## Current Integration Source Binding
+
+The c6 repair's unconditional `PRODUCT_BASE`/three-path owner check rejected
+legitimate clean integration successors with `product_source_changed`.
+The original CLI failure is retained at
+`/hf3fs-jd/data/tmp/opencad-definition-source-binding-before-20261012-v1`.
+It used an unchanged c6 CLI in a new local Git repository, followed by one
+committed documentation-only edit. It is not a failed product workflow or a
+replacement of the earlier c6 response-closure evidence.
+
+Default `--source-scope integration` accepts no uncommitted source: every current
+tracked regular file must equal the actual HEAD blob and Git executable mode,
+the index must equal HEAD in both directions, and the complete physical file set
+must equal that tree, including ignored generated files. HEAD is captured before
+and after, the entire bytes/mode manifest is saved and rechecked, and optional
+`--expect-head` pins a full commit. No historical product/HTTP count or expanded
+allowlist decides integration acceptance. A new product HEAD needs its own
+measurement/HTTP/all evidence; this source check does not inherit prior PASS.
+
+Explicit `--source-scope repair-owner` keeps the original bbdd-relative three-path
+development boundary as an additional check. It is not the normal integration
+mode, and still requires the current source to be committed and clean.
+`--source-preflight` is source/runtime-only: no kernel, HTTP, GPU or product test.
+`--source-binding-controls` tests actual child CLI/Git gates in a newly created
+isolated fixture. Its runner may have only the three owned development edits;
+that diagnostic snapshot is explicitly not accepted product source. All child
+positives use committed clean snapshots; original child exits and output hashes
+are external and retained. No existing source or evidence is changed or cleaned.
+`core.hooksPath=/dev/null` is a one-command option only for commits inside the
+new owned fixture; the helper rejects any other root. It does not edit any Git
+configuration or disable hooks in the actual development/publication repository.
+The source controls also run the actual guarded acceptance entry with normal
+discovery of the one core definition test file. Its original discovery/test
+counts and CPU geometry are separate from source-only controls and full all;
+this command starts no HTTP/GPU service.
+
+Normal unittest discovery cannot silently create its own default runtime. It
+requires the real same-source `tools/acceptance.py --suite/--top` process, exact
+process arguments, an already-active acceptance SQLite guard, matching persistent
+local runtime/TMPDIR/tempfile, and an existing external evidence parent. It binds
+the parent entry bytes and full child source before fixture creation, rechecks
+them around tests, and saves `discovery-source.json` below the parent evidence
+root. Direct unittest discovery without that parent fails loudly. It remains a
+local process/source boundary, not a security attestation against code replacing
+both source and evidence.
+
+```bash
+sudo -n -u infra python3 -B /data/dev/wt-opencad-definition-source-binding-20261012/oss-alternatives/packages/cadcore/tests/test_parametric_definitions.py --source-binding-controls --evidence-dir /hf3fs-jd/data/tmp/opencad-definition-source-binding-controls-20261012-next
+sudo -n -u infra python3 -B /data/dev/wt-opencad-definition-source-binding-20261012/oss-alternatives/packages/cadcore/tests/test_parametric_definitions.py --source-preflight --expect-head FULL_COMMIT --evidence-dir /hf3fs-jd/data/tmp/opencad-definition-source-binding-preflight-20261012-next
+```
