@@ -755,8 +755,9 @@ def main():
     if args.dictionary_root:
         args.dictionary_root = args.dictionary_root.absolute()
     out = args.out.absolute()
-    require(out.is_relative_to(Path("/hf3fs-jd/data/tmp")) and not out.exists() and
-            not out.is_relative_to(args.source_root), "fresh_external_out_required")
+    require(out.resolve().is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()) and
+            not out.exists() and not out.resolve().is_relative_to(args.source_root.resolve()),
+            "fresh_external_out_required")
     out.mkdir(parents=True, exist_ok=False)
     report = {"started_at": stamp(), "source_root": str(args.source_root),
               "verdict": "FAIL", "actual_rc": 1, "first_cause": None,

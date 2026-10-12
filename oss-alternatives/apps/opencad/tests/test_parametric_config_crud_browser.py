@@ -148,6 +148,7 @@ function element(tagName = "DIV") {
     dataset: {}, children: ["private-option"], attributes: {},
     replaceChildren() { this.children = []; this.value = ""; this.textContent = ""; },
     setAttribute(key, value) { this.attributes[key] = value; },
+    removeAttribute(key) { delete this.attributes[key]; },
     querySelectorAll(selector) { throw Error("private_clear_unknown_selector:" + selector); }};
 }
 const names = ["panel", "form", "fields", "dimensions", "configurations", "features", "result",

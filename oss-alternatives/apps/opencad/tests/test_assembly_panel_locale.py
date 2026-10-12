@@ -876,8 +876,9 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     root, out = args.source_root.absolute(), args.out.absolute()
-    require(out.is_relative_to(Path("/hf3fs-jd/data/tmp")) and not out.exists() and
-            not out.is_relative_to(root), "fresh_external_evidence_required")
+    require(out.resolve().is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()) and
+            not out.exists() and not out.resolve().is_relative_to(root.resolve()),
+            "fresh_external_evidence_required")
     out.mkdir(parents=True, exist_ok=False)
     report = {"verdict": "FAIL", "actual_rc": 1, "started_at": now(),
               "first_cause": None, "children": [], "source_root": str(root),

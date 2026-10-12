@@ -753,7 +753,8 @@ class SurfacePanelLocaleTests(unittest.TestCase):
 
 
 def create_out(out, root):
-    require(out.is_absolute() and out.is_relative_to(Path("/hf3fs-jd/data/tmp"))
+    require(out.is_absolute() and
+            out.resolve().is_relative_to(Path("/hf3fs-jd/data/tmp").resolve())
             and not out.exists() and not out.resolve().is_relative_to(root.resolve()),
             "fresh_external_out_required")
     out.mkdir(parents=True, exist_ok=False)
