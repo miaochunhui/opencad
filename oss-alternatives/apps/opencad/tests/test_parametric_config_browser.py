@@ -91,9 +91,24 @@ def load(name, path):
     return module
 
 
+def raise_walk_error(error):
+    raise error
+
+
+def evidence_files(out):
+    for directory, dirs, names in os.walk(out, followlinks=False, onerror=raise_walk_error):
+        dirs.sort()
+        for name in dirs:
+            require(not (Path(directory) / name).is_symlink(), "linked_evidence_directory")
+        for name in sorted(names):
+            path = Path(directory) / name
+            require(path.is_file() and not path.is_symlink(), "nonregular_evidence")
+            yield path
+
+
 def source(root):
     files = {}
-    for directory, dirs, names in os.walk(root, followlinks=False):
+    for directory, dirs, names in os.walk(root, followlinks=False, onerror=raise_walk_error):
         dirs[:] = sorted(d for d in dirs if d not in {
             ".git", "__pycache__", ".pytest_cache", ".venv", "node_modules"})
         for name in dirs:
@@ -115,6 +130,111 @@ def source(root):
     return {"root": str(root), "head": head, "files": files,
             "sha256": digest(canonical(files)), "status": status,
             "owned": {name: files[name] for name in OWNED}}
+
+
+def failure(report, stage, cause=None):
+    if cause is None:
+        cause = traceback.format_exc()
+        error = sys.exc_info()[1]
+        if isinstance(error, subprocess.CalledProcessError):
+            for name in ("stdout", "stderr"):
+                value = getattr(error, name, None)
+                if value:
+                    text = value.decode(errors="replace") if isinstance(value, bytes) else value
+                    cause += f"\n{name}: {text}"
+    report.update(verdict="FAIL", intended_rc=1)
+    if report["first_cause"] is None:
+        report["first_cause"] = cause
+        report["first_failure_stage"] = stage
+    else:
+        report["secondary_failures"].append({"stage": stage, "cause": cause})
+    print(f"{MARKER} failure_stage={stage}\n{cause}", file=sys.stderr, flush=True)
+
+
+def report_start(**values):
+    return {"verdict": "FAIL", "intended_rc": 1, "first_cause": None,
+            "secondary_failures": [], "source_before": None, "source_after": None,
+            "source_drift": None, "started_at": now(), **values}
+
+
+def capture_source(report, key, root):
+    report[key] = None
+    try:
+        report[key] = source(root)
+    except Exception:
+        failure(report, key)
+
+
+def compare_source(report):
+    before, after = report["source_before"], report["source_after"]
+    if before is None or after is None:
+        report["source_drift"] = None
+        return
+    report["source_drift"] = [] if before == after else ["source"]
+    if report["source_drift"]:
+        failure(report, "source_drift", "source_drift")
+
+
+def scan_artifacts(report, out, secrets):
+    report.update(artifacts={}, artifact_scan_complete=False)
+    try:
+        for path in evidence_files(out):
+            try:
+                data = path.read_bytes()
+                require(not any(secret in data for secret in secrets),
+                        "secret_in_external_evidence")
+                report["artifacts"][path.relative_to(out).as_posix()] = {
+                    "sha256": digest(data), "bytes": len(data)}
+            except Exception:
+                failure(report, "artifact_read:" + path.relative_to(out).as_posix())
+        report["artifact_scan_complete"] = not any(
+            item["stage"].startswith("artifact_read:") for item in report["secondary_failures"]
+        ) and not (report.get("first_failure_stage") or "").startswith("artifact_read:")
+    except Exception:
+        failure(report, "evidence_scan")
+
+
+def publish_terminal(report, out, marker):
+    """Publish only an independently read-back report, or an explicit FAIL."""
+    if report["first_cause"] is not None:
+        try:
+            write(out / "failure.log", report["first_cause"].encode())
+            if "artifacts" in report:
+                data = report["first_cause"].encode()
+                report["artifacts"]["failure.log"] = {"sha256": digest(data), "bytes": len(data)}
+        except Exception:
+            failure(report, "failure_log_write")
+    report.setdefault("finished_at", now())
+    pending = out / "result-pending.json"
+    try:
+        write(pending, report)
+        require(json.loads(pending.read_bytes()) == report, "terminal_save_readback_mismatch")
+        require(not (out / "result.json").exists(), "terminal_already_exists")
+        os.replace(pending, out / "result.json")
+    except Exception:
+        failure(report, "terminal_write_readback")
+        try:
+            write(out / "result-failure.json", report)
+            os.replace(out / "result-failure.json", out / "result.json")
+        except Exception:
+            failure(report, "fail_terminal_write")
+            print(json.dumps(report, sort_keys=True), file=sys.stderr, flush=True)
+            return 1
+    line = marker(report)
+    try:
+        write(out / "completion.log", line.encode())
+    except Exception:
+        failure(report, "completion_write")
+        try:
+            write(out / "completion-failure-result.json", report)
+            os.replace(out / "completion-failure-result.json", out / "result.json")
+        except Exception:
+            failure(report, "completion_fail_terminal_write")
+            print(json.dumps(report, sort_keys=True), file=sys.stderr, flush=True)
+        return 1
+    print(line.strip(), flush=True)
+    print("evidence=" + str(out), flush=True)
+    return report["intended_rc"]
 
 
 def validate_receipt(state, mesh):
@@ -197,6 +317,10 @@ def terminal(report):
     require(report["verdict"] == "PASS" and report["intended_rc"] == 0
             and report["first_cause"] is None and not report["cleanup_errors"],
             "producer_failure")
+    require(not report.get("secondary_failures"), "producer_secondary_failure")
+    require(report["source_before"] is not None and report["source_after"] is not None,
+            "source_not_collected")
+    require(report.get("artifact_scan_complete", True) is True, "artifact_scan_incomplete")
     require(report["source_before"] == report["source_after"] and not report["source_drift"],
             "source_drift")
     expected = {f"{width}-{name}" for width in (1440, 390) for name in WORKFLOWS}
@@ -225,8 +349,8 @@ def validate_bound_report(report, root, out, *, check_current=True):
                 name: report["source_after"]["files"][name] for name in OWNED}, "owned_source_mismatch")
     require(digest(canonical(report["source_after"]["files"])) ==
             report["source_after"]["sha256"], "source_manifest_hash_mismatch")
-    actual = {p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file()
-              and p.relative_to(out).as_posix() not in {
+    actual = {p.relative_to(out).as_posix() for p in evidence_files(out)
+              if p.relative_to(out).as_posix() not in {
                   "result.json", "completion.log", "terminal-candidate.json"}}
     validate_artifact_set(actual, report["artifacts"])
     for name, record in report["artifacts"].items():
@@ -965,12 +1089,12 @@ def acceptance(args):
     base.mkdir(parents=True, exist_ok=False)
     runtime = base / "run"
     runtime.mkdir()
-    report = {"verdict": "FAIL", "intended_rc": 1, "first_cause": None,
-              "started_at": now(), "runtime_root": str(runtime),
-              "production_mutated": False, "gpu_speed": "NOT_ASSESSED"}
-    before = source(root)
+    report = report_start(runtime_root=str(runtime), checks=[], cli=[], cleanup_errors=[],
+                          production_mutated=False, gpu_speed="NOT_ASSESSED")
     review = None
+    capture_source(report, "source_before", root)
     try:
+        require(report["source_before"] is not None, "source_before_not_collected")
         review = Review(root, out, runtime, args.browser)
         review.register()
         for width, height in ((1440, 900), (390, 844)):
@@ -978,57 +1102,137 @@ def acceptance(args):
             review.scenario(width, height)
         report.update(verdict="PASS", intended_rc=0)
     except Exception:
-        report["first_cause"] = traceback.format_exc()
-        write(out / "failure.log", report["first_cause"].encode())
+        failure(report, "workload")
     finally:
-        if review:
+        if review is not None:
+            report.update(checks=review.checks, cli=review.cli,
+                          cleanup_errors=review.cleanup_errors)
             try:
                 review.stop()
             except Exception as error:
                 review.cleanup_errors.append("cli_stop:"+str(error))
-                if report["first_cause"] is None:
-                    report["first_cause"] = traceback.format_exc()
-                    write(out / "failure.log", report["first_cause"].encode())
-            review.log.close()
-        report.update(checks=review.checks if review else [], cli=review.cli if review else [],
-                      cleanup_errors=review.cleanup_errors if review else [],
-                      source_before=before, source_after=source(root), finished_at=now())
-        report["source_drift"] = [] if report["source_before"] == report["source_after"] else ["source"]
-        if report["source_drift"] or report["cleanup_errors"]:
-            report.update(verdict="FAIL", intended_rc=1)
-            if report["first_cause"] is None:
-                report["first_cause"] = "source_drift_or_owned_cleanup_failed"
-        artifacts = {}
-        for path in out.rglob("*"):
-            if path.is_file():
-                data = path.read_bytes()
-                if review and any(secret in data for secret in review.secrets):
-                    report.update(verdict="FAIL", intended_rc=1)
-                    if report["first_cause"] is None:
-                        report["first_cause"] = "secret_in_external_evidence"
-                        write(out / "failure.log", b"secret_in_external_evidence\n")
-                artifacts[path.relative_to(out).as_posix()] = {"sha256": digest(data), "bytes": len(data)}
-        report["artifacts"] = artifacts
+                failure(report, "cli_stop")
+            try:
+                review.log.close()
+            except Exception as error:
+                review.cleanup_errors.append("log_close:"+str(error))
+                failure(report, "log_close")
+        if report["cleanup_errors"]:
+            failure(report, "cleanup_errors", "owned_cleanup_failed")
+        scan_artifacts(report, out, review.secrets if review is not None else [])
+        capture_source(report, "source_after", root)
+        compare_source(report)
+        report["finished_at"] = now()
         if report["verdict"] == "PASS":
             try:
                 write(out / "terminal-candidate.json", report)
                 saved_candidate = json.loads((out / "terminal-candidate.json").read_bytes())
                 require(saved_candidate == report, "terminal_save_readback_mismatch")
-                validate_bound_report(saved_candidate, root, out)
+                validate_bound_report(saved_candidate, root, out, check_current=False)
+                capture_source(report, "source_after", root)
+                compare_source(report)
+                if report["verdict"] == "PASS":
+                    require(report == saved_candidate, "terminal_candidate_source_drift")
             except Exception:
-                report.update(verdict="FAIL", intended_rc=1, first_cause=traceback.format_exc())
-                write(out / "failure.log", report["first_cause"].encode())
-                report["artifacts"]["failure.log"] = {
-                    "sha256": digest((out / "failure.log").read_bytes()),
-                    "bytes": (out / "failure.log").stat().st_size}
-        write(out / "result.json", report)
-        saved = json.loads((out / "result.json").read_bytes())
-        require(saved == report, "terminal_save_readback_mismatch")
-        line = f"{MARKER} verdict={report['verdict']} checks={len(report['checks'])} rc={report['intended_rc']}\n"
-        write(out / "completion.log", line.encode())
-        print(line.strip(), flush=True)
-        print("evidence="+str(out), flush=True)
-    return report["intended_rc"]
+                failure(report, "candidate_readback")
+    return publish_terminal(report, out, lambda value:
+        f"{MARKER} verdict={value['verdict']} checks={len(value['checks'])} "
+        f"rc={value['intended_rc']}\n")
+
+
+def selftest(args):
+    root = args.source_root.resolve()
+    require(root == ROOT.resolve(), "runner_source_root_mismatch")
+    out = args.evidence_dir.resolve()
+    require(out.is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()),
+            "evidence_not_external_3fs")
+    require(args.runtime_root is not None and args.runtime_root.absolute().is_relative_to(
+            Path("/data/tmp")), "selftest_runtime_required")
+    out.mkdir(parents=True, exist_ok=False)
+    args.runtime_root.mkdir(parents=True, exist_ok=False)
+    report = report_start(tests=0, failures=0, errors=0, skipped=0,
+                          discovery=args.discovery_check, cleanup_errors=[])
+    capture_source(report, "source_before", root)
+    result, log = None, None
+    try:
+        require(report["source_before"] is not None, "source_before_not_collected")
+        suite = (unittest.defaultTestLoader.discover(str(APP / "tests"),
+                 pattern="test_parametric_config_browser.py", top_level_dir=str(APP))
+                 if args.discovery_check else unittest.defaultTestLoader.loadTestsFromTestCase(Controls))
+        bind_control_runtime(suite, args.runtime_root)
+        log = (out / "tests.log").open("x")
+
+        def result_factory(*values, **kwargs):
+            nonlocal result
+            result = EvidenceResult(*values, **kwargs)
+            return result
+
+        with redirect_stdout(log), redirect_stderr(log):
+            result = unittest.TextTestRunner(
+                stream=log, verbosity=2, resultclass=result_factory).run(suite)
+        report.update(verdict="PASS", intended_rc=0)
+    except Exception:
+        # A completed test failure precedes a runner or log I/O failure.
+        if result is not None and result.first_cause is not None:
+            failure(report, "control_tests", result.first_cause)
+        failure(report, "control_runner")
+    finally:
+        if result is not None:
+            report.update(tests=result.testsRun, failures=len(result.failures),
+                          errors=len(result.errors), skipped=len(result.skipped))
+            if result.first_cause is not None and report["first_cause"] is None:
+                failure(report, "control_tests", result.first_cause)
+            if not result.wasSuccessful() and report["first_cause"] is None:
+                failure(report, "control_tests", "control_suite_unsuccessful")
+            if result.testsRun == 0 or result.skipped:
+                failure(report, "control_tests", "empty_or_skipped_control_suite")
+        if log is not None:
+            try:
+                log.close()
+            except Exception as error:
+                report["cleanup_errors"].append("log_close:"+str(error))
+                failure(report, "log_close")
+        capture_source(report, "source_after", root)
+        compare_source(report)
+    return publish_terminal(report, out, lambda value:
+        f"{MARKER}_SELFTEST verdict={value['verdict']} tests={value['tests']} "
+        f"rc={value['intended_rc']}\n")
+
+
+def readback(args):
+    root, out = args.source_root.resolve(), args.evidence_dir.resolve()
+    original = args.verify_evidence.resolve()
+    require(root == ROOT.resolve(), "runner_source_root_mismatch")
+    require(out.is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()) and
+            not out.is_relative_to(original), "evidence_not_external_3fs")
+    out.mkdir(parents=True, exist_ok=False)
+    report = report_start(checks=None, verified_checks=None, source=None,
+                          original_result_sha256=None)
+    saved = None
+    try:
+        data = (original / "result.json").read_bytes()
+        report["original_result_sha256"] = digest(data)
+        saved = json.loads(data)
+        if isinstance(saved.get("checks"), list):
+            report["checks"] = len(saved["checks"])
+        if saved.get("first_cause") is not None:
+            failure(report, "original_producer", saved["first_cause"])
+    except Exception:
+        failure(report, "original_result_read")
+    capture_source(report, "source_before", root)
+    try:
+        require(saved is not None and report["source_before"] is not None,
+                "readback_input_not_collected")
+        report["verified_checks"] = verify(saved, root, original)
+        if report["first_cause"] is None:
+            report.update(verdict="EVIDENCE_VERIFIED", intended_rc=0)
+    except Exception:
+        failure(report, "evidence_verify")
+    capture_source(report, "source_after", root)
+    report["source"] = report["source_after"]
+    compare_source(report)
+    return publish_terminal(report, out, lambda value:
+        f"{MARKER}_READBACK verdict={value['verdict']} rc={value['intended_rc']}\n")
 
 
 def main(argv=None):
@@ -1043,61 +1247,9 @@ def main(argv=None):
     parser.add_argument("--verify-evidence", type=Path)
     args = parser.parse_args(argv)
     if args.selftest:
-        require(args.source_root.resolve() == ROOT.resolve(), "runner_source_root_mismatch")
-        require(args.evidence_dir.resolve().is_relative_to(
-                Path("/hf3fs-jd/data/tmp").resolve()), "evidence_not_external_3fs")
-        args.evidence_dir.mkdir(parents=True, exist_ok=False)
-        require(args.runtime_root is not None and args.runtime_root.absolute().is_relative_to(
-                Path("/data/tmp")), "selftest_runtime_required")
-        args.runtime_root.mkdir(parents=True, exist_ok=False)
-        before = source(args.source_root.resolve())
-        suite = (unittest.defaultTestLoader.discover(str(APP / "tests"),
-                 pattern="test_parametric_config_browser.py", top_level_dir=str(APP))
-                 if args.discovery_check else unittest.defaultTestLoader.loadTestsFromTestCase(Controls))
-        bind_control_runtime(suite, args.runtime_root)
-        with (args.evidence_dir / "tests.log").open("x") as log:
-            with redirect_stdout(log), redirect_stderr(log):
-                result = unittest.TextTestRunner(
-                    stream=log, verbosity=2, resultclass=EvidenceResult).run(suite)
-        after = source(args.source_root.resolve())
-        passed = result.wasSuccessful() and result.testsRun > 0 and not result.skipped and before == after
-        first_cause = result.first_cause
-        if not passed and first_cause is None:
-            first_cause = "source_drift" if before != after else "empty_or_skipped_control_suite"
-        if first_cause:
-            write(args.evidence_dir / "failure.log", first_cause.encode())
-        write(args.evidence_dir / "result.json", {
-            "verdict": "PASS" if passed else "FAIL", "tests": result.testsRun,
-            "failures": len(result.failures), "errors": len(result.errors), "skipped": len(result.skipped),
-            "source_before": before, "source_after": after, "finished_at": now(),
-            "source_drift": [] if before == after else ["source"],
-            "intended_rc": 0 if passed else 1,
-            "discovery": args.discovery_check,
-            "first_cause": first_cause})
-        marker = (f"{MARKER}_SELFTEST verdict={'PASS' if passed else 'FAIL'} "
-                  f"tests={result.testsRun} rc={0 if passed else 1}\n")
-        write(args.evidence_dir / "completion.log", marker.encode())
-        print(marker.strip())
-        return 0 if passed else 1
+        return selftest(args)
     if args.verify_evidence:
-        original = args.verify_evidence.resolve()
-        args.evidence_dir.mkdir(parents=True, exist_ok=False)
-        try:
-            count = verify(json.loads((original / "result.json").read_bytes()),
-                           args.source_root.resolve(), original)
-            report = {"verdict": "EVIDENCE_VERIFIED", "checks": count, "intended_rc": 0,
-                      "first_cause": None, "original_result_sha256": digest(
-                          (original / "result.json").read_bytes()),
-                      "source": source(args.source_root.resolve()), "finished_at": now()}
-        except Exception:
-            report = {"verdict": "FAIL", "intended_rc": 1, "first_cause": traceback.format_exc(),
-                      "finished_at": now()}
-            write(args.evidence_dir / "failure.log", report["first_cause"].encode())
-        write(args.evidence_dir / "result.json", report)
-        write(args.evidence_dir / "completion.log", (
-            f"{MARKER}_READBACK verdict={report['verdict']} rc={report['intended_rc']}\n").encode())
-        print(f"{MARKER} verdict={report['verdict']} checks={report.get('checks', 0)}")
-        return report["intended_rc"]
+        return readback(args)
     require(args.runtime_root is not None, "runtime_root_required")
     return acceptance(args)
 

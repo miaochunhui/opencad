@@ -84,6 +84,46 @@ Offline readback checks the same artifact set, byte/size hashes, CLI scope/READY
 check log, closed-mesh volume, document/display identities and download witnesses.
 It also requires the exact completion marker and unchanged terminal candidate.
 
+## Terminal Failure Controls
+
+The acceptance, selftest and offline-readback entries retain the first failure.
+Later source reads, CLI stop, log close, evidence traversal and artifact reads
+are recorded as `secondary_failures`, with stderr preserved. An unavailable
+source is `null`; drift is also `null` when the comparison cannot be collected,
+never an empty manifest or a claimed zero drift. Completed checks/tests and
+failure/error counts survive finalization failures. Offline readback separately
+records the original ledger count and `verified_checks`; an unreadable original
+ledger is `null`, not zero verified checks.
+
+Source/evidence traversal reports I/O errors rather than silently omitting a
+directory. Partial artifact hashes remain visible with
+`artifact_scan_complete=false`. A final report is independently read back before
+publication; terminal I/O failure produces FAIL and original exit 1. If the
+evidence filesystem itself cannot accept a FAIL report, stderr retains the
+structured failure and no successful completion marker is claimed.
+
+```bash
+sudo -n -u infra python3 -B tools/test_parametric_config_terminal.py --discovery-check --evidence-dir /hf3fs-jd/data/tmp/opencad-config-browser-terminal-committed-20261012-v1 --runtime-root /data/tmp/oc-cbt-commit-1012-v1
+sudo -n -u infra python3 -B oss-alternatives/apps/opencad/tests/test_parametric_config_browser.py --selftest --discovery-check --evidence-dir /hf3fs-jd/data/tmp/opencad-config-browser-terminal-committed-controls-20261012-v1 --runtime-root /data/tmp/oc-cbt-cctl-1012-v1
+```
+
+The separate discoverable suite exercises real child-CLI terminal paths with
+explicit offline workload/I/O faults. It does not start a browser, authenticate,
+serve HTTP, or certify new UI/product behavior. Each child retains actual exit,
+stdout/stderr and result. It covers first-failure plus late failure, late failure
+alone, log close, artifact read, stop, traversal, and successful verification
+followed by an unavailable final source. The original 15 controls remain intact.
+An offline valid-candidate positive control checks three source captures and
+byte-identical candidate/final reports with a stable completion timestamp. Its
+synthetic ledger is not an execution of the 42 browser workflows.
+The baseline red evidence is
+`/hf3fs-jd/data/tmp/opencad-config-browser-terminal-before-20261012-v1`;
+the first repair attempt's runner-stream failure is retained separately under
+`opencad-config-browser-terminal-after-20261012-v1`. Neither is converted to PASS.
+These changes invalidate current-source browser binding for a subsequent
+candidate; earlier 42-check browser evidence remains evidence of its old source,
+not a newly executed browser gate for this terminal-only repair.
+
 ## Retained Development Failures
 
 Each original attempt remains under the corresponding
