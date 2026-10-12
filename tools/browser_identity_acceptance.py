@@ -392,24 +392,33 @@ class Review:
         browser.call("Input.insertText", {"text": value})
 
     def login(self, browser, name):
-        browser.wait("!!document.querySelector('dialog[open] input[name=username]')")
-        self.type(browser, "dialog[open] input[name=username]", name)
-        self.type(browser, "dialog[open] input[name=password]", self.accounts[name]["password"])
-        browser.click("dialog[open] button[type=submit]")
-        browser.wait("!!document.querySelector('dialog[open] select')")
+        entry = "dialog[data-session-entry]"
+        browser.wait("!!document.querySelector(%s + ' input[name=username]')" %
+                     json.dumps(entry))
+        self.type(browser, entry + " input[name=username]", name)
+        self.type(browser, entry + " input[name=password]", self.accounts[name]["password"])
+        browser.click(entry + " button[type=submit]")
+        browser.wait("!!document.querySelector(%s + ' select')" % json.dumps(entry))
 
     def create(self, browser, title):
-        self.type(browser, 'input[aria-label="新项目名称"]', title)
-        browser.click("dialog[open] button:nth-of-type(2)")
-        browser.wait("!document.querySelector('dialog[open]')")
+        entry = "dialog[data-session-entry]"
+        name = (entry + ' input'
+                '[data-panel-i18n-placeholder="panel.session.new_project_name"]')
+        submit = (entry + ' button'
+                  '[data-panel-i18n="panel.session.create_project"]')
+        browser.wait("!!document.querySelector(%s + ' select')" % json.dumps(entry))
+        self.type(browser, name, title)
+        browser.evaluate("document.querySelector(%s).click()" % json.dumps(submit))
+        browser.wait("!document.querySelector(%s)" % json.dumps(entry))
         browser.wait("window.opencad3d && !window.opencad3d.busy && "
                      "document.querySelector('#locale').options.length>0")
 
     def open_project(self, browser, identifier):
-        values = browser.evaluate("Array.from(document.querySelector('dialog[open] select')"
-                                  ".options).map(o=>o.value)")
+        entry = "dialog[data-session-entry]"
+        values = browser.evaluate("Array.from(document.querySelector(%s + ' select')"
+                                  ".options).map(o=>o.value)" % json.dumps(entry))
         require(identifier in values, "owned_project_missing")
-        browser.click("dialog[open] select")
+        browser.click(entry + " select")
         browser.key("Home")
         for _ in range(values.index(identifier)):
             browser.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": "ArrowDown",
@@ -420,8 +429,9 @@ class Review:
                      "code": "Enter", "windowsVirtualKeyCode": 13})
         browser.call("Input.dispatchKeyEvent", {"type": "keyUp", "key": "Enter",
                      "code": "Enter", "windowsVirtualKeyCode": 13})
-        browser.click("dialog[open] button")
-        browser.wait("!document.querySelector('dialog[open]')")
+        browser.evaluate("document.querySelector(%s).click()" %
+                         json.dumps(entry + ' button[data-panel-i18n="panel.session.open_project"]'))
+        browser.wait("!document.querySelector(%s)" % json.dumps(entry))
 
     @staticmethod
     def api(browser, path, body=None):
