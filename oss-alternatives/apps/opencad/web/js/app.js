@@ -800,9 +800,16 @@
     const body = await api(API.state);
     applyState(body);
     renderAll();
+    notifyLocale(body);
     return body;
   }
   window.OpenCADWorkspace = Object.freeze({refresh: refreshState});
+
+  function notifyLocale(body) {
+    if (!body || body.ok !== true) throw new Error("locale_unaccepted_response");
+    if (!window.OpenCADLocale) throw new Error("locale_service_unavailable");
+    window.OpenCADLocale.update({locale: body.locale, strings: body.strings});
+  }
 
   function applyState(body) {
     S.strings = body.strings && typeof body.strings === "object" ? body.strings : {};
@@ -1017,6 +1024,7 @@
       if (body.strings && typeof body.strings === "object") S.strings = body.strings;
       await loadCatalogs();
       renderAll();
+      notifyLocale(body);
       if (typeof body.changed === "number") {
         setMessage("ok", label("lang.switched", { native_name: nativeName(S.locale) }));
       }
