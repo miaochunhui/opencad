@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 from http.cookies import SimpleCookie, CookieError
+from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import ipaddress
 import json
@@ -38,6 +39,11 @@ PRIVATE_ASSETS = (
     '<script src="/web/js/project-session.js"></script>'
     '<link rel="stylesheet" href="/web/css/project-session.css">'
 )
+LOCALE_SERVICE_ASSET = '<script src="/web/js/locale-service.js"></script>'
+PRIVATE_3D_ASSETS = (
+    LOCALE_SERVICE_ASSET + PRIVATE_ASSETS +
+    '<script src="/web/js/private-locale.js" defer></script>'
+)
 INDUSTRIAL_ASSETS = "".join(
     f'<link rel="stylesheet" href="/web/css/{name}-panel.css">'
     f'<script src="/web/js/{name}-panel.js" defer></script>'
@@ -47,15 +53,16 @@ INDUSTRIAL_ASSETS = "".join(
 
 def private_3d_page():
     from viewer3d_page import render
-    panels = '<section class="industrial-workbench" aria-label="工业建模工作区">'
-    for name, caption in (("parametric", "参数化重建"), ("surfaces", "精确曲面"),
-                          ("assembly", "真实装配"), ("drawing", "关联工程图"),
-                          ("render", "服务端渲染")):
-        panels += (f'<details><summary>{caption}</summary>'
+    panels = ('<section class="industrial-workbench" aria-label="Industrial modeling workspace"'
+              ' data-panel-i18n-aria="panel.workbench.heading">')
+    for name, caption in (("parametric", "Parametric rebuild"), ("surfaces", "Exact surfaces"),
+                          ("assembly", "Real assembly"), ("drawing", "Associative drawing"),
+                          ("render", "Server rendering")):
+        panels += (f'<details><summary data-panel-i18n="panel.workbench.{name}">{caption}</summary>'
                    f'<div data-{name}-host></div></details>')
     panels += "</section>"
     return (render(advanced=True)
-            .replace("<head>", "<head>" + PRIVATE_ASSETS + INDUSTRIAL_ASSETS, 1)
+            .replace("<head>", "<head>" + PRIVATE_3D_ASSETS + INDUSTRIAL_ASSETS, 1)
             .replace("<footer>", panels + "<footer>", 1))
 
 
@@ -63,6 +70,58 @@ class HttpError(Exception):
     def __init__(self, code: str, detail: str, status: int = 400):
         super().__init__(detail)
         self.code, self.detail, self.status = code, detail, status
+
+
+def private_2d_page(data: bytes) -> bytes:
+    """Keep one real locale service before the private identity adapter."""
+    text = data.decode("utf-8")
+
+    class LocaleTagParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.offsets = [0]
+            for line in text.splitlines(keepends=True):
+                self.offsets.append(self.offsets[-1] + len(line))
+            self.count = 0
+            self.pending = False
+            self.ends = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag != "script":
+                return
+            sources = [value for name, value in attrs if name == "src"]
+            if not sources:
+                return
+            if sources[0] not in {"/web/js/locale-service.js",
+                                   "web/js/locale-service.js",
+                                   "./web/js/locale-service.js"}:
+                return
+            self.count += 1
+            if len(sources) != 1 or any(name in {"async", "defer"} for name, _ in attrs):
+                raise HttpError("invalid_locale_service", "Locale service must load before identity adapter", 500)
+            self.pending = True
+
+        def handle_endtag(self, tag):
+            if tag == "script" and self.pending:
+                line, column = self.getpos()
+                start = self.offsets[line - 1] + column
+                end = text.find(">", start)
+                if end < 0:
+                    raise HttpError("invalid_locale_service", "Locale service tag is not closed", 500)
+                self.ends.append(end + 1)
+                self.pending = False
+
+    parser = LocaleTagParser()
+    parser.feed(text)
+    parser.close()
+    if parser.count > 1:
+        raise HttpError("duplicate_locale_service", "Locale service asset must be unique", 500)
+    if parser.count:
+        if len(parser.ends) != 1:
+            raise HttpError("invalid_locale_service", "Locale service tag is not closed", 500)
+        end = parser.ends[0]
+        return (text[:end] + PRIVATE_ASSETS + text[end:]).encode("utf-8")
+    return data.replace(b"<head>", b"<head>" + (LOCALE_SERVICE_ASSET + PRIVATE_ASSETS).encode(), 1)
 
 
 @dataclass
@@ -243,7 +302,7 @@ class Handler(BaseHTTPRequestHandler):
         media = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
         data = candidate.read_bytes()
         if relative == "index.html":
-            data = data.replace(b"<head>", b"<head>" + PRIVATE_ASSETS.encode(), 1)
+            data = private_2d_page(data)
         return Reply(payload=data, content_type=media)
 
     def _handle(self):
