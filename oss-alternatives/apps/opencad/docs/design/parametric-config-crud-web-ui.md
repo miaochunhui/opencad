@@ -117,6 +117,37 @@ Use fresh output/runtime paths for the fixed regression and 18-workflow run.
 The old 470-row gate omitted `/api/command`; its PASS remains bounded to its
 recorded routes and is not promoted to full HTTP capture by this change.
 
+## Receipt Revision Reader Repair
+
+`validate_history` requires the SQLite receipt revision to be a strict integer
+equal to the after-state and actual command response revision. Missing, wrong,
+boolean and string revisions fail with `command_receipt_revision_mismatch`.
+The prior four real undo/redo receipts are correct; this repairs the reader,
+not the product. Only this test and document change relative to `c112162`.
+
+`--receipt-revision-before <original browser root>` retains eight actual CLI
+cases using the exact c112 Git version of `validate_history`: wrong/missing
+revision for desktop/mobile undo/redo. Accepted mutants make the parent FAIL
+`baseline_receipt_revision_mutants_accepted`; each child actual rc/log remains.
+This is a history-function counterexample, not a complete mutated browser PASS.
+`--receipt-revision-controls <original browser root>` uses the fixed CLI and
+requires each same case to return actual rc1 with the named revision first cause.
+Both modes are offline and preserve the original evidence directory.
+
+`--verify-historical-evidence <original browser root>` is a separate, pinned
+historical reader. It requires original result SHA256
+`addfe08de7e20383b6d20b971c57033b2cf32f94f409b6f1bdfe4ef134ac1d4a`,
+preserves its bcad HEAD/source, CLI paths and terminal/artifact hashes, and
+outputs `HISTORICAL_EVIDENCE_VERIFIED` with both producer and new reader sources.
+Every non-repair source file must have equal bytes/mode, exact source sets match,
+and browser scenario/helper/workflow ASTs equal c112. Only test/doc may differ
+from c112. Product, file-set, mode, HEAD or scenario changes refuse compatibility.
+It does not rewrite source fields, copy old PNGs, launch a browser, certify the
+new HEAD as a browser producer, or admit a later integration tree.
+Ordinary `--verify-evidence` still requires exact current source/HEAD/status.
+Each invocation requires a fresh external output. No new browser run is needed
+for this reader-only revision repair; original browser acceptance stays original.
+
 The original browser v1/v2/v3 FAIL roots remain outside Git. V1 exposed an
 empty-project editor assumption; v2 exposed overwritten failure guidance;
 v3 completed 17 workflows before a test-side reload/login-form replacement

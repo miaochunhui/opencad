@@ -10,6 +10,7 @@ no previous screenshots, results, product suites or production data are used.
 from __future__ import annotations
 
 import argparse
+import ast
 import base64
 from contextlib import redirect_stderr, redirect_stdout
 import copy
@@ -65,6 +66,165 @@ spec.loader.exec_module(legacy)
 require, write, digest, canonical, now = (
     legacy.require, legacy.write, legacy.digest, legacy.canonical, legacy.now)
 CONTROL_RUNTIME = None
+REVISION_BASE = "c1121623c8b538cdb67f5158d3ed7eabef4186de"
+HISTORICAL_RESULT_SHA = "addfe08de7e20383b6d20b971c57033b2cf32f94f409b6f1bdfe4ef134ac1d4a"
+READER_REPAIR_PATHS = {OWNED[2], OWNED[3]}
+
+
+def baseline_reader_bytes():
+    return subprocess.check_output(["git", "--no-replace-objects", "-C", str(ROOT),
+                                    "show", REVISION_BASE + ":" + OWNED[2]])
+
+
+def baseline_history():
+    data = baseline_reader_bytes()
+    tree = ast.parse(data)
+    functions = [item for item in tree.body if isinstance(item, ast.FunctionDef) and
+                 item.name == "validate_history"]
+    require(len(functions) == 1, "baseline_history_function_missing")
+    namespace = {"require": require, "validate_response": validate_response, "json": json}
+    exec(compile(ast.Module(body=functions, type_ignores=[]),
+                 REVISION_BASE + ":" + OWNED[2], "exec"), namespace)
+    return namespace["validate_history"]
+
+
+def browser_semantics(data):
+    stable = {"Review", "source", "terminal", "validate_requests", "validate_response",
+              "artifact_manifest", "finalize_browser", "WORKFLOWS", "GEOMETRY",
+              "SENTINEL_CHECKS", "HTTP_ROUTES", "LEDGER_KEYS", "OWNED", "READERS"}
+    selected = {}
+    for node in ast.parse(data).body:
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in stable:
+            selected[node.name] = ast.dump(node, include_attributes=False)
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id in stable:
+                    selected[target.id] = ast.dump(node, include_attributes=False)
+    require(set(selected) == stable, "historical_semantic_definitions_missing")
+    return selected
+
+
+def verify_historical_source(report, current):
+    captured = report["source_after"]
+    require(report["scope"] == "crud" and captured["head"] ==
+            "bcadfdeb4ce7689df30cec168de8dbba16577435", "historical_producer_scope_mismatch")
+    require(set(current["files"]) == set(captured["files"]), "historical_source_set_mismatch")
+    changes = [name for name in current["files"] if current["files"][name] != captured["files"][name]]
+    require(set(changes) <= READER_REPAIR_PATHS, "historical_product_source_changed")
+    for name in READER_REPAIR_PATHS:
+        data = subprocess.check_output(["git", "--no-replace-objects", "-C", str(ROOT),
+                                       "show", REVISION_BASE + ":" + name])
+        require(captured["files"][name]["sha256"] == digest(data) and
+                captured["files"][name]["bytes"] == len(data) and
+                current["files"][name]["mode"] == captured["files"][name]["mode"],
+                "historical_repair_base_mismatch")
+    changed_git = subprocess.check_output(
+        ["git", "--no-optional-locks", "--no-replace-objects", "-C", str(ROOT),
+         "diff", "--name-only", REVISION_BASE, "--"], text=True).splitlines()
+    require(set(changed_git) <= READER_REPAIR_PATHS, "historical_git_product_changed")
+    old_semantics = browser_semantics(baseline_reader_bytes())
+    new_semantics = browser_semantics(Path(__file__).read_bytes())
+    require(new_semantics == old_semantics, "historical_browser_semantics_changed")
+    return {"baseline_commit": REVISION_BASE, "producer_source": captured,
+            "reader_source": current, "changed_paths": changes,
+            "product_bytes_modes_equal": True, "browser_semantics_equal": True,
+            "semantic_sha256": digest(canonical(old_semantics)), "browser_executed": False}
+
+
+def verify_historical(report, original):
+    data = (original / "result.json").read_bytes()
+    require(digest(data) == HISTORICAL_RESULT_SHA, "historical_result_anchor_mismatch")
+    require(json.loads(data) == report, "historical_result_not_original")
+    compatibility = verify_historical_source(report, source())
+    count = verify_bound(report, original, current=False,
+                         producer_root=Path(report["source_after"]["root"]))
+    require(json.loads((original / "terminal-candidate.json").read_bytes()) == report,
+            "terminal_candidate_mismatch")
+    require((original / "completion.log").read_text() ==
+            f"{MARKER} verdict=PASS checks={count} rc=0\n", "completion_marker_mismatch")
+    return count, compatibility
+
+
+def revision_case(record, path, use_baseline):
+    try:
+        require(path.resolve().is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()),
+                "external_revision_case_required")
+        data = path.read_bytes()
+        report = json.loads(data)
+        checker = baseline_history() if use_baseline else validate_history
+        for width in ("1440", "390"):
+            checker(report, width)
+        record.report.update(verdict="HISTORY_CASE_ACCEPTED", intended_rc=0, completed=True,
+                             completed_checks=4, expected_checks=4)
+    except Exception:
+        record.failure("history_revision_case", traceback.format_exc())
+    record.report.update(case_path=str(path), baseline=use_baseline, browser_executed=False)
+    record.capture("source_after")
+    if record.report["source_drift"]:
+        record.failure("source_drift", "source_drift")
+    return record.publish()
+
+
+def revision_controls(record, original, *, before):
+    try:
+        data = (original / "result.json").read_bytes()
+        require(digest(data) == HISTORICAL_RESULT_SHA, "historical_result_anchor_mismatch")
+        report = json.loads(data)
+        baseline = baseline_history()
+        for width in ("1440", "390"):
+            baseline(report, width)
+        record.report.update(original_result_sha256=digest(data),
+            original_source=report["source_after"], baseline_commit=REVISION_BASE,
+            baseline_reader_sha256=digest(baseline_reader_bytes()), browser_executed=False,
+            cases=[], expected_checks=8)
+        if not before:
+            _, compatibility = verify_historical(report, original)
+            record.report["compatibility"] = compatibility
+        selected = {key: copy.deepcopy(report[key]) for key in ("history", "identities", "requests")}
+        selected["requests"] = {width: [row for row in rows if row["route"] == "/api/command"]
+                                for width, rows in selected["requests"].items()}
+        for width in ("1440", "390"):
+            for index in range(2):
+                for mutation in ("wrong", "missing"):
+                    name = width + "-" + selected["history"][width][index]["command"] + "-" + mutation
+                    child = record.out / name
+                    child.mkdir()
+                    changed = copy.deepcopy(selected)
+                    receipt = changed["history"][width][index]["receipt"]
+                    if mutation == "wrong":
+                        receipt["revision"] = 999
+                    else:
+                        del receipt["revision"]
+                    case = child / "input.json"
+                    write(case, changed)
+                    argv = [sys.executable, "-B", str(Path(__file__).resolve()),
+                            "--receipt-revision-case", str(case), "--evidence-dir", str(child / "reader")]
+                    if before:
+                        argv.append("--baseline-history")
+                    tested = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    write(child / "stdout.log", tested.stdout)
+                    write(child / "stderr.log", tested.stderr)
+                    actual = json.loads((child / "reader/result.json").read_bytes())
+                    record.report["cases"].append({"name": name, "argv": argv,
+                        "actual_rc": tested.returncode, "first_cause": actual["first_cause"],
+                        "verdict": actual["verdict"], "input_sha256": digest(case.read_bytes())})
+                    require(actual["source_drift"] == [] and actual["secondary_errors"] == [],
+                            "revision_case_source_or_secondary_failure")
+                    if not before:
+                        require(tested.returncode == 1 and
+                                "command_receipt_revision_mismatch" in (actual["first_cause"] or ""),
+                                "receipt_revision_mutant_not_rejected:" + name)
+                    record.report["completed_checks"] += 1
+        if before:
+            require(not any(row["actual_rc"] == 0 for row in record.report["cases"]),
+                    "baseline_receipt_revision_mutants_accepted")
+        record.report.update(verdict="PASS", intended_rc=0, completed=True)
+    except Exception:
+        record.failure("receipt_revision_controls", traceback.format_exc())
+    record.capture("source_after")
+    if record.report["source_drift"]:
+        record.failure("source_drift", "source_drift")
+    return record.publish()
 
 
 def source():
@@ -183,6 +343,9 @@ def validate_history(report, width):
                 matches[0]["request_headers"].get("x-opencad-request") == "1", "command_response_missing")
         row = matches[0]
         payload = json.loads(validate_response(row))
+        require(type(item["receipt"].get("revision")) is int and
+                item["receipt"]["revision"] == item["after"]["revision"],
+                "command_receipt_revision_mismatch")
         require(row["identity"] == identity["first"] and
                 row["request_headers"]["x-opencad-project"] == identity["first"]["project_id"] and
                 payload["project_id"] == identity["first"]["project_id"] and
@@ -226,12 +389,13 @@ def validate_response(row):
     return data
 
 
-def verify_bound(report, out, *, current=True):
+def verify_bound(report, out, *, current=True, producer_root=None):
     count = terminal(report)
     if current:
         require(source() == report["source_after"], "current_source_drift")
     captured = report["source_after"]
-    require(captured["root"] == str(ROOT.resolve()) and len(captured["owned"]) == 4 and
+    producer_root = ROOT.resolve() if producer_root is None else producer_root
+    require(captured["root"] == str(producer_root) and len(captured["owned"]) == 4 and
             captured["owned"] == {name: captured["files"][name] for name in OWNED} and
             captured["readers"] == {name: captured["files"][name] for name in READERS} and
             digest(canonical(captured["files"])) == captured["sha256"], "source_binding_mismatch")
@@ -263,7 +427,8 @@ def verify_bound(report, out, *, current=True):
                 "sentinel_receipt_missing")
     for number, cli in enumerate(report["cli"], 1):
         require(cli["log"] == f"cli-{number}.log" and
-                cli["argv"] == [sys.executable, "-B", str(APP / "secure_web.py"), "--data-root",
+                cli["argv"] == [sys.executable, "-B", str(producer_root /
+                    "oss-alternatives/apps/opencad/secure_web.py"), "--data-root",
                     report["runtime_root"], "--host", "127.0.0.1", "--port", str(cli["port"]),
                     "--public-origin", cli["origin"]] and
                 cli["origin"] == f"http://127.0.0.1:{cli['port']}" and
@@ -389,7 +554,7 @@ class Controls(unittest.TestCase):
                 records.append({"command": command, "request": row["body"],
                     "before": {"revision": index, "sha256": "b" * 64, "receipts": index},
                     "after": {"revision": index + 1, "sha256": "a" * 64, "receipts": index + 1},
-                    "receipt": {"request_id": command, "sha256": "a" * 64}})
+                    "receipt": {"request_id": command, "revision": index + 1, "sha256": "a" * 64}})
             report["history"][width] = records
             report["identities"][width] = {"first": {"owner_id": "alice", "project_id": "project"},
                                          "second": {"owner_id": "bob", "project_id": "other"}}
@@ -405,6 +570,59 @@ class Controls(unittest.TestCase):
             if kind == "body": row["body"]["command"] = "different"
             if kind == "receipts": report["history"]["1440"][0]["after"]["receipts"] += 1
             with self.assertRaises(AssertionError): validate_history(report, "1440")
+
+    def test_command_receipt_revision_wrong_missing_and_type_negative(self):
+        for width in ("1440", "390"):
+            for index in (0, 1):
+                for value in (999, None, True, "2", "missing"):
+                    report = self.request_report()
+                    self.add_history(report)
+                    validate_history(report, width)
+                    receipt = report["history"][width][index]["receipt"]
+                    if value == "missing":
+                        del receipt["revision"]
+                    else:
+                        receipt["revision"] = value
+                    with self.assertRaisesRegex(AssertionError, "command_receipt_revision_mismatch"):
+                        validate_history(report, width)
+
+    def historical_fixture(self):
+        current = source()
+        captured = copy.deepcopy(current)
+        captured["head"] = "bcadfdeb4ce7689df30cec168de8dbba16577435"
+        for name in READER_REPAIR_PATHS:
+            data = subprocess.check_output(["git", "--no-replace-objects", "-C", str(ROOT),
+                                           "show", REVISION_BASE + ":" + name])
+            captured["files"][name].update(bytes=len(data), sha256=digest(data))
+        original = {"scope": "crud", "source_after": captured}
+        return original, current
+
+    def test_historical_product_source_set_mode_and_head_negative(self):
+        original, current = self.historical_fixture()
+        self.assertTrue(verify_historical_source(original, current)["product_bytes_modes_equal"])
+        for kind in ("product", "set", "mode", "head"):
+            report, changed = copy.deepcopy(original), copy.deepcopy(current)
+            if kind == "product":
+                changed["files"][OWNED[0]]["sha256"] = "0" * 64
+            if kind == "set":
+                del changed["files"][OWNED[0]]
+            if kind == "mode":
+                changed["files"][OWNED[2]]["mode"] = 0
+            if kind == "head":
+                report["source_after"]["head"] = "0" * 40
+            with self.assertRaises(AssertionError):
+                verify_historical_source(report, changed)
+
+    def test_historical_browser_semantic_change_negative(self):
+        data = baseline_reader_bytes()
+        original = browser_semantics(data)
+        changed = data.replace(b"class Review(legacy.Review):",
+                               b"class Review(object):")
+        self.assertNotEqual(browser_semantics(changed), original)
+        report, current = self.historical_fixture()
+        with patch.object(sys.modules[__name__], "baseline_reader_bytes", return_value=changed):
+            with self.assertRaisesRegex(AssertionError, "historical_browser_semantics_changed"):
+                verify_historical_source(report, current)
 
     def test_single_receipt_and_response_binding_negative(self):
         for kind in ("revision", "receipts", "receipt", "response_missing"):
@@ -1293,13 +1511,21 @@ def main(argv=None):
     parser.add_argument("--browser", default=legacy.DEFAULT_BROWSER)
     parser.add_argument("--selftest", action="store_true")
     parser.add_argument("--verify-evidence", type=Path)
+    parser.add_argument("--verify-historical-evidence", type=Path,
+                        help="Pinned c112-compatible historical producer; never rebinding old evidence.")
     parser.add_argument("--sentinel-only", action="store_true",
                         help="Real legal-name collision regression, no full workflow verdict.")
+    parser.add_argument("--receipt-revision-before", type=Path)
+    parser.add_argument("--receipt-revision-controls", type=Path)
+    parser.add_argument("--receipt-revision-case", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--baseline-history", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     out = args.evidence_dir.resolve()
     require(out.is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()), "external_evidence_required")
     out.mkdir(parents=True, exist_ok=False)
-    scope = "readback" if args.verify_evidence else "controls" if args.selftest else (
+    scope = "receipt-revision" if (args.receipt_revision_before or args.receipt_revision_controls or
+                                  args.receipt_revision_case) else "readback" if (
+                                      args.verify_evidence or args.verify_historical_evidence) else "controls" if args.selftest else (
         "sentinel" if args.sentinel_only else "crud")
     record = TerminalRecord(out, scope)
     record.guard("source_root", lambda: require(args.source_root.resolve() == ROOT.resolve(),
@@ -1307,16 +1533,28 @@ def main(argv=None):
     before = record.capture("source_before")
     if record.report["first_cause"] is not None:
         return record.publish()
-    if args.verify_evidence:
+    if args.receipt_revision_case:
+        return revision_case(record, args.receipt_revision_case, args.baseline_history)
+    if args.receipt_revision_before or args.receipt_revision_controls:
+        return revision_controls(record, (args.receipt_revision_before or
+                                          args.receipt_revision_controls).resolve(),
+                                 before=bool(args.receipt_revision_before))
+    if args.verify_evidence or args.verify_historical_evidence:
         try:
-            original = args.verify_evidence.resolve()
+            original = (args.verify_evidence or args.verify_historical_evidence).resolve()
             report = json.loads((original / "result.json").read_bytes())
-            count = verify_bound(report, original)
-            require(json.loads((original / "terminal-candidate.json").read_bytes()) == report,
-                    "terminal_candidate_mismatch")
-            require((original / "completion.log").read_text() ==
-                    f"{MARKER} verdict=PASS checks={count} rc=0\n", "completion_marker_mismatch")
-            record.report.update(verdict="EVIDENCE_VERIFIED", intended_rc=0, completed=True,
+            if args.verify_historical_evidence:
+                count, compatibility = verify_historical(report, original)
+                record.report.update(compatibility=compatibility, browser_executed=False,
+                                     original_source=report["source_after"])
+            else:
+                count = verify_bound(report, original)
+                require(json.loads((original / "terminal-candidate.json").read_bytes()) == report,
+                        "terminal_candidate_mismatch")
+                require((original / "completion.log").read_text() ==
+                        f"{MARKER} verdict=PASS checks={count} rc=0\n", "completion_marker_mismatch")
+            record.report.update(verdict="HISTORICAL_EVIDENCE_VERIFIED" if args.verify_historical_evidence
+                                 else "EVIDENCE_VERIFIED", intended_rc=0, completed=True,
                 completed_checks=count, expected_checks=count,
                 original_result_sha256=digest((original / "result.json").read_bytes()))
         except Exception:
