@@ -13,7 +13,7 @@ Current development uses main; historical Gitee master is preserved.
 The original workspace's nine untracked private-entry assets remain protected.
 No credential file, permission, host key, service or production state changed.
 
-The last actual three-target synchronization was `bec25d3828b493347070f2e3943117eaef090ccc`
+The preceding actual three-target synchronization was `bec25d3828b493347070f2e3943117eaef090ccc`
 at 07:49:35, with original parent rc 0. A fresh GET/ref-only plan at
 08:37:17-08:37:18 again returned that SHA for all three main refs.
 Evidence: `/hf3fs-jd/data/tmp/opencad-config-repair-release-refplan-20261012-v1/`.
@@ -30,6 +30,38 @@ dynamic publication review, real failed-all negative control,
 browser terminal preservation and three discovery-fixture repairs.
 This handoff is a separate documentation-only successor; it is not part of
 the frozen product source or its whole-source test count.
+
+## Actual Three-Target Publication
+
+Named documentation-only DCO commit
+5394b04d36efdf6bac60947703e458dff84ed61d was created at 08:59:14.
+Prepublication readback returned original rc 0 at 09:00:01.267104,
+six checks and 22/22 controls. It verified clean publication source,
+the exact 419-file all freeze and the sole added Markdown successor.
+Evidence: `/hf3fs-jd/data/tmp/opencad-config-repair-release-doc-prepublication-20261012-v1/`.
+
+The explicit new plan returned original rc 0/PASS at 09:00:08.672442:
+1112 reachable objects and the exact eight-commit forward tail.
+Actual synchronization parent session 17786 returned original rc 0,
+SYNCED/PASS at 09:02:37.589392. GitLab and Gitee original push exits were 0;
+GitHub verified all eight original commit IDs before its non-forced main update.
+Final main readbacks all returned 5394b04:
+GitLab 09:02:34.889005, Gitee 09:02:35.603155, GitHub 09:02:36.332949.
+Evidence:
+`/hf3fs-jd/data/tmp/opencad-config-repair-release-plan-20261012-v1/`,
+`/hf3fs-jd/data/tmp/opencad-config-repair-release-sync-20261012-v1/`.
+
+The chair's independent recorded-transport and fresh live-ref readback
+returned original rc 0/PASS at 09:03:42.190770: eight checks, 36/36 controls.
+It checked exact tail/object counts, primary-first ordering, original exits,
+all-source and documentation-only relation, and fresh three main refs:
+`/hf3fs-jd/data/tmp/opencad-config-repair-release-publication-readback-20261012-v1/`.
+No credentials were read by this consumer; GitHub used public GET.
+This is sequential code synchronization, not globally atomic publication,
+automatic mirroring, default-branch migration, HA failover or live deployment.
+This receipt update is a later documentation-only commit and is not included
+in the recorded 5394b04 synchronization or the frozen whole-source all.
+It needs its own explicit synchronization, without rerunning product tests.
 
 ## Original Failed Integration And Repair
 
@@ -154,6 +186,11 @@ a1b74c8e4c1704d936245daef9ca816139b9ea3b. Its precommit byte freeze passed
 parent rc 0, three source hashes unchanged after commit; it is not a new-HEAD
 rerun or part of 7a48ee4. Aquinas has the independent review. Evidence:
 `/hf3fs-jd/data/tmp/opencad-sqlite-discovery-terminal-fix-20261012-v3/`.
+Aquinas subsequently received new-HEAD original terminal rc 0/13 controls at
+08:56:09 and runtime rc 0/eight controls at 08:56:07. The old runner P2 is
+closed, with no P0/P1. A separate P2 remains in the newly added selftest's
+own final binding read; Lovelace is assigned a new isolated two-file repair.
+Evidence: `/hf3fs-jd/data/tmp/opencad-sqlite-discovery-terminal-aquinas-20261012-v1/`.
 
 Render producer offline first-cause/single-slot repairs passed independent
 controls, but new tools integration `53eb3731280b95cfc46f1dd01a3a5cfbbfea3470`
@@ -164,8 +201,11 @@ fixture-only DCO repair is 33a4f489c33f2c372e32d1092f8484b588772ce1.
 Its original postcommit parent returned rc 0 at 08:46:49: 40 tests, 42 actual
 child CLIs (five positive rc 0 and 37 expected rc 1), 16 diagnostics and zero
 failures/errors/skips. All original 34 controls remain. Independent Euler
-review is pending; this commit is not part of 7a48ee4. Evidence:
+review is complete; this commit is not part of 7a48ee4. Evidence:
 `/hf3fs-jd/data/tmp/opencad-render-admission-fixture-fix-20261012-selftest-v1/`.
+Euler's fresh new-HEAD selftest returned original rc 0 at 08:55:34.356347,
+the same 40 tests/42 CLI/16 diagnostics, no new P0/P1/P2 and zero drift.
+Evidence: `/hf3fs-jd/data/tmp/opencad-render-admission-fixture-fix-euler-selftest-20261012-v1/`.
 Candidate/check/launch-plan or offline-controls rc 0 is not GPU admission.
 No new real GPU/HTTP rendering or performance benefit was measured here.
 
