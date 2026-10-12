@@ -221,3 +221,48 @@ reclassified. Their earlier 7ce snapshot evidence remains distinct from
 this terminal-only repair. No repeat full/Web acceptance or production
 readiness claim follows from terminal fault controls; the original 4b3 FAIL
 and old unattributed SIGBUS remain unchanged.
+
+## Terminal Selftest Summary Protection
+
+The next independent review identified the same failure class in the
+terminal fault suite itself: the `a1b74c8` selftest read its final source
+binding without protection. A final read error could discard already
+completed counts and prevent any summary result. This follow-up owns only
+`tools/test_sqlite_discovery_terminal.py` and this document; it does not
+change the independently reviewed discovery runner or the frozen main tree.
+
+The terminal selftest now reuses that runner's `controls`, `failure` and
+`finalize` functions instead of maintaining a second terminal implementation.
+It initializes unobserved source/count/hash fields to null, preserves the
+chronologically first test error, appends subsequent exceptions to
+`secondary_errors`, captures counts before closing logs and distinguishes
+complete from interrupted counts. The top-level test counts remain available
+and equal the captured `counts` mapping whenever it was observed.
+Initial source failures cannot produce empty successful summaries. Final
+source reads, log reads and exclusive result publication all fail loudly.
+PASS requires the original rc0, complete passing counts, verified source
+before/after with no drift and a valid immutable result without a
+`terminal-failure.json`. A `publication_pending` marker is not acceptance.
+
+Eight additional CLI controls exercise the actual selftest entry with a
+small nested suite, avoiding recursive fault-suite launches. They cover
+initial/final source EIO, primary error followed by source EIO, result-write
+EIO, primary error followed by write EIO, log-read EIO, interrupted counts
+and a complete positive. The result-write fault creates a partial result
+exclusively and then raises EIO; the failure summary is written to a separate
+exclusive file, and the partial original bytes must remain unchanged.
+These are controlled I/O exceptions in owned processes, not claims of
+physical disk failure, durability or production storage validation.
+The original thirteen runner controls remain unchanged.
+
+```bash
+sudo -n -u infra python3 -B /data/dev/wt-opencad-sqlite-terminal-summary-fix-20261012/tools/test_sqlite_discovery_terminal.py --summary-before-red --out /hf3fs-jd/data/tmp/opencad-sqlite-terminal-summary-fix-20261012-v1/before-red --runtime-root /data/tmp/oc-sts-red-1012-v1
+sudo -n -u infra python3 -B /data/dev/wt-opencad-sqlite-terminal-summary-fix-20261012/tools/test_sqlite_discovery_terminal.py --selftest --out /hf3fs-jd/data/tmp/opencad-sqlite-terminal-summary-fix-20261012-v2/selftest --runtime-root /data/tmp/oc-sts-self-1012-v2
+```
+
+The repair-before control uses the unchanged terminal tool from its
+`a1b74c8` owner tree, not a rewritten copy. Its child rc1, completed two-test
+log and absent result are retained. Evidence directories are immutable;
+use fresh absent destinations on a later run. No full/Web/GPU or production
+acceptance follows from this terminal-only repair, and the original
+4b3 FAIL and unattributed SIGBUS remain retained.

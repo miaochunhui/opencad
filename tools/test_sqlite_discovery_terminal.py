@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
+import errno
 import importlib.util
 import json
 import os
@@ -21,11 +22,77 @@ import test_sqlite_discovery_fixtures as D
 ROOT = Path(__file__).resolve().parents[1]
 OLD_TOOL = Path("/data/dev/wt-opencad-sqlite-discovery-fixture-fix-20261012/"
                 "tools/test_sqlite_discovery_fixtures.py")
+OLD_TERMINAL = Path("/data/dev/wt-opencad-sqlite-discovery-terminal-fix-20261012/"
+                    "tools/test_sqlite_discovery_terminal.py")
 FAULTS = ("first-and-after", "after-source", "before-source", "log-open",
           "log-close", "log-read", "completion-log", "result-publication",
           "first-and-publication", "stdout", "partial-counts", "test-errors-and-close", "positive")
+SUMMARY_FAULTS = ("before-source", "after-source", "first-and-after", "result-write",
+                  "first-and-write", "log-read", "partial-counts", "positive")
 OUT = None
 LOCAL = None
+
+
+def summary_actor(args):
+    """Fault the real selftest entry, with a tiny suite to avoid recursive actors."""
+    class SummaryControls(unittest.TestCase):
+        def test_1(self):
+            if args.summary_actor in ("first-and-after", "first-and-write"):
+                raise ValueError("injected-summary-primary")
+            self.assertEqual(2 + 2, 4)
+
+        def test_2(self):
+            self.assertEqual(b"retained", b"retained")
+
+    tool = args.tool.resolve()
+    if tool not in (Path(__file__).resolve(), OLD_TERMINAL.resolve()):
+        raise ValueError("summary actor outside authorized terminal source trees")
+    spec = importlib.util.spec_from_file_location("summary_fault_subject", tool)
+    subject = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(subject)
+    original_binding = subject.D.binding
+    original_write = subject.A.bootstrap.exclusive_json
+    original_read = subject.A.bootstrap.regular_bytes
+    original_run = unittest.TextTestRunner.run
+    out = args.out.resolve()
+    calls = 0
+
+    def read_source():
+        nonlocal calls
+        calls += 1
+        if (args.summary_actor == "before-source" and calls == 1
+                or args.summary_actor in ("after-source", "first-and-after") and calls == 2):
+            raise OSError(errno.EIO, "injected-summary-source-" + str(calls))
+        return original_binding()
+
+    def write_result(path, report):
+        if path == out / "result.json" and args.summary_actor in (
+                "result-write", "first-and-write"):
+            with path.open("xb") as handle:
+                handle.write(b'{"partial":')
+            raise OSError(errno.EIO, "injected-summary-result-write")
+        return original_write(path, report)
+
+    def read_log(path):
+        if args.summary_actor == "log-read" and path == out / "selftest.log":
+            raise OSError(errno.EIO, "injected-summary-log-read")
+        return original_read(path)
+
+    def interrupted(runner, suite):
+        if args.summary_actor != "partial-counts":
+            return original_run(runner, suite)
+        result = runner._makeResult()
+        suite._tests[0](result)
+        raise OSError(errno.EIO, "injected-summary-partial")
+
+    with patch.object(subject, "TerminalControls", SummaryControls), \
+            patch.object(subject.D, "binding", read_source), \
+            patch.object(subject.A.bootstrap, "exclusive_json", write_result), \
+            patch.object(subject.A.bootstrap, "regular_bytes", read_log), \
+            patch.object(unittest.TextTestRunner, "run", interrupted):
+        return subject.selftest(argparse.Namespace(
+            out=args.out, runtime_root=args.runtime_root, before_red=False,
+            summary_before_red=False))
 
 
 def actor(args):
@@ -136,6 +203,89 @@ def actor(args):
 
 
 class TerminalControls(unittest.TestCase):
+    def check_summary(self, fault, *, old=False):
+        out = OUT / ("summary-" + fault)
+        runtime = LOCAL / ("summary-" + fault)
+        log = OUT / ("summary-" + fault + ".log")
+        argv = [sys.executable, "-B", str(Path(__file__).resolve()),
+                "--summary-actor", fault, "--out", str(out),
+                "--runtime-root", str(runtime), "--tool",
+                str(OLD_TERMINAL if old else Path(__file__).resolve())]
+        with log.open("xb") as handle:
+            process = subprocess.run(argv, cwd=ROOT, stdout=handle,
+                                     stderr=subprocess.STDOUT,
+                                     env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+            handle.write(f"\nSUMMARY_ORIGINAL_RC rc={process.returncode}\n".encode())
+        text = log.read_text()
+        self.assertEqual(process.returncode, 0 if fault == "positive" else 1, text)
+        if old:
+            self.assertIn("injected-summary-source-2", text)
+            self.assertFalse((out / "result.json").exists())
+            self.assertIn("Ran 2 tests", (out / "selftest.log").read_text())
+            return None
+        result = out / ("terminal-failure.json" if "write" in fault else "result.json")
+        report = json.loads(result.read_text())
+        self.assertEqual(report["actual_rc"], process.returncode)
+        self.assertEqual(report["verdict"], "PASS" if fault == "positive" else "FAIL")
+        if "write" in fault:
+            self.assertEqual((out / "result.json").read_bytes(), b'{"partial":')
+        return report
+
+    def test_summary_source_eio_retains_complete_counts(self):
+        report = self.check_summary("after-source")
+        self.assertEqual(report["first_cause"]["phase"], "source-after")
+        self.assertEqual(report["counts"]["passed"], 2)
+        self.assertTrue(report["counts_complete"])
+        self.assertIsNone(report["source_after"])
+        self.assertIsNone(report["source_drift"])
+
+    def test_summary_first_and_source_eio_keep_chronology(self):
+        report = self.check_summary("first-and-after")
+        self.assertIn("injected-summary-primary", report["first_cause"]["detail"])
+        self.assertIn("source-after", [e["phase"] for e in report["secondary_errors"]])
+        self.assertEqual(report["counts"]["errors"], 1)
+        self.assertEqual(report["counts"]["passed"], 1)
+
+    def test_summary_initial_source_eio_is_null_not_empty(self):
+        report = self.check_summary("before-source")
+        self.assertIn("injected-summary-source-1", report["first_cause"]["detail"])
+        for key in ("source_before", "source_drift", "source_sha256", "counts", "tests"):
+            self.assertIsNone(report[key])
+        self.assertFalse(report["counts_complete"])
+
+    def test_summary_write_eio_retains_counts_and_partial_bytes(self):
+        report = self.check_summary("result-write")
+        self.assertEqual(report["first_cause"]["phase"], "result-publication")
+        self.assertEqual(report["counts"]["passed"], 2)
+        self.assertTrue(report["counts_complete"])
+
+    def test_summary_first_and_write_eio_keep_primary(self):
+        report = self.check_summary("first-and-write")
+        self.assertIn("injected-summary-primary", report["first_cause"]["detail"])
+        self.assertIn("result-publication", [e["phase"] for e in report["secondary_errors"]])
+        self.assertEqual(report["counts"]["errors"], 1)
+
+    def test_summary_log_read_eio_retains_counts_with_null_hash(self):
+        report = self.check_summary("log-read")
+        self.assertEqual(report["first_cause"]["phase"], "selftest-log-read")
+        self.assertEqual(report["counts"]["passed"], 2)
+        self.assertIsNone(report["log_sha256"])
+        self.assertIsNone(report["actor_logs"])
+
+    def test_summary_partial_counts_are_not_complete(self):
+        report = self.check_summary("partial-counts")
+        self.assertIn("injected-summary-partial", report["first_cause"]["detail"])
+        self.assertEqual(report["counts"]["passed"], 1)
+        self.assertFalse(report["counts_complete"])
+
+    def test_summary_complete_positive(self):
+        report = self.check_summary("positive")
+        self.assertIsNone(report["first_cause"])
+        self.assertEqual(report["secondary_errors"], [])
+        self.assertEqual(report["source_before"], report["source_after"])
+        self.assertEqual(report["source_drift"], [])
+        self.assertEqual(report["counts"]["passed"], 2)
+
     def check_actor(self, fault, *, old=False):
         out = OUT / fault
         runtime = LOCAL / fault
@@ -267,42 +417,44 @@ def selftest(args):
     if not OUT.is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()):
         raise ValueError("external 3FS evidence required")
     OUT.mkdir(parents=True, exist_ok=False)
-    LOCAL.mkdir()
-    before = D.binding()
     report = {"verdict": "FAIL", "actual_rc": 1, "started_at": D.now(),
-              "source_before": before, "first_cause": None}
-    with (OUT / "selftest.log").open("x") as handle, \
-            redirect_stdout(handle), redirect_stderr(handle):
+              "mode": "terminal-selftest", "source_before": None, "source_after": None,
+              "source_drift": None, "source_sha256": None, "first_cause": None,
+              "secondary_errors": [], "counts": None, "counts_complete": False,
+              "log_sha256": None, "actor_logs": None,
+              "tests": None, "passed": None, "failures": None, "errors": None,
+              "skipped": None, "runtime_root": str(LOCAL), "production": "NOT_ASSESSED"}
+    try:
+        LOCAL.mkdir()
+        report["source_before"] = D.binding()
+        control_class = TerminalControls
         if args.before_red:
-            suite = unittest.TestSuite()
-            control = TerminalControls("test_first_and_later_source_keep_primary")
-            suite.addTest(unittest.FunctionTestCase(
-                lambda: control.check_actor("first-and-after", old=True)))
-        else:
-            suite = unittest.defaultTestLoader.loadTestsFromTestCase(TerminalControls)
-        result = unittest.TextTestRunner(verbosity=2, resultclass=A.CountedResult).run(suite)
-    report.update(tests=result.testsRun, passed=result.passed,
-                  failures=len(result.failures), errors=len(result.errors),
-                  skipped=len(result.skipped))
-    failed = result.failures + result.errors
-    if failed:
-        report["first_cause"] = {"test": str(failed[0][0]), "detail": failed[0][1]}
-    after = D.binding()
-    report.update(source_after=after,
-                  source_drift=[key for key in before if before[key] != after[key]],
-                  source_sha256=A.bootstrap.digest(before["files"]),
-                  log_sha256=A.bootstrap.sha_bytes((OUT / "selftest.log").read_bytes()),
-                  actor_logs={path.name: A.bootstrap.sha_bytes(path.read_bytes())
-                              for path in sorted(OUT.glob("*.log"))},
-                  finished_at=D.now())
-    if result.wasSuccessful() and result.testsRun > 0 and not result.skipped \
-            and not report["source_drift"]:
-        report.update(verdict="PASS", actual_rc=0)
-    A.bootstrap.exclusive_json(OUT / "result.json", report)
-    print(f"SQLITE_DISCOVERY_TERMINAL verdict={report['verdict']} "
-          f"tests={report['tests']} passed={report['passed']} rc={report['actual_rc']} "
-          f"evidence={OUT}", flush=True)
-    return report["actual_rc"]
+            class BeforeRed(unittest.TestCase):
+                def test_old_runner_terminal(self):
+                    TerminalControls().check_actor("first-and-after", old=True)
+            control_class = BeforeRed
+        elif args.summary_before_red:
+            class SummaryBeforeRed(unittest.TestCase):
+                def test_old_selftest_terminal(self):
+                    TerminalControls().check_summary("first-and-after", old=True)
+            control_class = SummaryBeforeRed
+        # Reuse the reviewed runner's chronological counts and terminal protection.
+        with patch.object(D, "FixtureControls", control_class):
+            D.controls(report, OUT, LOCAL)
+        if report["counts"] is not None:
+            report.update(report["counts"])
+        try:
+            report["actor_logs"] = {
+                path.name: A.bootstrap.sha_bytes(A.bootstrap.regular_bytes(path))
+                for path in sorted(OUT.glob("*.log"))}
+        except Exception as exc:
+            D.failure(report, "actor-log-read", exc)
+        if report["first_cause"] is None:
+            report.update(verdict="PASS", actual_rc=0)
+    except Exception as exc:
+        D.failure(report, "terminal-selftest", exc)
+    with patch.object(D, "MARKER", "SQLITE_DISCOVERY_TERMINAL"):
+        return D.finalize(report, OUT)
 
 
 def main():
@@ -311,11 +463,17 @@ def main():
     group.add_argument("--selftest", action="store_true")
     group.add_argument("--before-red", action="store_true")
     group.add_argument("--actor", choices=FAULTS)
-    parser.add_argument("--tool", type=Path, default=Path(D.__file__))
+    group.add_argument("--summary-before-red", action="store_true")
+    group.add_argument("--summary-actor", choices=SUMMARY_FAULTS)
+    parser.add_argument("--tool", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--runtime-root", type=Path, required=True)
     args = parser.parse_args()
+    if args.tool is None:
+        args.tool = Path(__file__) if args.summary_actor else Path(D.__file__)
     try:
+        if args.summary_actor:
+            return summary_actor(args)
         return actor(args) if args.actor else selftest(args)
     except Exception:
         traceback.print_exc()
