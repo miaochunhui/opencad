@@ -2,6 +2,36 @@
 
 ## Current Verified State
 
+On 2026-10-12 at 10:42:29-10:42:30 Asia/Shanghai, the recorded final
+GitLab, Gitee and GitHub main readbacks all returned
+`a00cac019d1f2f3f2b8a57df0dc2d7723c97674f`.
+The chair received synchronization parent 94860's original rc 0 at
+10:42:31, `SYNCED/PASS`, with 1162 reachable objects scanned and the exact
+two-commit tail `caed119d1b6f584ecd7ad8558a3ae18604f38156` then a00.
+Independent bounded receipt review verified both original Git push rc 0,
+primary-first ordering, the two exact-commit receipts and final three refs.
+The seven reviewed receipt files remained unchanged. GitHub HTTP payload
+bytes were not retained; `force=false` and exact returned-object checks
+are source-enforced contracts, not an independent payload-byte observation.
+Evidence:
+`/hf3fs-jd/data/tmp/opencad-dynamic-reviewer-integrated-three-repo-sync-20261012-v1/`.
+
+The clean frozen executor is
+`/data/dev/wt-opencad-dynamic-reviewer-integrated-20261012` at a00,
+with 421 committed source byte/mode bindings. Its new offline selftest
+parent 63640 returned original rc 0: 40 tests and 107 negative controls,
+zero failures/errors/skips or drift. Chair and Aquinas readbacks returned
+rc 0. The already-published 69 single-tail repair remains through its
+74a8a6c integration. Only the reviewer, its test and design document
+changed in the caed/a00 tail; product files have zero diff.
+The latest whole-product all remains the separately frozen 60a0e9c run:
+2450 tests, 2437 passes, 13 original skips and 15 HTTP checks.
+There is no new a00 all, and this documentation-only successor does not
+inherit or relabel that older whole-source acceptance. It is not yet
+synchronized. API/UI repair acceptance, real GPU benefit, industrial
+full-function parity and production cutover remain open. See
+`docs/handoff/20261012-dynamic-reviewer-release.md`.
+
 On 2026-10-12 at 10:01:06-10:01:07 Asia/Shanghai, all three main refs
 returned `60a0e9cb97950a321bf1c8a6f76dd581056b5cbc`. Actual synchronization
 finished at 10:01:08 with original parent rc 0, `SYNCED/PASS`, 1140 reachable
