@@ -75,6 +75,154 @@ def require(condition, cause):
         raise AssertionError(cause)
 
 
+def failure(report, phase, exc):
+    cause = {"phase": phase, "type": type(exc).__name__, "detail": str(exc),
+             "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))}
+    report.update(verdict="FAIL", actual_rc=1)
+    if report["first_cause"] is None:
+        report["first_cause"] = cause
+    else:
+        report["secondary_errors"].append(cause)
+
+
+class ObservedResult(A.CountedResult):
+    first_problem = None
+
+    def problem(self, test, err):
+        if self.first_problem is None:
+            self.first_problem = {"phase": "selftest", "test": test.id(),
+                                  "detail": self._exc_info_to_string(err, test)}
+
+    def addFailure(self, test, err):
+        self.problem(test, err)
+        super().addFailure(test, err)
+
+    def addError(self, test, err):
+        self.problem(test, err)
+        super().addError(test, err)
+
+    def addSubTest(self, test, subtest, err):
+        if err is not None:
+            self.problem(subtest, err)
+        super().addSubTest(test, subtest, err)
+
+
+class ObservedRunner(unittest.TextTestRunner):
+    observed_result = None
+
+    def _makeResult(self):
+        self.observed_result = super()._makeResult()
+        return self.observed_result
+
+
+def controls(report, out, runtime):
+    global CONTROL_OUT, CONTROL_RUNTIME
+    CONTROL_OUT, CONTROL_RUNTIME = out, runtime
+    runner = None
+    handle = None
+    try:
+        handle = (out / "selftest.log").open("x")
+        with redirect_stdout(handle), redirect_stderr(handle):
+            runner = ObservedRunner(verbosity=2, resultclass=ObservedResult)
+            try:
+                result = runner.run(
+                    unittest.defaultTestLoader.loadTestsFromTestCase(FixtureControls))
+                report["counts_complete"] = True
+            except Exception as exc:
+                result = runner.observed_result
+                if result is not None and result.first_problem is not None:
+                    report["first_cause"] = result.first_problem
+                failure(report, "selftest-run", exc)
+            finally:
+                result = runner.observed_result
+                if result is not None:
+                    report["counts"] = {
+                        "tests": result.testsRun, "passed": result.passed,
+                        "failures": len(result.failures), "errors": len(result.errors),
+                        "skipped": len(result.skipped)}
+                    if result.first_problem is not None and report["first_cause"] is None:
+                        report["first_cause"] = result.first_problem
+            if report["counts_complete"]:
+                require(result.wasSuccessful() and result.testsRun > 0 and not result.skipped,
+                        "fixture_selftest_failed")
+    except Exception as exc:
+        failure(report, "selftest-log/run", exc)
+    finally:
+        if handle is not None:
+            for phase, action in (("selftest-log-flush", handle.flush),
+                                  ("selftest-log-close", handle.close)):
+                try:
+                    action()
+                except Exception as exc:
+                    failure(report, phase, exc)
+        try:
+            report["log_sha256"] = A.bootstrap.sha_bytes(
+                A.bootstrap.regular_bytes(out / "selftest.log"))
+        except Exception as exc:
+            failure(report, "selftest-log-read", exc)
+
+
+def completion(report, out):
+    handle = None
+    try:
+        handle = (out / "completion.log").open("x")
+        handle.write(f"{MARKER} verdict={report['verdict']} mode={report['mode']} "
+                     f"rc={report['actual_rc']} evidence={out}\n")
+        handle.flush()
+    except Exception as exc:
+        failure(report, "completion-log", exc)
+    finally:
+        if handle is not None:
+            try:
+                handle.close()
+            except Exception as exc:
+                failure(report, "completion-log-close", exc)
+
+
+def finalize(report, out):
+    before = report["source_before"]
+    try:
+        after = binding()
+        report["source_after"] = after
+        if before is not None:
+            report["source_drift"] = [key for key in before if before[key] != after[key]]
+            if report["source_drift"]:
+                failure(report, "source-drift", ValueError("source_drift"))
+    except Exception as exc:
+        failure(report, "source-after", exc)
+    if before is not None:
+        try:
+            report["source_sha256"] = A.bootstrap.digest(before["files"])
+        except Exception as exc:
+            failure(report, "source-digest", exc)
+    # Stdout cannot advertise PASS before immutable result publication succeeds.
+    try:
+        print(f"{MARKER} publication_pending mode={report['mode']} evidence={out}", flush=True)
+    except Exception as exc:
+        failure(report, "terminal-output", exc)
+    completion(report, out)
+    report["finished_at"] = now()
+    try:
+        A.bootstrap.exclusive_json(out / "result.json", report)
+    except Exception as exc:
+        failure(report, "result-publication", exc)
+        try:
+            print(f"{MARKER} verdict=FAIL rc=1 report=" + json.dumps(report),
+                  file=sys.stderr, flush=True)
+        except Exception as output_error:
+            failure(report, "failure-output", output_error)
+        try:
+            A.bootstrap.exclusive_json(out / "terminal-failure.json", report)
+        except Exception as evidence_error:
+            failure(report, "failure-publication", evidence_error)
+            try:
+                print(json.dumps(report), file=sys.stderr, flush=True)
+            except Exception:
+                # Every authorized evidence/output channel has already failed.
+                return 1
+    return report["actual_rc"]
+
+
 def original_failure():
     raw = A.bootstrap.regular_bytes(ORIGINAL / "result.json")
     report = json.loads(raw)
@@ -199,34 +347,22 @@ class FixtureControls(unittest.TestCase):
 
 
 def run(args):
-    global CONTROL_OUT, CONTROL_RUNTIME
     out = args.out.resolve()
     require(out.is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()), "external_3fs_required")
     runtime = A.local_runtime_path(args.runtime_root, fresh=True, short=True)
     out.mkdir(parents=True, exist_ok=False)
-    runtime.mkdir()
-    before = binding()
     report = {"verdict": "FAIL", "actual_rc": 1, "started_at": now(),
-              "mode": args.mode, "source_before": before, "steps": [], "first_cause": None,
+              "mode": args.mode, "source_before": None, "source_after": None,
+              "source_drift": None, "source_sha256": None,
+              "counts": None, "counts_complete": False, "log_sha256": None,
+              "steps": [], "first_cause": None, "secondary_errors": [],
               "runtime_root": str(runtime), "production": "NOT_ASSESSED"}
     try:
+        runtime.mkdir()
+        report["source_before"] = binding()
         report["retained_original_failure"] = original_failure()
         if args.mode == "selftest":
-            CONTROL_OUT, CONTROL_RUNTIME = out, runtime
-            with (out / "selftest.log").open("x") as handle, \
-                    redirect_stdout(handle), redirect_stderr(handle):
-                result = unittest.TextTestRunner(
-                    verbosity=2, resultclass=A.CountedResult).run(
-                        unittest.defaultTestLoader.loadTestsFromTestCase(FixtureControls))
-            report["counts"] = {"tests": result.testsRun, "passed": result.passed,
-                                "failures": len(result.failures), "errors": len(result.errors),
-                                "skipped": len(result.skipped)}
-            failed = result.failures + result.errors
-            if failed:
-                report["first_cause"] = {"test": failed[0][0].id(), "detail": failed[0][1]}
-            require(result.wasSuccessful() and result.testsRun > 0 and not result.skipped,
-                    "fixture_selftest_failed")
-            report["log_sha256"] = A.bootstrap.sha_bytes((out / "selftest.log").read_bytes())
+            controls(report, out, runtime)
         else:
             os.environ["OPENCAD_DRAWING_DEPENDENCY_ROOT"] = str(ROOT)
             os.environ["OPENCAD_DRAWING_TEST_OUT"] = str(out / "drawing-artifacts")
@@ -259,29 +395,11 @@ def run(args):
                             and not step.get("runtime_error") and counts
                             and counts["successful"] and counts["tests"] > 0
                             and not counts["skipped"], "failed_discovery_step:" + label)
-        report.update(verdict="PASS", actual_rc=0)
+        if report["first_cause"] is None:
+            report.update(verdict="PASS", actual_rc=0)
     except Exception as exc:
-        report["first_cause"] = report["first_cause"] or {
-            "type": type(exc).__name__, "detail": str(exc), "traceback": traceback.format_exc()}
-    finally:
-        after = binding()
-        report["source_after"] = after
-        report["source_drift"] = [
-            key for key in before if before[key] != after[key]]
-        if report["source_drift"]:
-            report.update(verdict="FAIL", actual_rc=1)
-            report["first_cause"] = report["first_cause"] or {"detail": "source_drift"}
-        report["source_sha256"] = A.bootstrap.digest(before["files"])
-        report["finished_at"] = now()
-        A.bootstrap.exclusive_json(out / "result.json", report)
-        marker = (f"{MARKER} verdict={report['verdict']} mode={args.mode} "
-                  f"rc={report['actual_rc']} evidence={out}")
-        with (out / "completion.log").open("x") as handle:
-            handle.write(marker + "\n")
-        print(marker, flush=True)
-        if report["first_cause"]:
-            print(json.dumps(report["first_cause"]), flush=True)
-    return report["actual_rc"]
+        failure(report, "run", exc)
+    return finalize(report, out)
 
 
 def main():

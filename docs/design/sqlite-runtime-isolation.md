@@ -172,3 +172,52 @@ complete markers, reconciled counts, no new skips or rejected positive
 SQLite connections and zero source/HEAD/status drift. Web-only acceptance
 does not inherit core/full results, erase the original FAIL, prove absence
 of all global environment pollution or establish production readiness.
+
+## Discovery Terminal Failure Preservation
+
+The `7ce7bee` independent review found that a later `binding()` exception
+could escape the runner's unprotected `finally`, hiding the earlier failure
+and preventing publication of completed counts. This repair changes only
+the runner, its dedicated terminal controls and this document. The SQLite
+guard, products and three discovery fixtures remain unchanged.
+
+The runner now protects initial/final source reads, source digest, selftest
+log open/run/flush/close/read, completion log and result publication.
+`first_cause` retains the earliest failure; later exceptions appear in
+`secondary_errors`, and any error forces FAIL/rc1. Unavailable source reads,
+drift, counts and log hashes are explicitly null, not empty successful
+observations. Counts are captured before log closure; `counts_complete=false`
+distinguishes an interrupted suite from a completed successful suite.
+The first test failure/error is recorded at its actual callback, so a later
+assertion failure cannot precede an earlier error merely because separate
+unittest lists are concatenated.
+
+`result.json` remains exclusively created and is never reopened for repair.
+If publication fails, the runner reports FAIL to stderr and attempts a new
+`terminal-failure.json` containing the original cause, secondary errors and
+completed observations. Readers must require original rc0 and a valid
+`result.json` with no `terminal-failure.json`; a completion marker alone is
+not acceptance. A marker written before a failed result publication is only
+an incomplete publication attempt. If both output and evidence channels
+fail, the nonzero process exit still refuses success; evidence availability
+cannot be guaranteed after all authorized channels fail.
+
+The separate CLI fault actor runs only the two authorized tool versions in
+fresh external directories, not product HTTP/FreeCAD or production. It
+covers first-plus-later errors, initial/final source failures, log open,
+close/read, completion-log failure, exclusive publication refusal,
+stdout failure, partial counts and a complete positive. The original
+counterexample runs the unchanged `7ce7bee` tool and retains rc1/no result:
+its later source exception hides the injected primary cause.
+
+```bash
+sudo -n -u infra python3 -B /data/dev/wt-opencad-sqlite-discovery-terminal-fix-20261012/tools/test_sqlite_discovery_terminal.py --before-red --out /hf3fs-jd/data/tmp/opencad-sqlite-discovery-terminal-fix-20261012-v1/before-red --runtime-root /data/tmp/oc-sdt-red-1012-v1
+sudo -n -u infra python3 -B /data/dev/wt-opencad-sqlite-discovery-terminal-fix-20261012/tools/test_sqlite_discovery_terminal.py --selftest --out /hf3fs-jd/data/tmp/opencad-sqlite-discovery-terminal-fix-20261012-v1/terminal --runtime-root /data/tmp/oc-sdt-term-1012-v1
+sudo -n -u infra python3 -B /data/dev/wt-opencad-sqlite-discovery-terminal-fix-20261012/tools/test_sqlite_discovery_fixtures.py --selftest --out /hf3fs-jd/data/tmp/opencad-sqlite-discovery-terminal-fix-20261012-v1/runtime --runtime-root /data/tmp/oc-sdt-self-1012-v1
+```
+
+Original eight runtime controls and 103 targeted tests are not deleted or
+reclassified. Their earlier 7ce snapshot evidence remains distinct from
+this terminal-only repair. No repeat full/Web acceptance or production
+readiness claim follows from terminal fault controls; the original 4b3 FAIL
+and old unattributed SIGBUS remain unchanged.
