@@ -148,6 +148,43 @@ Ordinary `--verify-evidence` still requires exact current source/HEAD/status.
 Each invocation requires a fresh external output. No new browser run is needed
 for this reader-only revision repair; original browser acceptance stays original.
 
+## Historical Controls In An Integration Tree
+
+Historical compatibility controls use an in-memory regular-file Git archive of
+the exact c112 commit, not the generic current working source. Only the two
+reader-repair file bytes come from this reader. The positive control substitutes
+one exact `git diff` query with the real c112-to-d00 Git object difference;
+all other subprocess calls remain actual and the substitution is test-only.
+The production `verify_historical_source`, its two-path allowlist and ordinary
+`--verify-evidence` source/HEAD/status binding are unchanged.
+
+The independent 7c-to-c112 difference is read from existing Git objects, without
+creating or editing an integration product tree. It must include paths outside
+the reader repair set, and is explicitly rejected as historical compatibility.
+On a later integration tree the actual unpatched working-tree difference is
+also rejected, rather than treated as a history-compatible positive fixture.
+
+`--historical-fixture-before` runs the original d00 historical fixture and two
+test methods, extracted from their exact Git object, with the actual pinned 7c
+Git difference. Its FAIL reproduces the fixture coupling, not a browser failure
+or a whole integration-tree regression. `--historical-fixture-controls` launches
+actual child CLIs: compatible historical fixture rc0, integration Git difference
+rc1 with `historical_git_product_changed`, and the ordinary reader on pinned old
+browser evidence rc1 with `current_source_drift`. Child logs, results, original
+exit codes and source/terminal/artifact bindings remain external.
+
+`--selftest --integration-fixture-selftest` additionally runs the entire controls
+suite with that one real pinned integration query, keeping source capture bound
+to this reader's actual tree. It is a controlled integration-difference fixture
+gate, not acceptance of a different product HEAD. The normal `--selftest` and
+unittest discovery require no historical-evidence directory. No browser is
+started and no prior browser result/source fields or PNGs are rewritten.
+`--selftest --discovery-check` collects only this file through actual unittest
+discovery, checks its exact controls count and binds its fixtures to the fresh
+local runtime child. It can be combined with `--integration-fixture-selftest`.
+An AST control requires the production historical/current reader functions and
+repair allowlist to remain identical to the exact d00 Git version.
+
 The original browser v1/v2/v3 FAIL roots remain outside Git. V1 exposed an
 empty-project editor assumption; v2 exposed overwritten failure guidance;
 v3 completed 17 workflows before a test-side reload/login-form replacement

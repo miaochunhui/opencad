@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 import ast
 import base64
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
 import copy
 import http.client
 import importlib.util
@@ -25,6 +25,7 @@ from types import SimpleNamespace
 import sqlite3
 import subprocess
 import sys
+import tarfile
 import time
 import traceback
 import unittest
@@ -69,6 +70,138 @@ CONTROL_RUNTIME = None
 REVISION_BASE = "c1121623c8b538cdb67f5158d3ed7eabef4186de"
 HISTORICAL_RESULT_SHA = "addfe08de7e20383b6d20b971c57033b2cf32f94f409b6f1bdfe4ef134ac1d4a"
 READER_REPAIR_PATHS = {OWNED[2], OWNED[3]}
+HISTORICAL_FIXTURE_READER = "d00f3fd8977f3b43345c06f115ba500da3c179e9"
+INTEGRATION_FIXTURE_BASE = "7c63a289a4c6965d24254ba7115bac85aa17b68f"
+
+
+def historical_diff_command():
+    return ["git", "--no-optional-locks", "--no-replace-objects", "-C", str(ROOT),
+            "diff", "--name-only", REVISION_BASE, "--"]
+
+
+@contextmanager
+def control_git_diff(commit):
+    """Only controls substitute this one working-tree query with an exact Git pair."""
+    require(type(commit) is str and len(commit) == 40 and
+            all(char in "0123456789abcdef" for char in commit), "fixture_commit_required")
+    original = subprocess.check_output
+    actual = original(["git", "--no-replace-objects", "-C", str(ROOT),
+                       "rev-parse", "--verify", commit + "^{commit}"], text=True).strip()
+    require(actual == commit, "fixture_commit_not_exact")
+    command = historical_diff_command()
+    exact = [*command[:-1], commit, "--"]
+    paths = original(exact, text=True).splitlines()
+
+    def read(argv, *args, **kwargs):
+        return original(exact if argv == command else argv, *args, **kwargs)
+
+    with patch.object(subprocess, "check_output", side_effect=read):
+        yield {"base": REVISION_BASE, "commit": commit, "command": exact, "paths": paths}
+
+
+def previous_historical_controls():
+    data = subprocess.check_output(["git", "--no-replace-objects", "-C", str(ROOT),
+                                   "show", HISTORICAL_FIXTURE_READER + ":" + OWNED[2]])
+    names = {"historical_fixture", "test_historical_product_source_set_mode_and_head_negative",
+             "test_historical_browser_semantic_change_negative"}
+    classes = [node for node in ast.parse(data).body if isinstance(node, ast.ClassDef) and
+               node.name == "Controls"]
+    require(len(classes) == 1, "fixture_baseline_controls_missing")
+    methods = [node for node in classes[0].body if isinstance(node, ast.FunctionDef) and
+               node.name in names]
+    require({node.name for node in methods} == names, "fixture_baseline_methods_missing")
+    node = ast.ClassDef(name="PreviousHistoricalControls",
+        bases=[ast.Attribute(value=ast.Name(id="unittest", ctx=ast.Load()),
+                             attr="TestCase", ctx=ast.Load())],
+        keywords=[], body=methods, decorator_list=[])
+    module = ast.fix_missing_locations(ast.Module(body=[node], type_ignores=[]))
+    namespace = dict(globals())
+    exec(compile(module, HISTORICAL_FIXTURE_READER + ":" + OWNED[2], "exec"), namespace)
+    return namespace[node.name], digest(data)
+
+
+def historical_fixture_case(record, kind):
+    try:
+        original, current = Controls().historical_fixture()
+        commit = HISTORICAL_FIXTURE_READER if kind == "compatible" else INTEGRATION_FIXTURE_BASE
+        with control_git_diff(commit) as binding:
+            record.report["fixture_git_binding"] = binding
+            require((set(binding["paths"]) <= READER_REPAIR_PATHS) == (kind == "compatible"),
+                    "fixture_git_boundary_not_exercised")
+            compatible = verify_historical_source(original, current)
+        record.report.update(compatibility=compatible, verdict="FIXTURE_COMPATIBLE", intended_rc=0,
+                             completed=True, expected_checks=1, completed_checks=1)
+    except Exception:
+        record.failure("historical_fixture_case", traceback.format_exc())
+    record.report["browser_executed"] = False
+    record.capture("source_after")
+    if record.report["source_drift"]:
+        record.failure("source_drift", "source_drift")
+    return record.publish()
+
+
+def historical_fixture_acceptance(record, *, before):
+    record.report.update(browser_executed=False, cases=[])
+    try:
+        if before:
+            previous, baseline_sha = previous_historical_controls()
+            suite = unittest.defaultTestLoader.loadTestsFromTestCase(previous)
+            record.report.update(baseline_commit=HISTORICAL_FIXTURE_READER,
+                                 baseline_reader_sha256=baseline_sha, expected_checks=2)
+            with control_git_diff(INTEGRATION_FIXTURE_BASE) as binding:
+                record.report["fixture_git_binding"] = binding
+                require(set(binding["paths"]) - READER_REPAIR_PATHS,
+                        "fixture_integration_difference_missing")
+                with (record.out / "tests.log").open("x") as log:
+                    with redirect_stdout(log), redirect_stderr(log):
+                        tested = unittest.TextTestRunner(stream=log, verbosity=2,
+                            resultclass=legacy.EvidenceResult).run(suite)
+            record.report.update(tests=tested.testsRun, failures=len(tested.failures),
+                errors=len(tested.errors), skipped=len(tested.skipped),
+                completed_checks=tested.testsRun - len(tested.failures) - len(tested.errors))
+            if tested.first_cause:
+                record.failure("baseline_fixture_selftest", tested.first_cause)
+            require(tested.testsRun == 2 and len(tested.failures) == 2 and not tested.errors and
+                    "historical_git_product_changed" in (tested.first_cause or ""),
+                    "baseline_fixture_counterexample_not_observed")
+        else:
+            record.report["expected_checks"] = 3
+            for name in ("compatible", "integration", "ordinary-old-evidence"):
+                child = record.out / name
+                child.mkdir()
+                argv = [sys.executable, "-B", str(Path(__file__).resolve()),
+                        "--evidence-dir", str(child / "reader")]
+                if name == "ordinary-old-evidence":
+                    original = Path("/hf3fs-jd/data/tmp/opencad-config-crud-hardening-browser-20261012-v1")
+                    require(digest((original / "result.json").read_bytes()) == HISTORICAL_RESULT_SHA,
+                            "historical_result_anchor_mismatch")
+                    argv += ["--verify-evidence", str(original)]
+                    expected_rc, expected_cause = 1, "current_source_drift"
+                else:
+                    argv += ["--historical-fixture-case", name]
+                    expected_rc = 0 if name == "compatible" else 1
+                    expected_cause = None if name == "compatible" else "historical_git_product_changed"
+                tested = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                write(child / "stdout.log", tested.stdout)
+                write(child / "stderr.log", tested.stderr)
+                actual = json.loads((child / "reader/result.json").read_bytes())
+                record.report["cases"].append({"name": name, "argv": argv, "actual_rc": tested.returncode,
+                    "first_cause": actual["first_cause"], "verdict": actual["verdict"],
+                    "result_sha256": digest((child / "reader/result.json").read_bytes())})
+                require(tested.returncode == expected_rc and
+                        (actual["first_cause"] is None if expected_cause is None else
+                         expected_cause in (actual["first_cause"] or "")),
+                        "fixture_cli_boundary_mismatch:" + name)
+                require(actual["source_drift"] == [] and actual["secondary_errors"] == [],
+                        "fixture_cli_source_or_secondary_failure")
+                record.report["completed_checks"] += 1
+            record.report.update(verdict="PASS", intended_rc=0, completed=True)
+    except Exception:
+        record.failure("historical_fixture_acceptance", traceback.format_exc())
+    record.capture("source_after")
+    if record.report["source_drift"]:
+        record.failure("source_drift", "source_drift")
+    return record.publish()
 
 
 def baseline_reader_bytes():
@@ -587,31 +720,46 @@ class Controls(unittest.TestCase):
                         validate_history(report, width)
 
     def historical_fixture(self):
-        current = source()
-        captured = copy.deepcopy(current)
-        captured["head"] = "bcadfdeb4ce7689df30cec168de8dbba16577435"
+        archive = subprocess.check_output(["git", "--no-replace-objects", "-C", str(ROOT),
+                                           "archive", "--format=tar", REVISION_BASE])
+        files = {}
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tree:
+            for item in tree:
+                if item.isdir():
+                    continue
+                require(item.isfile() and not Path(item.name).is_absolute() and
+                        ".." not in Path(item.name).parts, "historical_fixture_nonregular")
+                data = tree.extractfile(item).read()
+                files[item.name] = {"bytes": len(data), "sha256": digest(data),
+                                    "mode": item.mode & 0o777}
+        require(set(OWNED + READERS) <= set(files), "historical_fixture_source_missing")
+        captured = {"head": "bcadfdeb4ce7689df30cec168de8dbba16577435", "files": files,
+                    "fixture_commit": REVISION_BASE, "sha256": digest(canonical(files))}
+        current = copy.deepcopy(captured)
         for name in READER_REPAIR_PATHS:
-            data = subprocess.check_output(["git", "--no-replace-objects", "-C", str(ROOT),
-                                           "show", REVISION_BASE + ":" + name])
-            captured["files"][name].update(bytes=len(data), sha256=digest(data))
+            data = (ROOT / name).read_bytes()
+            current["files"][name].update(bytes=len(data), sha256=digest(data))
+        current["sha256"] = digest(canonical(current["files"]))
         original = {"scope": "crud", "source_after": captured}
         return original, current
 
     def test_historical_product_source_set_mode_and_head_negative(self):
         original, current = self.historical_fixture()
-        self.assertTrue(verify_historical_source(original, current)["product_bytes_modes_equal"])
-        for kind in ("product", "set", "mode", "head"):
-            report, changed = copy.deepcopy(original), copy.deepcopy(current)
-            if kind == "product":
-                changed["files"][OWNED[0]]["sha256"] = "0" * 64
-            if kind == "set":
-                del changed["files"][OWNED[0]]
-            if kind == "mode":
-                changed["files"][OWNED[2]]["mode"] = 0
-            if kind == "head":
-                report["source_after"]["head"] = "0" * 40
-            with self.assertRaises(AssertionError):
-                verify_historical_source(report, changed)
+        with control_git_diff(HISTORICAL_FIXTURE_READER) as binding:
+            self.assertEqual(set(binding["paths"]), READER_REPAIR_PATHS)
+            self.assertTrue(verify_historical_source(original, current)["product_bytes_modes_equal"])
+            for kind in ("product", "set", "mode", "head"):
+                report, changed = copy.deepcopy(original), copy.deepcopy(current)
+                if kind == "product":
+                    changed["files"][OWNED[0]]["sha256"] = "0" * 64
+                if kind == "set":
+                    del changed["files"][OWNED[0]]
+                if kind == "mode":
+                    changed["files"][OWNED[2]]["mode"] = 0
+                if kind == "head":
+                    report["source_after"]["head"] = "0" * 40
+                with self.assertRaises(AssertionError):
+                    verify_historical_source(report, changed)
 
     def test_historical_browser_semantic_change_negative(self):
         data = baseline_reader_bytes()
@@ -620,9 +768,43 @@ class Controls(unittest.TestCase):
                                b"class Review(object):")
         self.assertNotEqual(browser_semantics(changed), original)
         report, current = self.historical_fixture()
-        with patch.object(sys.modules[__name__], "baseline_reader_bytes", return_value=changed):
-            with self.assertRaisesRegex(AssertionError, "historical_browser_semantics_changed"):
-                verify_historical_source(report, current)
+        with control_git_diff(HISTORICAL_FIXTURE_READER):
+            with patch.object(sys.modules[__name__], "baseline_reader_bytes", return_value=changed):
+                with self.assertRaisesRegex(AssertionError, "historical_browser_semantics_changed"):
+                    verify_historical_source(report, current)
+
+    def test_actual_integration_git_difference_remains_rejected(self):
+        original, current = self.historical_fixture()
+        with control_git_diff(INTEGRATION_FIXTURE_BASE) as binding:
+            self.assertGreater(len(set(binding["paths"]) - READER_REPAIR_PATHS), 0)
+            with self.assertRaisesRegex(AssertionError, "historical_git_product_changed"):
+                verify_historical_source(original, current)
+        actual = subprocess.check_output(historical_diff_command(), text=True).splitlines()
+        if set(actual) - READER_REPAIR_PATHS:
+            with self.assertRaisesRegex(AssertionError, "historical_git_product_changed"):
+                verify_historical_source(original, current)
+        else:
+            self.assertTrue(verify_historical_source(original, current)["product_bytes_modes_equal"])
+
+    def test_production_reader_functions_and_allowlist_unchanged(self):
+        baseline = subprocess.check_output(["git", "--no-replace-objects", "-C", str(ROOT),
+            "show", HISTORICAL_FIXTURE_READER + ":" + OWNED[2]])
+        names = {"verify_historical_source", "verify_historical", "verify_bound", "source",
+                 "terminal", "validate_history", "browser_semantics"}
+
+        def definitions(data):
+            tree = ast.parse(data)
+            functions = {node.name: ast.dump(node, include_attributes=False) for node in tree.body
+                         if isinstance(node, ast.FunctionDef) and node.name in names}
+            self.assertEqual(set(functions), names)
+            for node in tree.body:
+                if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and
+                        target.id == "READER_REPAIR_PATHS" for target in node.targets):
+                    functions["READER_REPAIR_PATHS"] = ast.dump(node, include_attributes=False)
+            self.assertIn("READER_REPAIR_PATHS", functions)
+            return functions
+
+        self.assertEqual(definitions(baseline), definitions(Path(__file__).read_bytes()))
 
     def test_single_receipt_and_response_binding_negative(self):
         for kind in ("revision", "receipts", "receipt", "response_missing"):
@@ -1519,6 +1701,16 @@ def main(argv=None):
     parser.add_argument("--receipt-revision-controls", type=Path)
     parser.add_argument("--receipt-revision-case", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--baseline-history", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--historical-fixture-before", action="store_true",
+                        help="Offline original d00 controls with the exact 7c Git difference.")
+    parser.add_argument("--historical-fixture-controls", action="store_true",
+                        help="Offline actual CLI compatible/integration/ordinary-reader boundaries.")
+    parser.add_argument("--historical-fixture-case", choices=("compatible", "integration"),
+                        help=argparse.SUPPRESS)
+    parser.add_argument("--integration-fixture-selftest", action="store_true",
+                        help="Run the controls with the actual pinned 7c historical Git difference.")
+    parser.add_argument("--discovery-check", action="store_true",
+                        help="Use unittest discovery for this controls file only; requires --selftest.")
     args = parser.parse_args(argv)
     out = args.evidence_dir.resolve()
     require(out.is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()), "external_evidence_required")
@@ -1530,9 +1722,16 @@ def main(argv=None):
     record = TerminalRecord(out, scope)
     record.guard("source_root", lambda: require(args.source_root.resolve() == ROOT.resolve(),
                                                 "runner_source_mismatch"))
+    record.guard("fixture_selftest_scope", lambda: require(
+        (not args.integration_fixture_selftest and not args.discovery_check) or args.selftest,
+        "fixture_modes_require_selftest"))
     before = record.capture("source_before")
     if record.report["first_cause"] is not None:
         return record.publish()
+    if args.historical_fixture_case:
+        return historical_fixture_case(record, args.historical_fixture_case)
+    if args.historical_fixture_before or args.historical_fixture_controls:
+        return historical_fixture_acceptance(record, before=args.historical_fixture_before)
     if args.receipt_revision_case:
         return revision_case(record, args.receipt_revision_case, args.baseline_history)
     if args.receipt_revision_before or args.receipt_revision_controls:
@@ -1579,14 +1778,31 @@ def main(argv=None):
         return record.publish()
     if args.selftest:
         CONTROL_RUNTIME = runtime
-        suite = unittest.defaultTestLoader.loadTestsFromTestCase(Controls)
         names = sorted(unittest.defaultTestLoader.getTestCaseNames(Controls))
         tested, log = None, None
         try:
+            if args.discovery_check:
+                suite = unittest.defaultTestLoader.discover(str(APP / "tests"),
+                    pattern=Path(__file__).name, top_level_dir=str(APP))
+                discovered = sys.modules["tests." + Path(__file__).stem]
+                require(Path(discovered.__file__).resolve() == Path(__file__).resolve(),
+                        "foreign_discovery_module")
+                discovered.CONTROL_RUNTIME = runtime
+                require(suite.countTestCases() == len(names), "discovery_controls_count_mismatch")
+                record.report["discovery_verified"] = True
+            else:
+                suite = unittest.defaultTestLoader.loadTestsFromTestCase(Controls)
             log = (out / "tests.log").open("x")
-            with redirect_stdout(log), redirect_stderr(log):
-                tested = unittest.TextTestRunner(stream=log, verbosity=2,
-                    resultclass=legacy.EvidenceResult, failfast=True).run(suite)
+            fixture = control_git_diff(INTEGRATION_FIXTURE_BASE) if (
+                args.integration_fixture_selftest) else nullcontext(None)
+            with fixture as binding:
+                if binding is not None:
+                    record.report["fixture_git_binding"] = binding
+                    require(set(binding["paths"]) - READER_REPAIR_PATHS,
+                            "fixture_integration_difference_missing")
+                with redirect_stdout(log), redirect_stderr(log):
+                    tested = unittest.TextTestRunner(stream=log, verbosity=2,
+                        resultclass=legacy.EvidenceResult, failfast=True).run(suite)
             if tested.first_cause: record.failure("selftest", tested.first_cause)
         except Exception:
             record.failure("selftest", traceback.format_exc())
