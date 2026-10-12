@@ -30,6 +30,8 @@ __all__ = ["ParametricCandidate", "read_parametric", "prepare_parametric",
            "validate_document"]
 
 _SCOPE = "Measured single-document sketch/solid rebuild; not industrial CAD parity."
+_DEFINITION_ACTIONS = {"create_configuration", "replace_configuration",
+                       "delete_configuration", "set_suppressions"}
 
 
 def _fingerprint(value):
@@ -146,11 +148,33 @@ def _error(workspace, code, detail, status=422, **details):
 
 def _fields(workspace, payload):
     if not isinstance(payload, Mapping) or set(payload) - {
-            "action", "expected_document_sha256", "configuration", "overrides", "dimensions"}:
+            "action", "expected_document_sha256", "configuration", "overrides", "dimensions",
+            "name", "definition", "suppressions"}:
         raise _error(workspace, "bad_parametric_arguments", "Unexpected parametric fields", 400)
-    if payload.get("action") not in ("create_plate", "create_configurable_plate", "rebuild"):
+    action = payload.get("action")
+    if not isinstance(action, str) or action not in (
+            {"create_plate", "create_configurable_plate", "rebuild"} | _DEFINITION_ACTIONS):
         raise _error(workspace, "bad_parametric_arguments",
-                     "action must be create_plate, create_configurable_plate or rebuild", 400)
+                     "Unknown parametric action", 400)
+    if action in _DEFINITION_ACTIONS:
+        allowed = {"action", "expected_document_sha256", "name", "configuration"}
+        required = {"name"}
+        if action in {"create_configuration", "replace_configuration"}:
+            allowed.add("definition")
+            required.add("definition")
+        elif action == "set_suppressions":
+            allowed.add("suppressions")
+            required.add("suppressions")
+        if set(payload) - allowed or not required <= set(payload):
+            raise _error(workspace, "bad_parametric_arguments", "Definition action fields rejected", 400)
+        if not isinstance(payload["name"], str) or ("configuration" in payload and
+                                                   not isinstance(payload["configuration"], str)):
+            raise _error(workspace, "bad_parametric_arguments", "Name/selection must be strings", 400)
+        for key in ("definition", "suppressions"):
+            if key in payload and not isinstance(payload[key], Mapping):
+                raise _error(workspace, "bad_parametric_arguments", key + " must be an object", 400)
+    elif set(payload) & {"name", "definition", "suppressions"}:
+        raise _error(workspace, "bad_parametric_arguments", "Definition fields require a definition action", 400)
     digest = payload.get("expected_document_sha256")
     if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
         raise _error(workspace, "bad_parametric_arguments", "Exact expected_document_sha256 is required", 400)
@@ -342,6 +366,7 @@ def _read(workspace, document):
             "feature_bindings": feature_states,
             "configuration_suppressions": copy.deepcopy(
                 specification.get("configuration_suppressions", {})),
+            "configuration_definitions": copy.deepcopy(specification.get("configurations", {})),
             "feature_order": [f["uuid"] for f in document.features if not f.get("suppressed")],
             "scope": _SCOPE}
 
@@ -440,10 +465,16 @@ def prepare_parametric(workspace, payload):
         kernel = SubprocessKernel(work_dir=str(scratch / "kernel"), keep_work_dir=True,
                                   extra_env={"TMPDIR": str(scratch), "PYTHONDONTWRITEBYTECODE": "1"})
         try:
-            prepared = parametric.prepare_rebuild(document, kernel=kernel,
-                                                  configuration=payload.get("configuration"),
-                                                  overrides=overrides)
-            prepared = _gateway_l1(prepared, kernel)
+            if payload["action"] in _DEFINITION_ACTIONS:
+                prepared = parametric.prepare_definition_rebuild(
+                    document, kernel=kernel, action=payload["action"], name=payload["name"],
+                    definition=payload.get("definition"), suppressions=payload.get("suppressions"),
+                    configuration=payload.get("configuration"))
+            else:
+                prepared = parametric.prepare_rebuild(document, kernel=kernel,
+                                                      configuration=payload.get("configuration"),
+                                                      overrides=overrides)
+                prepared = _gateway_l1(prepared, kernel)
             problems = workspace.docmodel.load_blocking_problems(prepared.document)
             if problems:
                 raise _error(workspace, "invalid_parametric_document", "; ".join(problems[:8]))

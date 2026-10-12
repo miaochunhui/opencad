@@ -29,6 +29,7 @@ from .sketch.constraints import solve
 __all__ = [
     "ParametricError", "Quantity", "ParameterEvaluation", "PreparedRebuild",
     "document_sha256", "evaluate_parameters", "feature_configuration", "prepare_rebuild",
+    "prepare_definition_rebuild",
 ]
 
 MAX_PARAMETERS = 128
@@ -551,9 +552,10 @@ def prepare_rebuild(document: Document, *, kernel: SubprocessKernel,
     persisted = evaluate_parameters(spec)
     feature_configuration(candidate, persisted, require_current=True)
     evaluation = evaluate_parameters(spec, configuration=configuration, overrides=overrides)
-    _configure_features(candidate, evaluation)
-    _checks(spec, evaluation.values)
-    _bind(candidate, spec, evaluation.values)
+    return _measure_candidate(base, candidate, evaluation, kernel)
+
+
+def _solve_candidate(candidate: Document) -> list[dict]:
     reports = []
     for sketch in candidate.sketches:
         if not isinstance(sketch, dict):
@@ -565,12 +567,104 @@ def prepare_rebuild(document: Document, *, kernel: SubprocessKernel,
                             sketch=sketch.get("uuid"), residual=result.residual, status=result.status)
             reports.append({"uuid": sketch.get("uuid"), "converged": True, "dof": result.dof,
                             "residual_nm": result.residual, "iterations": result.iterations})
-            # Iteration cost belongs to this run's report, not the document hash.
             sketch["solved"].pop("iterations", None)
         else:
             reports.append({"uuid": sketch.get("uuid"), "converged": None,
                             "dof": None, "residual_nm": None, "iterations": None})
+    return reports
+
+
+def prepare_definition_rebuild(document: Document, *, kernel: SubprocessKernel,
+                               action: str, name: str, definition: Mapping | None = None,
+                               suppressions: Mapping | None = None,
+                               configuration: str | None = None) -> PreparedRebuild:
+    """Change one named definition on a validated copy, measure once, never commit.
+
+    The saved consistency gate runs on the original before any definition edit.
+    Explicit selection (including "" for base) clears overrides; omission retains
+    them. Deleting the active definition requires an explicit surviving selection.
+    No UUID, baseline suppression, dependency or feature order can be changed here.
+    """
+    if not isinstance(document, Document):
+        raise _fail("bad_document", "definition rebuild requires a real Document")
+    if not isinstance(kernel, SubprocessKernel):
+        raise _fail("real_kernel_required", "a real FreeCAD SubprocessKernel is required")
+    if not isinstance(action, str) or action not in {
+            "create_configuration", "replace_configuration",
+            "delete_configuration", "set_suppressions"}:
+        raise _fail("bad_configuration_operation", "unknown definition operation")
+    _name(name)
+    if configuration is not None and not isinstance(configuration, str):
+        raise _fail("unknown_configuration", "selection must be a string or omitted")
+    base = document_to_l1(document)
+    candidate = copy.deepcopy(document)
+    spec = candidate.extra.get("parametric")
+    if not isinstance(spec, dict):
+        raise _fail("bad_parametric_spec", "Document.extra.parametric must be a mapping")
+    persisted = evaluate_parameters(spec)
+    feature_configuration(candidate, persisted, require_current=True)
+    _checks(spec, persisted.values)
+    original_bindings = copy.deepcopy(candidate)
+    _bind(original_bindings, spec, persisted.values)
+    _geometry_guards(original_bindings, spec, persisted.values)
+    configs = spec.setdefault("configurations", {})
+    if action == "create_configuration":
+        if name in configs:
+            raise _fail("configuration_exists", "configuration already exists")
+        if len(configs) >= 32:
+            raise _fail("configuration_limit", "at most 32 configurations are supported")
+    elif name not in configs:
+        raise _fail("unknown_configuration", "configuration is not declared")
+    if action in {"create_configuration", "replace_configuration"}:
+        expected = {"parameters", "suppressions"} if spec["version"] == 2 else {"parameters"}
+        if not isinstance(definition, Mapping) or set(definition) != expected or suppressions is not None:
+            raise _fail("bad_configuration_definition", "definition fields do not match version")
+        configs[name] = copy.deepcopy(_table(definition["parameters"], "configuration", MAX_PARAMETERS))
+        if spec["version"] == 2:
+            spec["configuration_suppressions"][name] = copy.deepcopy(
+                _table(definition["suppressions"], "configuration suppression", MAX_BINDINGS))
+    elif action == "set_suppressions":
+        if definition is not None or spec["version"] != 2:
+            raise _fail("bad_configuration_definition", "suppression editing requires version 2")
+        spec["configuration_suppressions"][name] = copy.deepcopy(
+            _table(suppressions, "configuration suppression", MAX_BINDINGS))
+    else:
+        if definition is not None or suppressions is not None:
+            raise _fail("bad_configuration_definition", "delete accepts no definition")
+        if persisted.configuration == name and configuration is None:
+            raise _fail("active_configuration_requires_selection",
+                        "deleting the active configuration requires an explicit replacement or base")
+        del configs[name]
+        if spec["version"] == 2:
+            del spec["configuration_suppressions"][name]
+    # Validate the new selected state without treating deliberately edited flags
+    # as previously saved input. The original consistency check above is intact.
+    evaluation = evaluate_parameters(spec, configuration=configuration)
+    feature_configuration(candidate, evaluation)
+    for selected in ("", *configs):
+        variant = copy.deepcopy(candidate)
+        values = evaluate_parameters(spec, configuration=selected)
+        _checks(spec, values.values)
+        _configure_features(variant, values)
+        _bind(variant, spec, values.values)
+        _solve_candidate(variant)
+        _geometry_guards(variant, spec, values.values)
+    return _measure_candidate(base, candidate, evaluation, kernel, gateway_diagnostics=True)
+
+
+def _measure_candidate(base: str, candidate: Document, evaluation: ParameterEvaluation,
+                       kernel: SubprocessKernel, *, gateway_diagnostics=False) -> PreparedRebuild:
+    spec = candidate.extra["parametric"]
+    _configure_features(candidate, evaluation)
+    _checks(spec, evaluation.values)
+    _bind(candidate, spec, evaluation.values)
+    reports = _solve_candidate(candidate)
     _geometry_guards(candidate, spec, evaluation.values)
+    if gateway_diagnostics:
+        for sketch in candidate.sketches:
+            solved = sketch.get("solved")
+            if isinstance(solved, dict) and "residual_nm" in solved:
+                solved["residual_mm"] = solved.pop("residual_nm") / 1_000_000
     spec["active_configuration"] = evaluation.configuration
     spec["active_overrides"] = dict(evaluation.overrides)
     # Preserve the reader's extension diagnostics before measuring/fingerprinting.

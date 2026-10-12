@@ -476,7 +476,7 @@ class ProjectGateway:
             "/api/assembly": ({"action", "part", "component", "mate", "component_id",
                                "mate_id", "assembly_json"}, {"action"}),
             "/api/parametric": ({"action", "expected_document_sha256", "configuration",
-                                 "overrides", "dimensions"},
+                                 "overrides", "dimensions", "name", "definition", "suppressions"},
                                 {"action", "expected_document_sha256"}),
             "/api/drawing": ({"definition"}, {"definition"}),
         }
