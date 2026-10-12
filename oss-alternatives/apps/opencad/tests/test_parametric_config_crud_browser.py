@@ -20,12 +20,14 @@ import json
 import math
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import sqlite3
 import subprocess
 import sys
 import time
 import traceback
 import unittest
+from unittest.mock import patch
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -52,6 +54,10 @@ GEOMETRY = (
     "created", "inactive", "active", "keep-overrides", "clear-overrides", "unsuppress",
     "inherit", "suppress", "delete", "saved", "undo", "redo", "restart", "loss",
 )
+SENTINEL_CHECKS = {"1440-legal_unselected_replacement"}
+HTTP_ROUTES = {"/api/parametric", "/api/state", "/api/mesh", "/api/step",
+               "/api/save", "/api/command", "/api/open"}
+LEDGER_KEYS = ("requests", "actor_requests", "operations", "loss", "measurements", "history", "identities")
 spec = importlib.util.spec_from_file_location("crud_browser_helpers", APP / "tests/test_parametric_config_browser.py")
 legacy = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = legacy
@@ -79,17 +85,22 @@ def expected_checks():
 
 def terminal(report):
     require(report["verdict"] == "PASS" and report["intended_rc"] == 0 and
-            report["first_cause"] is None and not report["cleanup_errors"], "producer_failed")
-    require(report["source_before"] == report["source_after"] and report["source_drift"] == [],
+            report["first_cause"] is None and not report["cleanup_errors"] and
+            report["secondary_errors"] == [] and report["completed"] is True, "producer_failed")
+    require(type(report["source_before"]) is dict and type(report["source_after"]) is dict and
+            report["source_before"] == report["source_after"] and report["source_drift"] == [],
             "source_drift")
     checks = report["checks"]
-    require(len(checks) == len(expected_checks()) and
-            {row["name"] for row in checks} == expected_checks() and
+    expected = SENTINEL_CHECKS if report["scope"] == "sentinel" else expected_checks()
+    require(report["scope"] in {"sentinel", "crud"} and len(checks) == len(expected) and
+            report["expected_checks"] == len(expected) and report["completed_checks"] == len(expected) and
+            {row["name"] for row in checks} == expected and
             all(row["pass"] is True for row in checks), "workflow_ledger_mismatch")
-    require(len(report["cli"]) == 4 and all(
+    require(len(report["cli"]) == (1 if report["scope"] == "sentinel" else 4) and all(
         row["ready"] is True and row["exit_rc"] == 0 and
         row["argv"] == row["observed_argv"] and row["startticks"] == row["stop_startticks"] and
-        type(row["startticks"]) is int and row["startticks"] > 0 for row in report["cli"]),
+        type(row["startticks"]) is int and row["startticks"] > 0 and
+        type(row["pid"]) is int and row["pid"] > 0 for row in report["cli"]),
         "cli_terminal_mismatch")
     return len(checks)
 
@@ -101,6 +112,8 @@ def validate_requests(report):
             validate_response(row)
     for width in (1440, 390):
         requests = report["requests"][str(width)]
+        identities = list(report["identities"][str(width)].values())
+        require(all(row["identity"] in identities for row in requests), "response_identity_outside_workflow")
         mutations = [row for row in requests if row["route"] == "/api/parametric" and row["body"]]
         require(mutations and not any(row["route"] == "/api/open" for row in requests),
                 "open_rebuild_forbidden")
@@ -147,6 +160,44 @@ def validate_requests(report):
             payload = json.loads(validate_response(matches[0]))
             require(all(payload[key] == operation["after"][key] for key in ("revision", "sha256")),
                     "operation_response_receipt_mismatch")
+        validate_history(report, str(width))
+    allowed = [identity for groups in report["identities"].values() for identity in groups.values()]
+    require(all(row["identity"] in allowed for row in report["actor_requests"]), "actor_identity_outside_workflow")
+
+
+def validate_history(report, width):
+    rows = report["requests"][width]
+    history = report["history"][width]
+    require(len(history) == 2 and [item["command"] for item in history] == ["undo", "redo"],
+            "history_ledger_incomplete")
+    identity = report["identities"][width]
+    require(identity["first"]["owner_id"] != identity["second"]["owner_id"] and
+            identity["first"]["project_id"] != identity["second"]["project_id"], "identity_not_isolated")
+    for item in history:
+        matches = [row for row in rows if row["route"] == "/api/command" and
+                   row["body"] and row["body"].get("request_id") == item["request"]["request_id"]]
+        require(len(matches) == 1 and matches[0]["method"] == "POST" and matches[0]["status"] == 200 and
+                matches[0]["body"] == item["request"] and
+                item["request"]["command"] == item["command"] and item["request"]["args"] == {} and
+                matches[0]["request_headers"].get("content-type") == "application/json" and
+                matches[0]["request_headers"].get("x-opencad-request") == "1", "command_response_missing")
+        row = matches[0]
+        payload = json.loads(validate_response(row))
+        require(row["identity"] == identity["first"] and
+                row["request_headers"]["x-opencad-project"] == identity["first"]["project_id"] and
+                payload["project_id"] == identity["first"]["project_id"] and
+                payload["revision"] == item["after"]["revision"] == item["before"]["revision"] + 1 and
+                payload["sha256"] == item["after"]["sha256"] == item["receipt"]["sha256"] and
+                item["request"]["expected_revision"] == item["before"]["revision"] and
+                item["request"]["expected_sha"] == item["before"]["sha256"] and
+                item["after"]["receipts"] == item["before"]["receipts"] + 1 and
+                item["receipt"]["request_id"] == item["request"]["request_id"],
+                "command_identity_receipt_mismatch")
+        for key, value in row["response"]["headers"].items():
+            if key == "x-opencad-revision":
+                require(value == str(payload["revision"]), "command_header_revision_mismatch")
+            if key == "x-opencad-snapshot-sha256":
+                require(value == payload["sha256"], "command_header_sha_mismatch")
 
 
 def validate_response(row):
@@ -157,8 +208,17 @@ def validate_response(row):
     require(type(item["bytes"]) is int and len(data) == item["bytes"] and
             digest(data) == item["sha256"], "http_response_bytes_mismatch")
     require(type(item["headers"]) is dict and all(
-        key == "content-type" or key.startswith("x-opencad-") for key in item["headers"]),
+        (key == "content-type" or key.startswith("x-opencad-")) and type(value) is str
+        for key, value in item["headers"].items()) and "content-type" in item["headers"],
         "http_response_headers_outside_scope")
+    require(row["route"] in HTTP_ROUTES and type(row["request_headers"]) is dict and
+            all(key in {"content-type", "x-opencad-project", "x-opencad-request"} and
+                type(value) is str for key, value in row["request_headers"].items()),
+            "http_request_headers_outside_scope")
+    require(set(row["identity"]) == {"owner_id", "project_id"} and
+            all(type(value) is str and value for value in row["identity"].values()) and
+            row["request_headers"].get("x-opencad-project") == row["identity"]["project_id"],
+            "http_identity_binding_missing")
     if item["headers"].get("content-type", "").startswith("application/json"):
         value = json.loads(data)
         require(type(value) is dict and (value.get("ok") is True if row["status"] < 400 else
@@ -177,7 +237,8 @@ def verify_bound(report, out, *, current=True):
             digest(canonical(captured["files"])) == captured["sha256"], "source_binding_mismatch")
     actual = {path.relative_to(out).as_posix() for path in out.rglob("*") if path.is_file()
               and path.relative_to(out).as_posix() not in {
-                  "result.json", "terminal-candidate.json", "completion.log"}}
+                  "result.json", "terminal-candidate.json", "completion.log",
+                  "result-failure.pending", "completion-failure.pending"}}
     require(actual == set(report["artifacts"]) and
             {"checks.log", "http-ledger.json"} <= actual, "artifact_set_mismatch")
     for name, item in report["artifacts"].items():
@@ -186,9 +247,20 @@ def verify_bound(report, out, *, current=True):
     require([json.loads(line) for line in (out / "checks.log").read_text().splitlines()] ==
             report["checks"], "check_log_mismatch")
     require(json.loads((out / "http-ledger.json").read_bytes()) ==
-            {key: report[key] for key in ("requests", "actor_requests", "operations", "loss", "measurements")},
+            {key: report[key] for key in LEDGER_KEYS},
             "http_ledger_mismatch")
-    validate_requests(report)
+    if report["scope"] == "crud":
+        validate_requests(report)
+    else:
+        rows = report["requests"]["1440"]
+        for row in [*rows, *report["actor_requests"]]:
+            validate_response(row)
+        operation = report["operations"]["1440"][-1]
+        require(operation["request"]["action"] == "delete_configuration" and
+                operation["request"]["configuration"] == "unselected" and
+                operation["after"]["revision"] == operation["before"]["revision"] + 1 and
+                operation["after"]["receipts"] == operation["before"]["receipts"] + 1,
+                "sentinel_receipt_missing")
     for number, cli in enumerate(report["cli"], 1):
         require(cli["log"] == f"cli-{number}.log" and
                 cli["argv"] == [sys.executable, "-B", str(APP / "secure_web.py"), "--data-root",
@@ -197,6 +269,10 @@ def verify_bound(report, out, *, current=True):
                 cli["origin"] == f"http://127.0.0.1:{cli['port']}" and
                 f"OPENCAD_PRIVATE_WEB verdict=READY port={cli['port']}\n" in
                 (out / cli["log"]).read_text(), "cli_scope_mismatch")
+    if report["scope"] == "sentinel":
+        png = (out / "sentinel/legal_unselected_replacement.png").read_bytes()
+        require(png.startswith(b"\x89PNG\r\n\x1a\n") and len(png) > 1000, "screenshot_missing")
+        return count
     require(len(report["measurements"]) == len(GEOMETRY) * 2 and
             {row["label"] for row in report["measurements"]} ==
             {f"{width}-{label}" for width in (1440, 390) for label in GEOMETRY},
@@ -210,6 +286,12 @@ def verify_bound(report, out, *, current=True):
         step = (out / record["step"]).read_bytes()
         require(step.startswith(b"ISO-10303-21;") and digest(step) == record["step_sha256"] and
                 len(step) == record["step_bytes"], "step_hash_mismatch")
+    for width in ("1440", "390"):
+        for row in report["history"][width]:
+            witness = json.loads((out / f"{width}/{row['command']}.json").read_bytes())
+            require(all(witness["state"][key] == row["after"][key] for key in ("revision", "sha256")) and
+                    witness["state"]["project_id"] == report["identities"][width]["first"]["project_id"],
+                    "command_geometry_identity_mismatch")
     for width in (1440, 390):
         prefix = str(width) + "/"
         for workflow in WORKFLOWS:
@@ -226,6 +308,9 @@ class Controls(unittest.TestCase):
     def response_row():
         data = b'{"ok":true,"revision":2,"sha256":"synthetic"}'
         return {"route": "/api/parametric", "method": "POST", "status": 200, "body": {},
+                "identity": {"owner_id": "alice", "project_id": "project"},
+                "request_headers": {"x-opencad-project": "project", "content-type": "application/json",
+                                    "x-opencad-request": "1"},
                 "response": {"body_base64": base64.b64encode(data).decode(),
                              "bytes": len(data), "sha256": digest(data),
                              "headers": {"content-type": "application/json"}}}
@@ -282,14 +367,49 @@ class Controls(unittest.TestCase):
             "actor_requests": [copy.deepcopy(rows[0])],
             "operations": {str(width): copy.deepcopy(operations) for width in (1440, 390)},
             "loss": {str(width): {"request_id": "lost", "before_replay": after, "after_replay": after}
-                     for width in (1440, 390)}}
+                     for width in (1440, 390)}, "history": {}, "identities": {}}
 
     def test_real_ledger_validator_synthetic_positive(self):
-        validate_requests(self.request_report())
+        report = self.request_report()
+        self.add_history(report)
+        validate_requests(report)
+
+    def add_history(self, report):
+        for width in ("1440", "390"):
+            records = []
+            for index, command in enumerate(("undo", "redo"), 1):
+                row = self.response_row()
+                row.update(route="/api/command", body={"command": command, "args": {},
+                    "expected_revision": index, "expected_sha": "b" * 64, "request_id": command})
+                data = canonical({"ok": True, "project_id": "project", "revision": index + 1,
+                                  "sha256": "a" * 64})
+                row["response"].update(body_base64=base64.b64encode(data).decode(),
+                                       bytes=len(data), sha256=digest(data))
+                report["requests"][width].append(row)
+                records.append({"command": command, "request": row["body"],
+                    "before": {"revision": index, "sha256": "b" * 64, "receipts": index},
+                    "after": {"revision": index + 1, "sha256": "a" * 64, "receipts": index + 1},
+                    "receipt": {"request_id": command, "sha256": "a" * 64}})
+            report["history"][width] = records
+            report["identities"][width] = {"first": {"owner_id": "alice", "project_id": "project"},
+                                         "second": {"owner_id": "bob", "project_id": "other"}}
+
+    def test_command_body_header_identity_and_missing_negative(self):
+        for kind in ("missing", "identity", "header", "body", "receipts"):
+            report = self.request_report()
+            self.add_history(report)
+            row = report["requests"]["1440"][-2]
+            if kind == "missing": report["requests"]["1440"].remove(row)
+            if kind == "identity": row["identity"]["owner_id"] = "bob"
+            if kind == "header": row["request_headers"]["x-opencad-project"] = "other"
+            if kind == "body": row["body"]["command"] = "different"
+            if kind == "receipts": report["history"]["1440"][0]["after"]["receipts"] += 1
+            with self.assertRaises(AssertionError): validate_history(report, "1440")
 
     def test_single_receipt_and_response_binding_negative(self):
         for kind in ("revision", "receipts", "receipt", "response_missing"):
             changed = self.request_report()
+            self.add_history(changed)
             operation = changed["operations"]["1440"][0]
             if kind in {"revision", "receipts"}: operation["after"][kind] += 1
             if kind == "receipt": operation["receipt"]["sha256"] = "0" * 64
@@ -299,20 +419,115 @@ class Controls(unittest.TestCase):
     def test_boolean_open_and_exact_replay_negative(self):
         for kind in ("boolean", "open", "replay_body", "replay_receipt", "response_bytes"):
             changed = self.request_report()
+            self.add_history(changed)
             rows = changed["requests"]["1440"]
             if kind == "boolean": rows[0]["body"]["definition"]["suppressions"]["hole_cut"] = 1
             if kind == "open": rows.append({**copy.deepcopy(rows[0]), "route": "/api/open"})
-            if kind == "replay_body": rows[-1]["body"]["name"] = "changed"
+            if kind == "replay_body": rows[-3]["body"]["name"] = "changed"
             if kind == "replay_receipt": changed["loss"]["1440"]["after_replay"] = {}
-            if kind == "response_bytes": rows[-1]["response"]["sha256"] = "0" * 64
+            if kind == "response_bytes": rows[-3]["response"]["sha256"] = "0" * 64
             with self.assertRaises(AssertionError): validate_requests(changed)
 
     def valid(self):
         return {"verdict": "PASS", "intended_rc": 0, "first_cause": None, "cleanup_errors": [],
+                "secondary_errors": [], "completed": True, "scope": "crud",
+                "expected_checks": 18, "completed_checks": 18,
                 "source_before": {"head": "a", "files": {}}, "source_after": {"head": "a", "files": {}},
                 "source_drift": [], "checks": [{"name": name, "pass": True} for name in expected_checks()],
                 "cli": [{"ready": True, "exit_rc": 0, "argv": ["synthetic"], "observed_argv": ["synthetic"],
-                         "startticks": 1, "stop_startticks": 1} for _ in range(4)]}
+                         "startticks": 1, "stop_startticks": 1, "pid": 1} for _ in range(4)]}
+
+    def test_null_source_secondary_and_completion_negative(self):
+        for key, value in (("source_after", None), ("source_before", None),
+                           ("secondary_errors", [{"phase": "close", "cause": "synthetic"}]),
+                           ("completed", False), ("completed_checks", 17)):
+            report = self.valid()
+            report[key] = value
+            with self.assertRaises(AssertionError): terminal(report)
+
+    def control_child(self):
+        root = CONTROL_RUNTIME or Path(os.environ.get("OPENCAD_TEST_RUNTIME_ROOT", "/data/tmp"))
+        child = root / ("crud-terminal-control-" + uuid4().hex)
+        child.mkdir()
+        return child
+
+    def test_source_read_failure_preserves_firstcause_and_null(self):
+        record = TerminalRecord(self.control_child(), "controls")
+        record.failure("scenario", "original-first")
+        with patch.object(sys.modules[__name__], "source", side_effect=RuntimeError("source-secondary")):
+            self.assertIsNone(record.capture("source_after"))
+        self.assertEqual(record.report["first_cause"], "original-first")
+        self.assertIsNone(record.report["source_after"])
+        self.assertIn("source-secondary", record.report["secondary_errors"][0]["cause"])
+        self.assertEqual(record.publish(), 1)
+        saved = json.loads((record.out / "result.json").read_bytes())
+        self.assertFalse(saved["completed"])
+
+    def test_finalize_logclose_failure_is_secondary(self):
+        record = TerminalRecord(self.control_child(), "sentinel")
+        record.report.update(source_before=source(), expected_checks=1)
+        record.failure("scenario", "first-original")
+
+        def broken_close():
+            raise OSError("synthetic-log-close")
+
+        review = SimpleNamespace(stop=lambda: None, kernel=SimpleNamespace(close=lambda: None),
+            log=SimpleNamespace(close=broken_close), checks=[], cli=[], cleanup_errors=[],
+            requests={}, actor_requests=[], operations={}, loss={}, downloads={},
+            measurements=[], history={}, identities={}, secrets=[])
+        self.assertEqual(finalize_browser(record, review), 1)
+        saved = json.loads((record.out / "result.json").read_bytes())
+        self.assertEqual(saved["first_cause"], "first-original")
+        self.assertTrue(any(row["phase"] == "log_close" and "synthetic-log-close" in row["cause"]
+                            for row in saved["secondary_errors"]))
+
+    def test_terminal_each_output_fault_fail_loud(self):
+        for target in ("failure.log", "result.json", "completion.log"):
+            record = TerminalRecord(self.control_child(), "controls")
+            record.failure("scenario", "first-original")
+            original_write, invoked = write, []
+
+            def broken_write(path, value):
+                if Path(path).name == target:
+                    invoked.append(target)
+                    raise OSError("synthetic-write-" + target)
+                return original_write(path, value)
+
+            with patch.object(sys.modules[__name__], "write", side_effect=broken_write):
+                self.assertEqual(record.publish(), 1)
+            self.assertEqual(invoked, [target])
+            saved = json.loads((record.out / "result.json").read_bytes())
+            self.assertEqual(saved["first_cause"], "first-original")
+            self.assertFalse(saved["completed"])
+            self.assertIn("verdict=FAIL", (record.out / "completion.log").read_text())
+            self.assertTrue(any("synthetic-write-" in row["cause"] for row in saved["secondary_errors"]))
+
+    def test_terminal_artifact_fault_cannot_publish_pass(self):
+        record = TerminalRecord(self.control_child(), "controls")
+        record.report.update(verdict="PASS", intended_rc=0, completed=True)
+        with patch.object(sys.modules[__name__], "artifact_manifest", side_effect=OSError("artifact-first")):
+            self.assertEqual(record.publish(), 1)
+        self.assertIn("artifact-first", record.report["first_cause"])
+        self.assertIsNone(record.report["artifacts"])
+        self.assertFalse(json.loads((record.out / "result.json").read_bytes())["completed"])
+
+    def test_http_ledger_write_failure_preserves_firstcause(self):
+        record = TerminalRecord(self.control_child(), "sentinel")
+        record.report.update(source_before=source(), expected_checks=1)
+        record.failure("scenario", "first-original")
+        original_write = write
+
+        def broken_write(path, value):
+            if Path(path).name == "http-ledger.json":
+                raise OSError("synthetic-ledger-write")
+            return original_write(path, value)
+
+        with patch.object(sys.modules[__name__], "write", side_effect=broken_write):
+            self.assertEqual(finalize_browser(record, None), 1)
+        saved = json.loads((record.out / "result.json").read_bytes())
+        self.assertEqual(saved["first_cause"], "first-original")
+        self.assertTrue(any(row["phase"] == "http_ledger_write" for row in saved["secondary_errors"]))
+        self.assertFalse(saved["completed"])
 
     def test_terminal_positive(self):
         self.assertEqual(terminal(self.valid()), 18)
@@ -390,11 +605,12 @@ class Controls(unittest.TestCase):
 
 
 class Review(legacy.Review):
-    def __init__(self, *args):
+    def __init__(self, *args, record=None):
         super().__init__(*args)
         self.requests, self.operations, self.loss, self.downloads = {}, {}, {}, {}
         self.actor_requests = []
         self.measurements = []
+        self.history, self.identities, self.cookie_owners = {}, {}, {}
         sys.path.insert(0, str(ROOT / "oss-alternatives/packages/cadcore"))
         from cadcore import docmodel
         from cadcore.kernel.subproc import SubprocessKernel
@@ -405,7 +621,11 @@ class Review(legacy.Review):
             self.kernel = SubprocessKernel(work_dir=str(work), keep_work_dir=True,
                                            extra_env={"TMPDIR": str(work), "PYTHONDONTWRITEBYTECODE": "1"})
         except Exception:
-            self.log.close()
+            if record is not None:
+                record.failure("kernel_init", traceback.format_exc())
+                record.guard("init_log_close", self.log.close)
+            else:
+                self.log.close()
             raise
 
     @staticmethod
@@ -438,14 +658,26 @@ class Review(legacy.Review):
         browser.wait("!!document.querySelector('#parametric-panel').dataset.projectId && "
                      "document.querySelector('#parametric-panel').getAttribute('aria-busy')==='false'")
 
-    @staticmethod
-    def reload(browser):
+    def cookie(self, browser):
+        cookie = super().cookie(browser)
+        status, payload = self.http("GET", "/api/auth/me", cookie)
+        require(status == 200 and payload["user"]["user_id"] == browser.evaluate("window.__crudOwner") and
+                payload["user"]["user_id"] in {account["user_id"] for account in self.accounts.values()},
+                "browser_owner_probe_mismatch")
+        self.cookie_owners[cookie] = payload["user"]["user_id"]
+        return cookie
+
+    def reload(self, browser):
+        self.requests[str(browser.width)].extend(browser.evaluate("window.__crudRequests"))
         page = browser.evaluate("window.__crudPage")
         browser.call("Page.reload", {})
         browser.wait("!!window.__crudPage && window.__crudPage!==" + json.dumps(page))
 
-    def record_response(self, method, route, body, response, data):
+    def record_response(self, method, route, body, response, data, headers, cookie, project):
         self.actor_requests.append({"method": method, "route": route, "body": body,
+            "identity": {"owner_id": self.cookie_owners[cookie], "project_id": project},
+            "request_headers": {key.lower(): value for key, value in headers.items()
+                                if key.lower() in {"content-type", "x-opencad-request", "x-opencad-project"}},
             "status": response.status, "response": {
                 "body_base64": base64.b64encode(data).decode(), "bytes": len(data), "sha256": digest(data),
                 "headers": {key.lower(): value for key, value in response.getheaders()
@@ -462,7 +694,7 @@ class Review(legacy.Review):
             response = conn.getresponse()
             data = response.read()
             if not path.startswith("/api/auth/"):
-                self.record_response(method, path, body, response, data)
+                self.record_response(method, path, body, response, data, headers, cookie, project)
             return response.status, (json.loads(data) if response.getheader(
                 "Content-Type", "").startswith("application/json") else data)
         finally:
@@ -498,6 +730,25 @@ class Review(legacy.Review):
                 "request_id", "revision", "sha256")}})
         return after
 
+    def confirm_history(self, browser, cookie, project, before, command):
+        after = self.anchor(cookie, project)
+        rows = browser.evaluate("window.__crudRequests.filter(r=>r.route==='/api/command'"
+                                "&&r.body&&r.status===200)")
+        row = rows[-1]
+        require(row["body"]["command"] == command, "history_actual_command_mismatch")
+        from project_store import ProjectStore
+        store = ProjectStore(self.runtime / "projects")
+        try:
+            receipt = store.read_receipt(project, row["body"]["request_id"],
+                                        request_payload={**row["body"], "route": "/api/command"})
+        finally:
+            store.close()
+        require(receipt is not None and after["revision"] == before["revision"] + 1 and
+                after["receipts"] == before["receipts"] + 1, "history_single_receipt_failed")
+        self.history[str(browser.width)].append({"command": command, "before": before, "after": after,
+            "request": row["body"], "receipt": {key: receipt[key] for key in ("request_id", "revision", "sha256")}})
+        return after
+
     def edit_width(self, browser, expression):
         if not browser.evaluate("document.querySelector('[data-definition-explicit=width]').checked"):
             browser.click("[data-definition-explicit=width]")
@@ -511,11 +762,11 @@ class Review(legacy.Review):
         state = super().geometry(browser, cookie, project, expected, label)
         conn = http.client.HTTPConnection("127.0.0.1", self.cli[-1]["port"], timeout=60)
         try:
-            conn.request("GET", "/api/step", headers={"Cookie": "opencad_session=" + cookie,
-                         "X-OpenCAD-Project": project})
+            headers = {"Cookie": "opencad_session=" + cookie, "X-OpenCAD-Project": project}
+            conn.request("GET", "/api/step", headers=headers)
             response = conn.getresponse()
             step = response.read()
-            self.record_response("GET", "/api/step", None, response, step)
+            self.record_response("GET", "/api/step", None, response, step, headers, cookie, project)
             require(response.status == 200 and response.getheader("X-OpenCAD-Document-SHA256") ==
                     digest(state["doc"].encode()) and int(response.getheader("X-OpenCAD-Revision")) ==
                     state["revision"], "step_version_mismatch")
@@ -539,43 +790,101 @@ class Review(legacy.Review):
         self.check(str(browser.width) + "-" + label, condition, **facts)
         browser.screenshot(label)
 
-    def scenario(self, width, height):
-        self.operations[str(width)] = []
+    @staticmethod
+    def capture_script(browser):
+        browser.call("Page.addScriptToEvaluateOnNewDocument", {"source":
+            "const raw=window.fetch.bind(window);window.__crudRequests=[];"
+            "window.__crudPage=crypto.randomUUID();window.__crudAuth=null;window.__crudOwner=null;"
+            "window.fetch=async function(i,o){const p=new URL(typeof i==='string'?i:i.url,"
+            "location.href).pathname;const requestHeaders={};const hs=new Headers(o?.headers||{});"
+            "hs.forEach((v,k)=>{if(['content-type','x-opencad-project','x-opencad-request'].includes(k))"
+            "requestHeaders[k]=v;});const identity={owner_id:window.__crudOwner,"
+            "project_id:hs.get('x-opencad-project')};const r=await raw(i,o);"
+            "if(p==='/api/auth/me'){if(r.ok){const v=await r.clone().json();"
+            "window.__crudOwner=v.user.user_id;}window.__crudAuth=r.status;}"
+            "if(p==='/api/auth/login'&&r.ok){const v=await r.clone().json();window.__crudOwner=v.user.user_id;}"
+            "if(['/api/parametric','/api/state','/api/mesh','/api/step','/api/save','/api/command',"
+            "'/api/open'].includes(p)){const b=await r.clone().arrayBuffer();"
+            "const h=await crypto.subtle.digest('SHA-256',b);const bytes=new Uint8Array(b);"
+            "let binary='';for(let n=0;n<bytes.length;n+=8192){binary+="
+            "String.fromCharCode(...bytes.subarray(n,n+8192));}const headers={};"
+            "r.headers.forEach((v,k)=>{if(k==='content-type'||k.startsWith('x-opencad-'))headers[k]=v;});"
+            "window.__crudRequests.push({route:p,method:o?.method||'GET',status:r.status,"
+            "identity:identity,request_headers:requestHeaders,"
+            "body:o?.method==='POST'?JSON.parse(o.body):null,response:{body_base64:btoa(binary),"
+            "bytes:b.byteLength,sha256:Array.from(new Uint8Array(h),x=>x.toString(16).padStart(2,'0')).join(''),"
+            "headers:headers}});}"
+            "if(p==='/api/parametric'){"
+            "if(o?.method==='POST'&&window.__lose){window.__lose=false;"
+            "const v=await r.clone().json();if(!r.ok||!v.ok)throw Error('loss_fixture_rejected');"
+            "throw Error('Owned body-loss boundary');}"
+            "if(o?.method==='POST'&&window.__holdPost){window.__holdPost=false;"
+            "window.__postHeld=true;await new Promise(resolve=>window.__releasePost=resolve);}"
+            "if((!o?.method||o.method==='GET')&&window.__hold){window.__hold=false;"
+            "window.__held=true;await new Promise(resolve=>window.__release=resolve);}}"
+            "if(p==='/api/step'&&r.ok){const b=await r.clone().arrayBuffer();"
+            "const h=await crypto.subtle.digest('SHA-256',b);window.__stepWitness={bytes:b.byteLength,"
+            "sha256:Array.from(new Uint8Array(h),x=>x.toString(16).padStart(2,'0')).join('')};}"
+            "return r;};"})
+
+    def sentinel_scenario(self):
+        self.operations["1440"] = []
         Browser = self.browser_class()
-        with Browser(self.binary, self.out / str(width), width=width, height=height,
+        with Browser(self.binary, self.out / "sentinel", width=1440, height=900,
                      source_root=self.root) as browser:
-            browser.call("Page.addScriptToEvaluateOnNewDocument", {"source":
-                "const raw=window.fetch.bind(window);window.__crudRequests=[];"
-                "window.__crudPage=crypto.randomUUID();window.__crudAuth=null;"
-                "window.fetch=async function(i,o){const p=new URL(typeof i==='string'?i:i.url,"
-                "location.href).pathname;const r=await raw(i,o);"
-                "if(p==='/api/auth/me'){window.__crudAuth=r.status;}"
-                "if(['/api/parametric','/api/state','/api/mesh','/api/step','/api/save','/api/undo',"
-                "'/api/redo','/api/open'].includes(p)){const b=await r.clone().arrayBuffer();"
-                "const h=await crypto.subtle.digest('SHA-256',b);const bytes=new Uint8Array(b);"
-                "let binary='';for(let n=0;n<bytes.length;n+=8192){binary+="
-                "String.fromCharCode(...bytes.subarray(n,n+8192));}const headers={};"
-                "r.headers.forEach((v,k)=>{if(k==='content-type'||k.startsWith('x-opencad-'))headers[k]=v;});"
-                "window.__crudRequests.push({route:p,method:o?.method||'GET',status:r.status,"
-                "body:o?.method==='POST'?JSON.parse(o.body):null,response:{body_base64:btoa(binary),"
-                "bytes:b.byteLength,sha256:Array.from(new Uint8Array(h),x=>x.toString(16).padStart(2,'0')).join(''),"
-                "headers:headers}});}"
-                "if(p==='/api/parametric'){"
-                "if(o?.method==='POST'&&window.__lose){window.__lose=false;"
-                "const v=await r.clone().json();if(!r.ok||!v.ok)throw Error('loss_fixture_rejected');"
-                "throw Error('Owned body-loss boundary');}"
-                "if(o?.method==='POST'&&window.__holdPost){window.__holdPost=false;"
-                "window.__postHeld=true;await new Promise(resolve=>window.__releasePost=resolve);}"
-                "if((!o?.method||o.method==='GET')&&window.__hold){window.__hold=false;"
-                "window.__held=true;await new Promise(resolve=>window.__release=resolve);}}"
-                "if(p==='/api/step'&&r.ok){const b=await r.clone().arrayBuffer();"
-                "const h=await crypto.subtle.digest('SHA-256',b);window.__stepWitness={bytes:b.byteLength,"
-                "sha256:Array.from(new Uint8Array(h),x=>x.toString(16).padStart(2,'0')).join('')};}"
-                "return r;};"})
+            self.capture_script(browser)
             browser.call("Page.navigate", {"url": self.origin + "/web/3d.html"})
             self.login(browser, "config-alice")
             cookie = self.cookie(browser)
             project = browser.evaluate("document.querySelector('#parametric-panel').dataset.projectId")
+            before = self.anchor(cookie, project)
+            browser.click('[data-parametric-create="create_configurable_plate"]')
+            self.confirm(browser, cookie, project, before)
+            browser.click("[data-definition-new]")
+            self.type(browser, "[data-definition-name]", "unselected")
+            before = self.anchor(cookie, project)
+            browser.click("[data-definition-create]")
+            self.confirm(browser, cookie, project, before)
+            self.choose(browser, "[data-definition-target]", "wide")
+            self.choose(browser, "[data-definition-selection]", "target")
+            before = self.anchor(cookie, project)
+            browser.click("[data-definition-replace]")
+            self.confirm(browser, cookie, project, before)
+            before = self.anchor(cookie, project)
+            browser.click("[data-definition-delete]")
+            self.choose(browser, "[data-definition-replacement]", "unselected")
+            browser.click("[data-definition-confirm-delete]")
+            deadline = time.monotonic() + 20
+            while True:
+                if browser.evaluate("document.querySelector('.parametric-notice').textContent.includes('明确选择')"):
+                    require(self.anchor(cookie, project) == before, "sentinel_rejection_mutated")
+                    raise AssertionError("legal_unselected_replacement_rejected")
+                if self.anchor(cookie, project)["revision"] == before["revision"] + 1:
+                    break
+                require(time.monotonic() < deadline, "sentinel_delete_not_completed")
+                time.sleep(.1)
+            self.confirm(browser, cookie, project, before)
+            state = self.state(cookie, project)
+            require(json.loads(state["doc"])["parametric"]["active_configuration"] == "unselected" and
+                    "wide" not in json.loads(state["doc"])["parametric"]["configurations"],
+                    "sentinel_configuration_not_applied")
+            self.workflow(browser, "legal_unselected_replacement", True)
+            self.requests["1440"] = browser.evaluate("window.__crudRequests")
+
+    def scenario(self, width, height):
+        self.operations[str(width)] = []
+        self.history[str(width)] = []
+        self.requests[str(width)] = []
+        Browser = self.browser_class()
+        with Browser(self.binary, self.out / str(width), width=width, height=height,
+                     source_root=self.root) as browser:
+            self.capture_script(browser)
+            browser.call("Page.navigate", {"url": self.origin + "/web/3d.html"})
+            self.login(browser, "config-alice")
+            cookie = self.cookie(browser)
+            project = browser.evaluate("document.querySelector('#parametric-panel').dataset.projectId")
+            self.identities[str(width)] = {"first": {
+                "owner_id": self.cookie_owners[cookie], "project_id": project}}
             self.choose(browser, "#locale", "zh-CN")
             browser.wait("document.documentElement.lang==='zh-CN'")
             before = self.anchor(cookie, project)
@@ -719,12 +1028,16 @@ class Review(legacy.Review):
             browser.click("[data-parametric-save]")
             browser.wait("Number(document.querySelector('#parametric-panel').dataset.revision)===" +
                          str(saved["revision"] + 1))
+            before_history = self.anchor(cookie, project)
             browser.click("#undo")
             browser.wait("!window.opencad3d.busy")
+            self.confirm_history(browser, cookie, project, before_history, "undo")
             undone = self.geometry(browser, cookie, project, (1200-math.pi*36)*12, "undo")
             require("resume" not in json.loads(undone["doc"])["parametric"]["configurations"], "undo_definition_lost")
+            before_history = self.anchor(cookie, project)
             browser.click("#redo")
             browser.wait("!window.opencad3d.busy")
+            self.confirm_history(browser, cookie, project, before_history, "redo")
             redone = self.geometry(browser, cookie, project, 10000, "redo")
             port = self.cli[-1]["port"]
             self.stop()
@@ -802,7 +1115,6 @@ class Review(legacy.Review):
             require(self.anchor(cookie, project) == anchor and browser.evaluate(
                 "document.querySelector('[data-definition-parameter=width]').value==='66 * mm'"), "stale_cas_changed")
             self.workflow(browser, WORKFLOWS[7], True)
-            self.requests[str(width)] = browser.evaluate("window.__crudRequests")
             self.reload(browser)
             self.login(browser, "config-alice", project)
             browser.evaluate("window.__hold=true;window.__held=false;"
@@ -836,33 +1148,140 @@ class Review(legacy.Review):
                     "document.querySelectorAll('[data-parameter]').length===0 && "
                     "!document.querySelector('.parametric-result').dataset.documentSha"),
                     "late_post_restored_revoked_private_dom")
-            self.requests[str(width)] += browser.evaluate("window.__crudRequests")
             self.reload(browser)
             self.login(browser, "config-bob")
             second_cookie = self.cookie(browser)
             second_project = browser.evaluate("document.querySelector('#parametric-panel').dataset.projectId")
+            self.identities[str(width)]["second"] = {
+                "owner_id": self.cookie_owners[second_cookie], "project_id": second_project}
             state = self.state(second_cookie, second_project)
             require(second_project != project and not json.loads(state["doc"])["features"] and
                     browser.evaluate("document.querySelectorAll('[data-definition-parameter]').length===0"),
                     "second_identity_leaked")
             self.workflow(browser, WORKFLOWS[8], True)
+            self.requests[str(width)].extend(browser.evaluate("window.__crudRequests"))
 
 
 def artifact_manifest(out):
     return {path.relative_to(out).as_posix(): {"sha256": digest(path.read_bytes()),
             "bytes": path.stat().st_size} for path in out.rglob("*") if path.is_file() and
             path.relative_to(out).as_posix() not in {
-                "result.json", "terminal-candidate.json", "completion.log"}}
+                "result.json", "terminal-candidate.json", "completion.log", "result-failure.pending",
+                "completion-failure.pending"}}
 
 
-def preflight_failure(out):
-    cause = traceback.format_exc()
-    write(out / "failure.log", cause.encode())
-    write(out / "result.json", {"verdict": "FAIL", "intended_rc": 1, "first_cause": cause,
-        "phase": "preflight", "finished_at": now(), "artifacts": artifact_manifest(out)})
-    write(out / "completion.log", f"{MARKER} verdict=FAIL rc=1\n".encode())
-    print(f"{MARKER} verdict=FAIL phase=preflight rc=1 evidence={out}")
-    return 1
+class TerminalRecord:
+    """One producer owns this fresh directory; finalizer faults cannot erase first cause."""
+
+    def __init__(self, out, scope):
+        self.out = out
+        self.report = {"verdict": "FAIL", "intended_rc": 1, "scope": scope, "completed": False,
+            "first_cause": None, "first_phase": None, "secondary_errors": [], "source_before": None,
+            "source_after": None, "source_drift": ["source_not_captured"], "started_at": now(),
+            "finished_at": None, "completed_checks": 0, "expected_checks": None,
+            "checks": [], "cleanup_errors": [], "cli": [], "artifacts": None}
+
+    def failure(self, phase, cause):
+        if self.report["first_cause"] is None:
+            self.report.update(first_cause=cause, first_phase=phase)
+        else:
+            self.report["secondary_errors"].append({"phase": phase, "cause": cause})
+        self.report.update(verdict="FAIL", intended_rc=1, completed=False)
+
+    def guard(self, phase, operation):
+        try:
+            return operation()
+        except Exception:
+            self.failure(phase, traceback.format_exc())
+            return None
+
+    def capture(self, key):
+        captured = self.guard(key, source)
+        self.report[key] = captured
+        before, after = self.report["source_before"], self.report["source_after"]
+        self.report["source_drift"] = ([] if type(before) is dict and before == after else
+                                       ["source_read_failed"] if captured is None else ["source"])
+        return captured
+
+    def publish(self):
+        report = self.report
+        failure_log_attempted = report["first_cause"] is not None
+        if report["finished_at"] is None:
+            report["finished_at"] = now()
+        if report["first_cause"] is not None:
+            self.guard("failure_log", lambda: write(self.out / "failure.log", report["first_cause"].encode()))
+        report["artifacts"] = self.guard("artifact_manifest", lambda: artifact_manifest(self.out))
+        self.guard("result_write", lambda: write(self.out / "result.json", report))
+        self.guard("result_readback", lambda: require(
+            json.loads((self.out / "result.json").read_bytes()) == report, "result_roundtrip_mismatch"))
+        marker = self.marker()
+        self.guard("completion_write", lambda: write(self.out / "completion.log", marker.encode()))
+        self.guard("completion_readback", lambda: require(
+            (self.out / "completion.log").read_text() == marker, "completion_marker_mismatch"))
+        if report["first_cause"] is not None:
+            # This is failure publication, not a retry of a product/test operation.
+            report["artifacts"] = self.guard("failure_manifest", lambda: artifact_manifest(self.out))
+            if not failure_log_attempted:
+                self.guard("late_failure_log", lambda: write(
+                    self.out / "failure.log", report["first_cause"].encode()))
+                report["artifacts"] = self.guard("failure_manifest_refresh", lambda: artifact_manifest(self.out))
+            self.guard("failure_result_publish", lambda: self.replace_failure("result.json", report))
+            self.guard("failure_completion_publish", lambda: self.replace_failure(
+                "completion.log", self.marker().encode()))
+        print(self.marker().strip() + " evidence=" + str(self.out), flush=True)
+        return report["intended_rc"]
+
+    def replace_failure(self, name, value):
+        pending = self.out / (name.split(".")[0] + "-failure.pending")
+        write(pending, value)
+        os.replace(pending, self.out / name)
+
+    def marker(self):
+        return (f"{MARKER} verdict={self.report['verdict']} "
+                f"checks={self.report['completed_checks']} rc={self.report['intended_rc']}\n")
+
+
+def finalize_browser(record, review):
+    report = record.report
+    if review is not None:
+        for phase, action in (("cli_stop", review.stop), ("kernel_close", review.kernel.close),
+                              ("log_close", review.log.close)):
+            record.guard(phase, action)
+        report.update({key: getattr(review, key) for key in (
+            "checks", "cli", "cleanup_errors", "requests", "actor_requests", "operations", "loss",
+            "downloads", "measurements", "history", "identities")})
+    else:
+        report.update({key: {} for key in ("requests", "operations", "loss", "downloads", "history", "identities")})
+        report.update(actor_requests=[], measurements=[])
+    record.capture("source_after")
+    report["completed_checks"] = sum(row["pass"] is True for row in report["checks"])
+    if report["source_drift"] or report["cleanup_errors"]:
+        record.failure("source_or_cleanup", "source_drift_or_cleanup_failed")
+    record.guard("http_ledger_write", lambda: write(
+        record.out / "http-ledger.json", {key: report[key] for key in LEDGER_KEYS}))
+    report["artifacts"] = record.guard("artifact_manifest", lambda: artifact_manifest(record.out))
+
+    def secret_gate():
+        require(report["artifacts"] is not None, "artifact_manifest_missing")
+        if review is not None:
+            for name in report["artifacts"]:
+                require(not any(secret in (record.out / name).read_bytes() for secret in review.secrets),
+                        "secret_in_evidence:" + name)
+            for row in [*review.actor_requests, *(item for rows in review.requests.values() for item in rows)]:
+                require(not any(secret in validate_response(row) for secret in review.secrets),
+                        "secret_in_response_evidence")
+
+    record.guard("secret_response_gate", secret_gate)
+    if report["first_cause"] is None:
+        report.update(verdict="PASS", intended_rc=0, completed=True)
+        report["finished_at"] = now()
+        record.guard("terminal_candidate_write", lambda: write(record.out / "terminal-candidate.json", report))
+        saved = record.guard("terminal_candidate_read", lambda: json.loads(
+            (record.out / "terminal-candidate.json").read_bytes()))
+        record.guard("terminal_roundtrip", lambda: require(saved == report, "terminal_roundtrip_mismatch"))
+        if report["first_cause"] is None:
+            record.guard("terminal_gate", lambda: verify_bound(saved, record.out))
+    return record.publish()
 
 
 def main(argv=None):
@@ -874,15 +1293,20 @@ def main(argv=None):
     parser.add_argument("--browser", default=legacy.DEFAULT_BROWSER)
     parser.add_argument("--selftest", action="store_true")
     parser.add_argument("--verify-evidence", type=Path)
+    parser.add_argument("--sentinel-only", action="store_true",
+                        help="Real legal-name collision regression, no full workflow verdict.")
     args = parser.parse_args(argv)
-    require(args.source_root.resolve() == ROOT.resolve(), "runner_source_mismatch")
     out = args.evidence_dir.resolve()
     require(out.is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()), "external_evidence_required")
     out.mkdir(parents=True, exist_ok=False)
-    try:
-        before = source()
-    except Exception:
-        return preflight_failure(out)
+    scope = "readback" if args.verify_evidence else "controls" if args.selftest else (
+        "sentinel" if args.sentinel_only else "crud")
+    record = TerminalRecord(out, scope)
+    record.guard("source_root", lambda: require(args.source_root.resolve() == ROOT.resolve(),
+                                                "runner_source_mismatch"))
+    before = record.capture("source_before")
+    if record.report["first_cause"] is not None:
+        return record.publish()
     if args.verify_evidence:
         try:
             original = args.verify_evidence.resolve()
@@ -892,16 +1316,15 @@ def main(argv=None):
                     "terminal_candidate_mismatch")
             require((original / "completion.log").read_text() ==
                     f"{MARKER} verdict=PASS checks={count} rc=0\n", "completion_marker_mismatch")
-            result = {"verdict": "EVIDENCE_VERIFIED", "intended_rc": 0, "checks": count,
-                      "first_cause": None, "source": source(), "finished_at": now(),
-                      "original_result_sha256": digest((original / "result.json").read_bytes())}
+            record.report.update(verdict="EVIDENCE_VERIFIED", intended_rc=0, completed=True,
+                completed_checks=count, expected_checks=count,
+                original_result_sha256=digest((original / "result.json").read_bytes()))
         except Exception:
-            result = {"verdict": "FAIL", "intended_rc": 1, "first_cause": traceback.format_exc()}
-            write(out / "failure.log", result["first_cause"].encode())
-        write(out / "result.json", result)
-        write(out / "completion.log", f"{MARKER} verdict={result['verdict']} rc={result['intended_rc']}\n".encode())
-        print(f"{MARKER} verdict={result['verdict']} rc={result['intended_rc']} evidence={out}")
-        return result["intended_rc"]
+            record.failure("verify_evidence", traceback.format_exc())
+        record.capture("source_after")
+        if record.report["source_drift"]:
+            record.failure("source_drift", "source_drift")
+        return record.publish()
     try:
         base = args.runtime_root
         require(base is not None and base.absolute().is_relative_to(Path("/data/tmp")) and
@@ -913,102 +1336,54 @@ def main(argv=None):
         require(not filesystem.startswith("fuse") and filesystem not in {"nfs", "nfs4", "tmpfs", "cifs"},
                 "persistent_local_sqlite_required")
     except Exception:
-        return preflight_failure(out)
+        record.failure("runtime_preflight", traceback.format_exc())
+        record.capture("source_after")
+        return record.publish()
     if args.selftest:
         CONTROL_RUNTIME = runtime
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(Controls)
         names = sorted(unittest.defaultTestLoader.getTestCaseNames(Controls))
-        with (out / "tests.log").open("x") as log:
+        tested, log = None, None
+        try:
+            log = (out / "tests.log").open("x")
             with redirect_stdout(log), redirect_stderr(log):
                 tested = unittest.TextTestRunner(stream=log, verbosity=2,
                     resultclass=legacy.EvidenceResult, failfast=True).run(suite)
-        after = source()
-        ok = tested.wasSuccessful() and tested.testsRun == len(names) > 0 and not tested.skipped and before == after
-        result = {"verdict": "PASS" if ok else "FAIL", "intended_rc": 0 if ok else 1,
-                  "tests": tested.testsRun, "expected_tests": len(names), "test_names": names,
-                  "failures": len(tested.failures), "errors": len(tested.errors), "skipped": len(tested.skipped),
-                  "first_cause": tested.first_cause or (None if ok else "incomplete_or_source_drift"),
-                  "source_before": before, "source_after": after,
-                  "source_drift": [] if before == after else ["source"], "finished_at": now(),
-                  "artifacts": artifact_manifest(out)}
-        if not ok: write(out / "failure.log", str(result["first_cause"]).encode())
-        write(out / "result.json", result)
-        write(out / "completion.log", f"{MARKER}_SELFTEST verdict={result['verdict']} tests={tested.testsRun} rc={result['intended_rc']}\n".encode())
-        print(f"{MARKER}_SELFTEST verdict={result['verdict']} tests={tested.testsRun} rc={result['intended_rc']} evidence={out}")
-        return result["intended_rc"]
-    report = {"verdict": "FAIL", "intended_rc": 1, "first_cause": None, "started_at": now(),
-              "runtime_root": str(runtime), "runtime_filesystem": filesystem, "production_mutated": False,
-              "gpu_used": False, "source_before": before}
+            if tested.first_cause: record.failure("selftest", tested.first_cause)
+        except Exception:
+            record.failure("selftest", traceback.format_exc())
+        finally:
+            if log is not None: record.guard("tests_log_close", log.close)
+        after = record.capture("source_after")
+        record.report.update(tests=tested.testsRun if tested else None, expected_tests=len(names),
+            expected_checks=len(names), test_names=names,
+            failures=len(tested.failures) if tested else None, errors=len(tested.errors) if tested else None,
+            skipped=len(tested.skipped) if tested else None,
+            completed_checks=tested.testsRun-len(tested.errors)-len(tested.failures)-len(tested.skipped) if tested else 0)
+        ok = tested is not None and tested.wasSuccessful() and tested.testsRun == len(names) > 0 and (
+            not tested.skipped and before == after and record.report["first_cause"] is None)
+        if ok: record.report.update(verdict="PASS", intended_rc=0, completed=True)
+        else: record.failure("selftest_gate", "incomplete_or_source_drift")
+        return record.publish()
+    report = record.report
+    report.update(runtime_root=str(runtime), runtime_filesystem=filesystem, production_mutated=False,
+                  gpu_used=False, expected_checks=1 if args.sentinel_only else 18)
     review = None
     try:
-        review = Review(ROOT, out, runtime, args.browser)
+        review = Review(ROOT, out, runtime, args.browser, record=record)
         review.register()
-        for width, height in ((1440, 900), (390, 844)):
+        if args.sentinel_only:
             review.start()
-            review.scenario(width, height)
+            review.sentinel_scenario()
             review.stop()
-        report.update(verdict="PASS", intended_rc=0)
+        else:
+            for width, height in ((1440, 900), (390, 844)):
+                review.start()
+                review.scenario(width, height)
+                review.stop()
     except Exception:
-        report["first_cause"] = traceback.format_exc()
-    finally:
-        if review:
-            try: review.stop()
-            except Exception:
-                review.cleanup_errors.append("cli_stop")
-                report["first_cause"] = report["first_cause"] or traceback.format_exc()
-            try: review.kernel.close()
-            except Exception:
-                review.cleanup_errors.append("kernel_close")
-                report["first_cause"] = report["first_cause"] or traceback.format_exc()
-            review.log.close()
-        try:
-            after = source()
-            report.update(source_after=after, source_drift=[] if before == after else ["source"])
-        except Exception:
-            report.update(source_after=None, source_drift=["source_read_failed"])
-            report["first_cause"] = report["first_cause"] or traceback.format_exc()
-        report.update(checks=review.checks if review else [], cli=review.cli if review else [],
-            cleanup_errors=review.cleanup_errors if review else [], requests=review.requests if review else {},
-            actor_requests=review.actor_requests if review else [],
-            operations=review.operations if review else {}, loss=review.loss if review else {},
-            downloads=review.downloads if review else {}, measurements=review.measurements if review else [],
-            finished_at=now())
-        if report["first_cause"] or report["source_drift"] or report["cleanup_errors"]:
-            report.update(verdict="FAIL", intended_rc=1)
-            report["first_cause"] = report["first_cause"] or "source_drift_or_cleanup_failed"
-        write(out / "http-ledger.json", {key: report[key] for key in (
-            "requests", "actor_requests", "operations", "loss", "measurements")})
-        if report["first_cause"]: write(out / "failure.log", report["first_cause"].encode())
-        report["artifacts"] = artifact_manifest(out)
-        try:
-            if review:
-                for name in report["artifacts"]:
-                    require(not any(secret in (out / name).read_bytes() for secret in review.secrets),
-                            "secret_in_evidence:" + name)
-                for row in [*review.actor_requests, *(item for rows in review.requests.values() for item in rows)]:
-                    data = validate_response(row)
-                    require(not any(secret in data for secret in review.secrets), "secret_in_response_evidence")
-        except Exception:
-            report.update(verdict="FAIL", intended_rc=1,
-                          first_cause=report["first_cause"] or traceback.format_exc())
-            write(out / "failure.log", report["first_cause"].encode())
-            report["artifacts"] = artifact_manifest(out)
-        if report["verdict"] == "PASS":
-            try:
-                write(out / "terminal-candidate.json", report)
-                saved = json.loads((out / "terminal-candidate.json").read_bytes())
-                require(saved == report, "terminal_roundtrip_mismatch")
-                verify_bound(saved, out)
-            except Exception:
-                report.update(verdict="FAIL", intended_rc=1, first_cause=traceback.format_exc())
-                write(out / "failure.log", report["first_cause"].encode())
-                report["artifacts"] = artifact_manifest(out)
-        write(out / "result.json", report)
-        require(json.loads((out / "result.json").read_bytes()) == report, "result_roundtrip_mismatch")
-        marker = f"{MARKER} verdict={report['verdict']} checks={len(report['checks'])} rc={report['intended_rc']}\n"
-        write(out / "completion.log", marker.encode())
-        print(marker.strip() + " evidence=" + str(out))
-    return report["intended_rc"]
+        record.failure("browser_scenario", traceback.format_exc())
+    return finalize_browser(record, review)
 
 
 if __name__ == "__main__":

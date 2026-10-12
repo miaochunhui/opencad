@@ -32,6 +32,9 @@ apply target passes its name and clears overrides; base passes `""` and clears
 overrides. Null is never sent. Active deletion starts with no replacement and
 requires a surviving named configuration or base plus visible confirmation.
 Cancel changes neither saved definitions nor drafts; base itself is not deletable.
+The no-selection UI sentinel is `:unselected:`, outside the backend name
+grammar. The legal configuration `unselected` remains creatable/selectable
+and can replace an active configuration during deletion.
 
 ## Draft And Failure Boundary
 
@@ -78,8 +81,10 @@ and a saved/reread terminal candidate/completion marker. It requires exact
 mandatory labels and rejects drift/incomplete evidence; parent rc must still
 be independently received by the caller.
 
-The browser records every completed response for parametric/state/mesh/STEP,
-save/undo/redo and the forbidden open route. Independent non-auth HTTP actors
+The browser records completed responses for parametric/state/mesh/STEP, save,
+the actual `/api/command` undo/redo transport and the forbidden open route.
+Each page ledger is collected before reload and the final page is collected.
+Independent non-auth HTTP actors
 also retain response bytes (base64), byte count, SHA256 and the allowlisted
 content-type/X-OpenCAD headers. Each row is rehashed and JSON status/ok checked;
 successful operations bind their request to the response and SQLite receipt.
@@ -88,6 +93,29 @@ headers are intentionally excluded, not claimed as complete HTTP capture.
 Exact lost-response replay requires two identical request bodies, identical
 response bodies and unchanged revision/receipt count. Synthetic controls
 mutate each response field, single-receipt increments, booleans and replay.
+Each response binds the actual non-secret owner/project IDs and allowlisted
+request headers. Undo/redo bind their original command/CAS payloads, response
+body/header evidence, SQLite single receipts and same-version geometry.
+Missing/wrong identity, command, request header or receipt is rejected.
+Auth response bodies and credential headers remain excluded.
+
+One `TerminalRecord` owns preflight, controls, offline readback and browser
+finalization. Source reads, log closes, ledger/artifact/candidate/result/marker
+writes and readbacks use first-cause-preserving guards. Later faults are
+`secondary_errors`, absent source snapshots/artifact counts are null, and
+`completed` is false unless the exact expected checks and terminal gates pass.
+Failure publication is not a product retry. If storage becomes wholly
+unwritable, rc1/stdout remain the boundary; no successful result is claimed.
+Fresh controls inject source-read, log-close, ledger/manifest/result/marker
+faults into the same finalizer. Existing PASS/FAIL directories are untouched.
+
+`--sentinel-only` runs one separate real-browser legal-name regression with
+its own source/artifact/CLI terminal gate; it never counts as the 18 workflows.
+The original red is retained under
+`/hf3fs-jd/data/tmp/opencad-config-crud-sentinel-before-20261012-v1`.
+Use fresh output/runtime paths for the fixed regression and 18-workflow run.
+The old 470-row gate omitted `/api/command`; its PASS remains bounded to its
+recorded routes and is not promoted to full HTTP capture by this change.
 
 The original browser v1/v2/v3 FAIL roots remain outside Git. V1 exposed an
 empty-project editor assumption; v2 exposed overwritten failure guidance;

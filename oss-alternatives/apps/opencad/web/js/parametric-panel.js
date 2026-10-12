@@ -12,6 +12,7 @@
   const inputs = new Map(), dimensionInputs = new Map();
   const definitionInputs = new Map(), suppressionInputs = new Map();
   const digestPattern = /^[0-9a-f]{64}$/;
+  const noReplacement = ":unselected:";
 
   function node(tag, text, className) {
     const item = document.createElement(tag);
@@ -304,10 +305,10 @@
       throw new Error("definition_action_invalid");
     }
     if (action === "delete_configuration") {
-      if (current.configuration === name && deleteReplacement.value === "unselected") {
+      if (current.configuration === name && deleteReplacement.value === noReplacement) {
         throw new Error("删除活动配置必须明确选择替代配置或基础。");
       }
-      if (deleteReplacement.value !== "unselected") {
+      if (deleteReplacement.value !== noReplacement) {
         if (deleteReplacement.value === name) throw new Error("configuration_delete_target_selection");
         body.configuration = deleteReplacement.value;
       }
@@ -516,14 +517,14 @@
     } else definitionFeatures.append(node("p", "v1 不支持抑制定义，不会自动升级。"));
     deleteReplacement.replaceChildren();
     const unselected = node("option", "请选择；非活动配置可保留当前选择");
-    unselected.value = "unselected"; deleteReplacement.append(unselected);
+    unselected.value = noReplacement; deleteReplacement.append(unselected);
     const base = node("option", "基础配置（清除 overrides）"); base.value = ""; deleteReplacement.append(base);
     Object.keys(current.configuration_definitions || {}).sort().filter(function (key) {
       return key !== name;
     }).forEach(function (key) {
       const option = node("option", key + "（清除 overrides）"); option.value = key; deleteReplacement.append(option);
     });
-    deleteReplacement.value = "unselected"; deleteConfirmation.hidden = true;
+    deleteReplacement.value = noReplacement; deleteConfirmation.hidden = true;
     definitionNotice.textContent = definitionMode === "create"
       ? "新配置初始继承基础。定义与当前模型的覆盖草稿独立。"
       : "完整替换会替换全部参数和抑制定义，不做浅合并。";
