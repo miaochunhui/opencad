@@ -13,6 +13,78 @@
   const definitionInputs = new Map(), suppressionInputs = new Map();
   const digestPattern = /^[0-9a-f]{64}$/;
   const noReplacement = ":unselected:";
+  const localePrefix = "panel.parametric.";
+  const localeBindings = new WeakMap();
+
+  function localeService() {
+    const service = window.OpenCADLocale;
+    if (!service || typeof service.t !== "function" || typeof service.bind !== "function" ||
+        typeof service.snapshot !== "function") throw new Error("parametric_locale_service_unavailable");
+    return service;
+  }
+
+  function localBinding(item, key, args, target) {
+    const attribute = target ? "data-panel-i18n-" + target : "data-panel-i18n";
+    const fullKey = localePrefix + key;
+    const translated = localeService().t(fullKey, args);
+    if (args) {
+      item.removeAttribute(attribute);
+      let bindings = localeBindings.get(item);
+      if (!bindings) { bindings = new Map(); localeBindings.set(item, bindings); }
+      bindings.set(target || "text", {key: fullKey, args: Object.assign({}, args)});
+      item.setAttribute("data-parametric-locale", "true");
+    } else {
+      const bindings = localeBindings.get(item);
+      if (bindings) {
+        bindings.delete(target || "text");
+        if (!bindings.size) {
+          localeBindings.delete(item); item.removeAttribute("data-parametric-locale");
+        }
+      }
+      item.setAttribute(attribute, fullKey);
+    }
+    if (target) item.setAttribute(target === "aria" ? "aria-label" : target, translated);
+    else item.textContent = translated;
+    return item;
+  }
+
+  function localText(item, key, args) { return localBinding(item, key, args); }
+  function localAria(item, key, args) { return localBinding(item, key, args, "aria"); }
+  function localNode(tag, key, className, args) {
+    return localText(node(tag, undefined, className), key, args);
+  }
+  function clearLocalText(item) {
+    item.removeAttribute("data-panel-i18n");
+    const bindings = localeBindings.get(item);
+    if (bindings) {
+      bindings.delete("text");
+      if (!bindings.size) { localeBindings.delete(item); item.removeAttribute("data-parametric-locale"); }
+    }
+    item.textContent = "";
+  }
+  function translatePanel() {
+    if (!panel) return;
+    const service = localeService();
+    service.bind(panel);
+    panel.querySelectorAll("[data-parametric-locale]").forEach(function (item) {
+      const bindings = localeBindings.get(item);
+      if (!bindings) throw new Error("parametric_locale_binding_missing");
+      bindings.forEach(function (binding, target) {
+        const text = service.t(binding.key, binding.args);
+        if (target === "text") item.textContent = text;
+        else item.setAttribute(target === "aria" ? "aria-label" : target, text);
+      });
+    });
+  }
+  function shieldKey(key, permanent, args) {
+    shield("", permanent);
+    localText(notice, key, args);
+  }
+  function localError(message, key) {
+    const error = new Error(message);
+    error.localeKey = key;
+    return error;
+  }
 
   function node(tag, text, className) {
     const item = document.createElement(tag);
@@ -24,7 +96,9 @@
   function report(error) {
     if (expired) return;
     const message = String(error.message || error);
-    if (notice && !(blocked && notice.textContent.includes(message))) notice.textContent = message;
+    if (notice && !(blocked && notice.textContent.includes(message))) {
+      localText(notice, error.localeKey || "error", {message: message});
+    }
   }
 
   function markBusy(value) {
@@ -56,14 +130,14 @@
       owner = null; current = null; specification = null;
       inputs.clear(); dimensionInputs.clear();
       fields.replaceChildren(); dimensions.replaceChildren(); features.replaceChildren();
-      configurations.replaceChildren(); result.textContent = "";
+      configurations.replaceChildren(); clearLocalText(result);
       definitionInputs.clear(); suppressionInputs.clear();
       definitionTarget.replaceChildren(); definitionName.value = "";
       deleteReplacement.replaceChildren();
       delete definitionForm.dataset.editingTarget;
       definitionMode = "edit"; selectionPolicy.value = "keep"; bindingError = null;
       definitionParameters.replaceChildren(); definitionFeatures.replaceChildren();
-      definitionNotice.textContent = "";
+      clearLocalText(definitionNotice);
       definitionDirty = false; modelStale = false; definitionStale = false;
       delete panel.dataset.documentSha;
       delete panel.dataset.projectId; delete panel.dataset.revision;
@@ -76,7 +150,7 @@
     panel.querySelectorAll("[data-parametric-create]").forEach(function (button) {
       button.hidden = true;
     });
-    notice.textContent = message;
+    clearLocalText(notice); notice.textContent = message;
     markBusy(false);
   }
 
@@ -87,6 +161,8 @@
     const value = await response.json();
     if (!response.ok || value.ok !== true) {
       const error = new Error((value.error || "parametric_request_failed") + ": " + (value.detail || ""));
+      error.code = value.error || "parametric_request_failed";
+      error.detail = value.detail || "";
       error.status = response.status;
       throw error;
     }
@@ -97,7 +173,7 @@
     const session = await json("/api/auth/me");
     const identifier = session.user && session.user.user_id;
     if (typeof identifier !== "string" || !identifier || (owner && owner !== identifier)) {
-      shield("账号已变化，已清除本页私有参数。请重新打开项目。", true);
+      shieldKey("identity_changed", true);
       throw new Error("parametric_identity_changed");
     }
     return identifier;
@@ -133,9 +209,9 @@
   }
 
   function featurePreview() {
-    features.replaceChildren(node("legend", "特征抑制"));
+    features.replaceChildren(localNode("legend", "feature_suppression"));
     if (!current || current.parametric_version !== 2) {
-      features.append(node("p", "此模型为 v1，仅支持尺寸配置。"));
+      features.append(localNode("p", "v1_preview"));
       return;
     }
     const selected = configurations.value;
@@ -146,13 +222,12 @@
         ? flags[key] : feature.base_suppressed;
       const row = node("p", undefined, "parametric-feature");
       row.dataset.feature = key; row.dataset.suppressed = String(suppressed);
-      row.append(node("strong", key === "hole_cut" ? "孔切除" :
-        key === "plate_boss" ? "板实体" : key),
-      node("span", suppressed ? "已抑制" : "参与重建"),
+      row.append(key === "hole_cut" || key === "plate_boss" ? localNode("strong", key) : node("strong", key),
+      localNode("span", suppressed ? "suppressed" : "live"),
       node("small", "UUID " + feature.target_uuid));
       features.append(row);
     });
-    features.append(node("small", "显示所选配置的抑制定义；完整重建后才改变已保存的实体。"));
+    features.append(localNode("small", "preview_help"));
   }
 
   function render(bound, preserve, preserveDefinition) {
@@ -161,11 +236,11 @@
     blocked = false; bindingError = null;
     if (!preserve) {
       dirty = false; clearOverrides = false;
-      fields.replaceChildren(node("legend", "参数表达式"));
-      dimensions.replaceChildren(node("legend", "驱动尺寸"));
+      fields.replaceChildren(localNode("legend", "expressions"));
+      dimensions.replaceChildren(localNode("legend", "dimensions"));
       configurations.replaceChildren();
       inputs.clear(); dimensionInputs.clear();
-      const base = node("option", "基础配置"); base.value = ""; configurations.append(base);
+      const base = localNode("option", "base"); base.value = ""; configurations.append(base);
       (value.configurations || []).forEach(function (name) {
         const option = node("option", name); option.value = name; configurations.append(option);
       });
@@ -174,7 +249,7 @@
         const row = node("label", undefined, "parametric-row"), input = node("input");
         input.type = "text"; input.value = parameter.expression; input.required = true;
         input.maxLength = 2048; input.dataset.parameter = parameter.name;
-        input.setAttribute("aria-label", parameter.name + " 表达式");
+        localAria(input, "expression_aria", {name: parameter.name});
         row.append(node("span", parameter.name), input,
           node("small", parameter.value.value + (parameter.unit === "length" ? " nm" : "")));
         fields.append(row);
@@ -185,7 +260,7 @@
         input.type = "text"; input.value = dimension.value_nm + " * nm";
         input.maxLength = 2048; input.required = true; input.dataset.dimension = dimension.key;
         input.dataset.readonly = String(!dimension.editable);
-        input.setAttribute("aria-label", dimension.key + " 驱动尺寸");
+        localAria(input, "dimension_aria", {name: dimension.key});
         row.append(node("span", dimension.key), input); dimensions.append(row);
         dimensionInputs.set(dimension.key, {input: input, original: input.value});
       });
@@ -197,14 +272,12 @@
     panel.querySelectorAll("[data-parametric-create]").forEach(function (button) {
       button.hidden = value.enabled || !value.can_create_plate;
     });
-    notice.textContent = preserve ? "已核对同一保存版本，未提交草稿仍保留。" : value.enabled
-      ? "表达式需显式单位，如 60 * mm。切换配置清除旧覆盖；完整重建才保存。"
-      : "仅空白项目可创建配置板，不会替换已有图纸。";
+    localText(notice, preserve ? "preserved" : value.enabled ? "enabled_help" : "blank_help");
     panel.dataset.documentSha = value.document_sha256;
     panel.dataset.projectId = value.project_id;
     panel.dataset.revision = String(value.revision);
     blocked = modelStale || definitionStale;
-    if (blocked) notice.textContent = "已保存版本改变了另一份草稿的依据。草稿保留，请明确丢弃对应草稿后重读。";
+    if (blocked) localText(notice, "other_draft_stale");
     markBusy(busy);
   }
 
@@ -216,12 +289,12 @@
       const bound = await readBound();
       if (generation !== epoch || sequence !== reads || busy || expired) return;
       if (before && bound.value.project_id !== before.project_id) {
-        shield("项目已变化，已清除旧项目参数。请重新打开项目。", true);
+        shieldKey("project_changed", true);
         throw new Error("parametric_project_changed");
       }
       if ((dirty || definitionDirty) && before && !sameHead(before, bound.value)) {
         blocked = true; bindingError = new Error("parametric_draft_base_changed");
-        notice.textContent = "保存版本已变化。草稿仍保留，不能直接提交；请检查后明确丢弃草稿并重读。";
+        localText(notice, "draft_stale");
         form.hidden = false; markBusy(false);
         definitionForm.hidden = false;
         panel.querySelector("[data-parametric-discard]").disabled = false;
@@ -233,9 +306,9 @@
       if (generation === epoch && !expired && (sequence === reads ||
           error.status === 401 || error.status === 403)) {
         if (error.status === 401 || error.status === 403) {
-          shield("登录已失效，已清除本页私有参数。请重新登录。", true);
+          shieldKey("session_expired", true);
         } else {
-          shield("参数未能验证，草稿保留但暂停编辑。请核对保存结果后重读：" + error.message, false);
+          shieldKey("read_unverified", false, {message: error.message});
         }
       }
       throw error;
@@ -301,7 +374,7 @@
       const stored = (current.configuration_definitions || {})[name] || {};
       if (Object.keys(parameters).length !== Object.keys(stored).length ||
           Object.keys(parameters).some(function (key) { return parameters[key] !== stored[key]; })) {
-        throw new Error("参数定义草稿未保存，请使用完整替换，不能仅保存抑制。");
+        throw localError("参数定义草稿未保存，请使用完整替换，不能仅保存抑制。", "definition_unsaved_error");
       }
       body.suppressions = suppressions;
     } else if (action !== "delete_configuration") {
@@ -309,7 +382,7 @@
     }
     if (action === "delete_configuration") {
       if (current.configuration === name && deleteReplacement.value === noReplacement) {
-        throw new Error("删除活动配置必须明确选择替代配置或基础。");
+        throw localError("删除活动配置必须明确选择替代配置或基础。", "replacement_required_error");
       }
       if (deleteReplacement.value !== noReplacement) {
         if (deleteReplacement.value === name) throw new Error("configuration_delete_target_selection");
@@ -395,24 +468,21 @@
       deleteConfirmation.hidden = true;
       const volume = value.mesh.solids[0].properties.volume_nm3 / 1e18;
       if (!Number.isFinite(volume) || volume <= 0) throw new Error("parametric_volume_invalid");
-      result.textContent = "重建已保存 | 体积 " + volume.toFixed(6) + " mm³ | STEP " +
-        value.step.bytes + " bytes | " + value.document_sha256.slice(0, 12);
+      localText(result, "rebuild_result", {volume: volume.toFixed(6),
+        bytes: value.step.bytes, sha: value.document_sha256.slice(0, 12)});
       result.dataset.documentSha = value.document_sha256;
       result.dataset.volumeMm3 = String(volume);
       result.dataset.revision = String(value.revision);
-      notice.textContent = blocked
-        ? "编辑已保存，另一份草稿仍保留但依据已变化。请检查并明确丢弃对应草稿。"
-        : "真实 BRep、网格和 STEP 已核对同一保存版本。";
+      localText(notice, blocked ? "saved_other_draft" : "artifacts_verified");
       window.dispatchEvent(new CustomEvent("opencad:parametric", {detail: value}));
       return value;
     } catch (error) {
       if (generation === epoch && !expired) {
         if (error.status === 401 || error.status === 403) {
-          shield("登录已失效，已清除本页私有参数。请重新登录。", true);
+          shieldKey("session_expired", true);
         } else {
           blocked = true;
-          notice.textContent = (accepted ? "编辑已保存，但视图未确认。不会再次提交；" :
-            "编辑未确认或被拒绝，草稿仍保留；") + "请核对保存结果后重读。 " + error.message;
+          localText(notice, accepted ? "saved_unverified" : "edit_unverified", {message: error.message});
         }
       }
       throw error;
@@ -445,12 +515,12 @@
         throw new Error("parametric_save_version_conflict");
       }
       render(bound, dirty, definitionDirty);
-      notice.textContent = "当前已保存模型已确认；未提交的配置草稿仍保留。";
+      localText(notice, "model_saved");
       return saved;
     } catch (error) {
       if (generation === epoch && !expired) {
         if (error.status === 401 || error.status === 403) {
-          shield("登录已失效，已清除本页私有参数。请重新登录。", true);
+          shieldKey("session_expired", true);
         } else {
           blocked = true; report(error);
         }
@@ -477,7 +547,7 @@
     selectionPolicy.value = "keep";
     if (!current.enabled || !specification) {
       definitionParameters.replaceChildren(); definitionFeatures.replaceChildren();
-      definitionNotice.textContent = "";
+      clearLocalText(definitionNotice);
       deleteConfirmation.hidden = true;
       return;
     }
@@ -489,48 +559,47 @@
     const stored = (current.configuration_definitions || {})[name] || {};
     const flags = (current.configuration_suppressions || {})[name] || {};
     definitionInputs.clear(); suppressionInputs.clear();
-    definitionParameters.replaceChildren(node("legend", "配置参数定义"));
+    definitionParameters.replaceChildren(localNode("legend", "definition_parameters"));
     Object.entries(specification.parameters || {}).forEach(function (entry) {
       const key = entry[0], row = node("div", undefined, "parametric-definition-row");
       const label = node("label", key), explicit = node("input"), expression = node("input");
       explicit.type = "checkbox"; explicit.checked = Object.prototype.hasOwnProperty.call(stored, key);
-      explicit.dataset.definitionExplicit = key; explicit.setAttribute("aria-label", key + " 显式定义");
+      explicit.dataset.definitionExplicit = key; localAria(explicit, "explicit_aria", {name: key});
       expression.type = "text"; expression.maxLength = 2048;
       expression.value = explicit.checked ? stored[key] : entry[1].expression;
-      expression.dataset.definitionParameter = key; expression.setAttribute("aria-label", key + " 配置表达式");
-      label.append(explicit, node("span", "显式定义（未勾选继承基础）"));
+      expression.dataset.definitionParameter = key; localAria(expression, "definition_expression_aria", {name: key});
+      label.append(explicit, localNode("span", "explicit_help"));
       row.append(label, expression);
       definitionParameters.append(row); definitionInputs.set(key, {explicit: explicit, expression: expression});
     });
-    definitionFeatures.replaceChildren(node("legend", "配置抑制定义"));
+    definitionFeatures.replaceChildren(localNode("legend", "definition_suppressions"));
     if (current.parametric_version === 2) {
       Object.entries(current.feature_bindings || {}).forEach(function (entry) {
         const key = entry[0], feature = entry[1], row = node("label", undefined, "parametric-row");
         const select = node("select"); select.dataset.definitionSuppression = key;
-        select.dataset.definitionV2 = "true"; select.setAttribute("aria-label", key + " 抑制定义");
-        [["inherit", "继承基础（" + (feature.base_suppressed ? "抑制" : "参与") + "）"],
-          ["live", "参与重建"], ["suppressed", "抑制"]].forEach(function (item) {
-          const option = node("option", item[1]); option.value = item[0]; select.append(option);
+        select.dataset.definitionV2 = "true"; localAria(select, "suppression_aria", {name: key});
+        [["inherit", feature.base_suppressed ? "inherit_suppressed" : "inherit_live"],
+          ["live", "live"], ["suppressed", "suppress"]].forEach(function (item) {
+          const option = localNode("option", item[1]); option.value = item[0]; select.append(option);
         });
         select.value = Object.prototype.hasOwnProperty.call(flags, key)
           ? flags[key] ? "suppressed" : "live" : "inherit";
         row.append(node("span", key), select, node("small", "UUID " + feature.target_uuid));
         definitionFeatures.append(row); suppressionInputs.set(key, select);
       });
-    } else definitionFeatures.append(node("p", "v1 不支持抑制定义，不会自动升级。"));
+    } else definitionFeatures.append(localNode("p", "v1_definition"));
     deleteReplacement.replaceChildren();
-    const unselected = node("option", "请选择；非活动配置可保留当前选择");
+    const unselected = localNode("option", "replacement_unselected");
     unselected.value = noReplacement; deleteReplacement.append(unselected);
-    const base = node("option", "基础配置（清除 overrides）"); base.value = ""; deleteReplacement.append(base);
+    const base = localNode("option", "replacement_base"); base.value = ""; deleteReplacement.append(base);
     Object.keys(current.configuration_definitions || {}).sort().filter(function (key) {
       return key !== name;
     }).forEach(function (key) {
-      const option = node("option", key + "（清除 overrides）"); option.value = key; deleteReplacement.append(option);
+      const option = localNode("option", "replacement_named", undefined, {name: key});
+      option.value = key; deleteReplacement.append(option);
     });
     deleteReplacement.value = noReplacement; deleteConfirmation.hidden = true;
-    definitionNotice.textContent = definitionMode === "create"
-      ? "新配置初始继承基础。定义与当前模型的覆盖草稿独立。"
-      : "完整替换会替换全部参数和抑制定义，不做浅合并。";
+    localText(definitionNotice, definitionMode === "create" ? "definition_create_help" : "definition_replace_help");
     definitionForm.querySelector("[data-definition-create]").hidden = definitionMode !== "create";
     definitionForm.querySelector("[data-definition-replace]").hidden = definitionMode !== "edit";
     definitionForm.querySelector("[data-definition-suppressions]").hidden = definitionMode !== "edit";
@@ -541,69 +610,69 @@
 
   function mountDefinition() {
     definitionForm = node("form", undefined, "parametric-definition-editor");
-    definitionForm.setAttribute("aria-label", "配置定义编辑器");
+    localAria(definitionForm, "definition_aria");
     definitionForm.addEventListener("submit", function (event) { event.preventDefault(); });
-    definitionForm.append(node("h3", "配置定义"));
+    definitionForm.append(localNode("h3", "definition_title"));
     definitionTarget = node("select"); definitionTarget.dataset.definitionTarget = "true";
-    definitionTarget.setAttribute("aria-label", "编辑配置定义");
+    localAria(definitionTarget, "definition_target_aria");
     definitionName = node("input"); definitionName.type = "text"; definitionName.maxLength = 64;
-    definitionName.dataset.definitionName = "true"; definitionName.setAttribute("aria-label", "新配置名称");
+    definitionName.dataset.definitionName = "true"; localAria(definitionName, "definition_name_aria");
     definitionTarget.addEventListener("change", function () {
       if (definitionDirty) {
         definitionTarget.value = definitionForm.dataset.editingTarget || "";
-        definitionNotice.textContent = "请先保存或明确丢弃定义草稿，再切换编辑目标。";
+        localText(definitionNotice, "definition_switch_blocked");
         return;
       }
       definitionForm.dataset.editingTarget = definitionTarget.value; loadDefinitionFields();
     });
-    const createMode = node("button", "新建配置草稿"); createMode.type = "button";
+    const createMode = localNode("button", "definition_new"); createMode.type = "button";
     createMode.dataset.definitionNew = "true";
     createMode.addEventListener("click", function () {
-      if (definitionDirty) { definitionNotice.textContent = "请先保存或明确丢弃定义草稿。"; return; }
+      if (definitionDirty) { localText(definitionNotice, "definition_dirty"); return; }
       definitionMode = "create"; definitionDirty = true; definitionName.value = "";
       loadDefinitionFields();
     });
     selectionPolicy = node("select"); selectionPolicy.dataset.definitionSelection = "true";
-    selectionPolicy.setAttribute("aria-label", "提交后的活动配置");
-    [["keep", "保留当前选择及 overrides"], ["target", "应用编辑目标并清除 overrides"],
-      ["base", "回基础并清除 overrides"]].forEach(function (item) {
-      const option = node("option", item[1]); option.value = item[0]; selectionPolicy.append(option);
+    localAria(selectionPolicy, "selection_aria");
+    [["keep", "selection_keep"], ["target", "selection_target"],
+      ["base", "selection_base"]].forEach(function (item) {
+      const option = localNode("option", item[1]); option.value = item[0]; selectionPolicy.append(option);
     });
     definitionParameters = node("fieldset"); definitionFeatures = node("fieldset");
     definitionNotice = node("p", undefined, "parametric-definition-notice");
     definitionNotice.setAttribute("role", "status");
     const buttons = node("div", undefined, "parametric-actions");
-    [["create_configuration", "创建配置", "definitionCreate"],
-      ["replace_configuration", "完整替换定义", "definitionReplace"],
-      ["set_suppressions", "仅保存抑制定义", "definitionSuppressions"]].forEach(function (item) {
-      const button = node("button", item[1]); button.type = "button"; button.dataset[item[2]] = "true";
+    [["create_configuration", "create", "definitionCreate"],
+      ["replace_configuration", "replace", "definitionReplace"],
+      ["set_suppressions", "save_suppressions", "definitionSuppressions"]].forEach(function (item) {
+      const button = localNode("button", item[1]); button.type = "button"; button.dataset[item[2]] = "true";
       if (item[0] === "set_suppressions") button.dataset.definitionV2 = "true";
       button.addEventListener("click", function () { submit(item[0]).catch(report); });
       buttons.append(button);
     });
-    const remove = node("button", "删除已保存配置"); remove.type = "button";
+    const remove = localNode("button", "delete"); remove.type = "button";
     remove.dataset.definitionDelete = "true";
     remove.addEventListener("click", function () {
-      if (!definitionTarget.value) { report(new Error("没有可删除的配置")); return; }
+      if (!definitionTarget.value) { report(localError("没有可删除的配置", "no_configuration_error")); return; }
       if (definitionDirty) {
-        definitionNotice.textContent = "请先保存或明确丢弃定义草稿，删除不会提交草稿。"; return;
+        localText(definitionNotice, "definition_delete_dirty"); return;
       }
       deleteConfirmation.hidden = false;
     });
     deleteConfirmation = node("div", undefined, "parametric-delete-confirmation");
     deleteConfirmation.hidden = true; deleteConfirmation.setAttribute("role", "group");
-    deleteConfirmation.setAttribute("aria-label", "确认删除配置");
+    localAria(deleteConfirmation, "delete_aria");
     deleteReplacement = node("select"); deleteReplacement.dataset.definitionReplacement = "true";
-    deleteReplacement.setAttribute("aria-label", "删除后的替代配置");
-    const confirm = node("button", "确认删除配置"); confirm.type = "button";
+    localAria(deleteReplacement, "replacement_aria");
+    const confirm = localNode("button", "confirm_delete"); confirm.type = "button";
     confirm.dataset.definitionConfirmDelete = "true";
     confirm.addEventListener("click", function () { submit("delete_configuration").catch(report); });
-    const cancel = node("button", "取消删除"); cancel.type = "button";
+    const cancel = localNode("button", "cancel_delete"); cancel.type = "button";
     cancel.dataset.definitionCancelDelete = "true";
     cancel.addEventListener("click", function () { deleteConfirmation.hidden = true; });
-    deleteConfirmation.append(node("p", "删除活动配置必须明确选择替代或基础；此操作不会删除图纸。"),
+    deleteConfirmation.append(localNode("p", "delete_help"),
       deleteReplacement, confirm, cancel);
-    const discard = node("button", "丢弃定义草稿"); discard.type = "button";
+    const discard = localNode("button", "discard_definition"); discard.type = "button";
     discard.dataset.definitionDiscard = "true";
     discard.addEventListener("click", function () {
       definitionDirty = false; definitionStale = false; bindingError = null;
@@ -623,22 +692,22 @@
   function mount(target) {
     if (panel) return panel;
     panel = node("section", undefined, "parametric-panel"); panel.id = "parametric-panel";
-    panel.setAttribute("aria-label", "参数化重建");
-    panel.append(node("h2", "参数化配置"));
-    notice = node("p", "正在读取项目参数…", "parametric-notice");
+    localAria(panel, "panel_aria");
+    panel.append(localNode("h2", "title"));
+    notice = localNode("p", "loading", "parametric-notice");
     notice.setAttribute("role", "status"); notice.setAttribute("aria-live", "polite");
     form = node("form");
     form.addEventListener("focusin", function () { ++reads; });
     ["input", "change"].forEach(function (name) {
       form.addEventListener(name, function () { dirty = true; ++reads; featurePreview(); });
     });
-    const label = node("label", "配置");
-    configurations = node("select"); configurations.setAttribute("aria-label", "参数配置");
-    label.append(configurations);
+    const label = node("label");
+    configurations = node("select"); localAria(configurations, "configuration_aria");
+    label.append(localNode("span", "configuration"), configurations);
     fields = node("fieldset"); dimensions = node("fieldset"); features = node("fieldset");
-    const rebuild = node("button", "完整重建并保存"); rebuild.type = "submit";
+    const rebuild = localNode("button", "rebuild"); rebuild.type = "submit";
     rebuild.dataset.parametricRebuild = "true";
-    const reset = node("button", "清除显式覆盖草稿"); reset.type = "button";
+    const reset = localNode("button", "reset_overrides"); reset.type = "button";
     reset.dataset.parametricResetOverrides = "true";
     reset.addEventListener("click", function () {
       if (!specification) return;
@@ -648,9 +717,9 @@
           specification.parameters[name].expression;
       });
       dimensionInputs.forEach(function (item) { item.input.value = item.original; });
-      notice.textContent = "已准备清除显式覆盖；完整重建成功后才持久保存。";
+      localText(notice, "reset_ready");
     });
-    const discard = node("button", "丢弃草稿并重读"); discard.type = "button";
+    const discard = localNode("button", "discard_reload"); discard.type = "button";
     discard.dataset.parametricDiscard = "true";
     discard.addEventListener("click", function () {
       discardConfirmation.hidden = false;
@@ -659,8 +728,8 @@
     discardConfirmation = node("div", undefined, "parametric-discard-confirmation");
     discardConfirmation.hidden = true;
     discardConfirmation.setAttribute("role", "group");
-    discardConfirmation.setAttribute("aria-label", "确认丢弃本面板草稿");
-    const confirmDiscard = node("button", "确认丢弃草稿"); confirmDiscard.type = "button";
+    localAria(discardConfirmation, "discard_aria");
+    const confirmDiscard = localNode("button", "confirm_discard"); confirmDiscard.type = "button";
     confirmDiscard.dataset.parametricConfirmDiscard = "true";
     confirmDiscard.addEventListener("click", function () {
       discardConfirmation.hidden = true;
@@ -668,30 +737,30 @@
       modelStale = false;
       refresh(true).catch(report);
     });
-    const cancelDiscard = node("button", "保留草稿"); cancelDiscard.type = "button";
+    const cancelDiscard = localNode("button", "keep_drafts"); cancelDiscard.type = "button";
     cancelDiscard.dataset.parametricCancelDiscard = "true";
     cancelDiscard.addEventListener("click", function () {
       discardConfirmation.hidden = true;
       discard.focus();
     });
-    discardConfirmation.append(node("p", "只丢弃本面板未提交草稿，不删除已保存配置或图纸。"),
+    discardConfirmation.append(localNode("p", "discard_help"),
       confirmDiscard, cancelDiscard);
     form.append(label, features, fields, dimensions, reset, rebuild, discard, discardConfirmation);
     form.addEventListener("submit", function (event) {
       event.preventDefault(); submit("rebuild").catch(report);
     });
     const actions = node("div", undefined, "parametric-actions");
-    [["create_configurable_plate", "创建真实配置板"], ["create_plate", "创建真实带孔板（v1）"]]
+    [["create_configurable_plate", "create_v2"], ["create_plate", "create_v1"]]
       .forEach(function (item) {
-        const create = node("button", item[1]); create.type = "button";
+        const create = localNode("button", item[1]); create.type = "button";
         create.dataset.parametricCreate = item[0];
         create.addEventListener("click", function () { submit(item[0]).catch(report); });
         actions.append(create);
       });
-    const reload = node("button", "重读已保存参数"); reload.type = "button";
+    const reload = localNode("button", "reload"); reload.type = "button";
     reload.dataset.parametricReload = "true";
     reload.addEventListener("click", function () { refresh(true).catch(report); });
-    const saveButton = node("button", "确认保存当前模型"); saveButton.type = "button";
+    const saveButton = localNode("button", "save"); saveButton.type = "button";
     saveButton.dataset.parametricSave = "true";
     saveButton.addEventListener("click", function () { save().catch(report); });
     result = node("output", "", "parametric-result"); result.setAttribute("aria-live", "polite");
@@ -738,7 +807,7 @@
       } catch (error) {
         if (generation === epoch && current === before && !expired) {
           if (error.status === 401 || error.status === 403) {
-            shield("登录已失效，已清除本页私有参数。请重新登录。", true);
+            shieldKey("session_expired", true);
             return;
           }
           bindingError = error; blocked = true; report(error); markBusy(false);
@@ -750,12 +819,16 @@
   window.addEventListener("opencad:state", function (event) {
     if (!panel || expired) return;
     if (current && event.detail && event.detail.project_id !== current.project_id) {
-      shield("项目已变化，已清除旧项目参数。请重新打开项目。", true);
+      shieldKey("project_changed", true);
     } else if (!busy) refresh(false).catch(report);
   });
+  window.addEventListener("opencad:locale", translatePanel);
   function boot() {
-    const target = document.querySelector("[data-parametric-host]") || document.querySelector("main > aside");
-    if (target) mount(target);
+    const service = localeService();
+    Promise.resolve(service.ready).then(function () {
+      const target = document.querySelector("[data-parametric-host]") || document.querySelector("main > aside");
+      if (target) mount(target);
+    });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, {once: true});
   else boot();
