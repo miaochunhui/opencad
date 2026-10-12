@@ -69,6 +69,31 @@ class DynamicClosureTests(unittest.TestCase):
                 self.assertEqual(len(row["discovered_test_ids"]), row["tests"])
                 self.assertEqual(row["test_identity_difference"], {"missing": [], "extra": []})
 
+    def test_single_tail_positive_and_changed_sha_negative(self):
+        parent = review.git(self.source, ["rev-parse", self.head + "^"]).decode().strip()
+        value = {"commit": self.head, "github_before": parent,
+                 "tail": [self.head], "max_commits": 8}
+        self.assertEqual(review.review_transport_tail(value, self.source), [self.head])
+        changed = deepcopy(value)
+        changed["tail"][0] = ("0" if self.head[0] != "0" else "1") + self.head[1:]
+        self.assertNotEqual(changed["tail"], value["tail"])
+        self.assertTrue(review.SHA.fullmatch(changed["tail"][0]))
+        self.reject(lambda: review.review_transport_tail(changed, self.source),
+                    "TRANSPORT_EXACT_TAIL")
+
+    def test_multiple_tail_positive_and_real_order_negative(self):
+        parent = review.git(self.source, ["rev-parse", self.head + "^^"]).decode().strip()
+        tail = review.git(self.source, ["rev-list", "--reverse",
+            parent + ".." + self.head]).decode().splitlines()
+        self.assertEqual(len(tail), 2)
+        value = {"commit": self.head, "github_before": parent, "tail": tail, "max_commits": 8}
+        self.assertEqual(review.review_transport_tail(value, self.source), tail)
+        changed = deepcopy(value)
+        changed["tail"].reverse()
+        self.assertNotEqual(changed["tail"], tail)
+        self.reject(lambda: review.review_transport_tail(changed, self.source),
+                    "TRANSPORT_EXACT_TAIL")
+
     def test_original_failure_retained_and_same_inputs_repaired(self):
         failed = json.loads(self.read(self.original_failure))
         self.assertEqual((failed["verdict"], failed["actual_rc"], failed["first_cause"]),

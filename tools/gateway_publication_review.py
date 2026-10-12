@@ -964,7 +964,7 @@ def review_publication(value, refs, commands, commit, finished):
     return {"status": "RECORDED_THREE_REF_EVIDENCE_VERIFIED", "commit": commit, "final_readback": refs}
 
 
-def review_transport(value, commands, extra, root, finished):
+def review_transport_tail(value, root):
     commit, old, tail = value["commit"], value["github_before"], value["tail"]
     need(isinstance(old, str) and SHA.fullmatch(old) and isinstance(tail, list) and tail
          and all(isinstance(item, str) and SHA.fullmatch(item) for item in tail),
@@ -976,6 +976,12 @@ def review_transport(value, commands, extra, root, finished):
         need(git(root, ["show", "-s", "--format=%P", item]).decode().split() == [old],
              "TRANSPORT_NONLINEAR_TAIL")
         old = item
+    return tail
+
+
+def review_transport(value, commands, extra, root, finished):
+    commit = value["commit"]
+    tail = review_transport_tail(value, root)
     plan, history = extra["api-plan.json"], extra["history.json"]
     need(all(plan.get(key) == value.get(key) for key in
              ("commit", "github_before", "tail", "objects_scanned", "max_commits", "transport")),
@@ -1193,8 +1199,37 @@ def selftest(report, files, root, evidence, baseline, publication, out, read=Non
         case("transport-object-count", lambda: transport(value, commands, changed),
              "TRANSPORT_HISTORY_COUNT_OR_EXIT")
         changed_tail = deepcopy(value)
-        changed_tail["tail"].reverse()
+        if len(changed_tail["tail"]) > 1:
+            changed_tail["tail"].reverse()
+        else:
+            item = changed_tail["tail"][0]
+            changed_tail["tail"][0] = ("0" if item[0] != "0" else "1") + item[1:]
+        need(changed_tail["tail"] != value["tail"], "SELFTEST_EMPTY_TAIL_MUTATION")
         case("transport-tail-order", lambda: transport(changed_tail, commands, extra),
+             "TRANSPORT_EXACT_TAIL")
+        tail_root = publication_root or root
+        single = deepcopy(value)
+        single["github_before"] = git(tail_root, [
+            "rev-parse", value["commit"] + "^"]).decode().strip()
+        single["tail"] = [value["commit"]]
+        case("transport-single-tail-positive", lambda: review_transport_tail(single, tail_root))
+        changed_tail = deepcopy(single)
+        changed_tail["tail"][0] = (
+            ("0" if single["tail"][0][0] != "0" else "1") + single["tail"][0][1:])
+        need(changed_tail["tail"] != single["tail"], "SELFTEST_EMPTY_TAIL_MUTATION")
+        case("transport-tail-wrong-sha", lambda: review_transport_tail(changed_tail, tail_root),
+             "TRANSPORT_EXACT_TAIL")
+        multiple = deepcopy(value)
+        multiple["github_before"] = git(tail_root, [
+            "rev-parse", value["commit"] + "^^"]).decode().strip()
+        multiple["tail"] = git(tail_root, ["rev-list", "--reverse",
+            multiple["github_before"] + ".." + value["commit"]]).decode().splitlines()
+        need(len(multiple["tail"]) == 2, "SELFTEST_TWO_COMMIT_LINEAR_FIXTURE")
+        case("transport-multiple-tail-positive", lambda: review_transport_tail(multiple, tail_root))
+        reordered_tail = deepcopy(multiple)
+        reordered_tail["tail"].reverse()
+        need(reordered_tail["tail"] != multiple["tail"], "SELFTEST_EMPTY_TAIL_MUTATION")
+        case("transport-multiple-tail-order", lambda: review_transport_tail(reordered_tail, tail_root),
              "TRANSPORT_EXACT_TAIL")
         reordered = deepcopy(commands)
         push = next(row for row in reordered if "push" in row.get("argv", [])

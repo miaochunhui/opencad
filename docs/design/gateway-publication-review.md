@@ -150,6 +150,20 @@ v4于2026-10-12 02:56:16.889230 +08:00原rc0/PASS，6项主检查、
 36/36正负控（新增primary-first及exact commit负控）；两件口令形态
 命中0，source/input/reviewer drift均为空。v4不重复网络或产品测试。
 
+## 单提交尾链自测修复
+
+2026-10-12 09:11:41 +08:00原receipt回读rc1/SELFTEST_FAILED：
+`opencad-config-repair-release-receipt-final-readback-20261012-v1/selftest.json`
+仅`transport-tail-order`失败，35项通过。反转单元素`[d0a2c009…]`没有
+改变输入，首因不是同步失败；真实publication/transport正控仍通过。
+原FAIL、同步账与8d/7a/d0冻结树保留不改。
+
+完整transport自测对多tail反转、单tail改变一个合法SHA字符；执行前必须
+证明变异非空，继续要求`TRANSPORT_EXACT_TAIL`拒绝，不绕过selftest。
+尾链校验提取为`review_transport_tail`单真源，完整transport仍必调用；
+另以已存在的真实Git单提交/双提交线性链核正控、错SHA与双tail倒序负控。
+这些仅为离线consumer控制项，不是再次push、远端查询或产品all运行。
+
 ## 本轮保留失败
 
 旧数值审计器在
