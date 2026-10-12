@@ -2,6 +2,34 @@
 
 ## Current Verified State
 
+On 2026-10-12 at 10:01:06-10:01:07 Asia/Shanghai, all three main refs
+returned `60a0e9cb97950a321bf1c8a6f76dd581056b5cbc`. Actual synchronization
+finished at 10:01:08 with original parent rc 0, `SYNCED/PASS`, 1140 reachable
+objects scanned and the two exact ordinary forward commits. GitLab is the
+primary at `ssh://git@192.168.1.181/infra/opencad.git`; Gitee
+`sdfwefqaa/opencad` and GitHub `miaochunhui/opencad` are explicit copies.
+No automatic mirroring, deployment, credential or permission change was made.
+Gitee historical master and the original workspace's nine untracked assets
+remain protected.
+
+The clean frozen tree is
+`/data/dev/wt-opencad-terminal-repair-integration-20261012`.
+Its new complete regression finished at 09:57:11 with original parent rc 0:
+2450 tests, 2437 passed, 13 original skips, zero failures/errors and 15 HTTP
+checks. All 421 source files and the frozen HEAD remained unchanged. The
+two integrated repairs affect only the discovery runner, terminal controls
+and their design document; product files have zero diff from `74a8a6c`.
+These counts are not a CATIA/SolidWorks industrial parity certificate.
+
+The postpublication independent consumer returned original rc 0 at 10:02:27,
+eight checks and 40/40 controls, verified original transport exits, exact
+tail/object counts, primary-first ordering and fresh live three main refs.
+Evidence: `/hf3fs-jd/data/tmp/opencad-terminal-repair-three-repo-sync-20261012-v1/`
+and `opencad-terminal-repair-publication-readback-20261012-v1/`.
+The documentation-only successor containing this update is not included in
+the recorded 60a0e9c sync or its whole-source all; it needs its own checked
+synchronization. See `docs/handoff/20261012-terminal-repair-release.md`.
+
 On 2026-10-12 at 05:14:08-05:14:09 Asia/Shanghai, all three main refs
 returned `a1927fcc5ed4471ee86a5534ff21b5a355081c69`. Actual five-commit
 synchronization completed at 05:14:10 with the chair receiving original
