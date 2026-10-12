@@ -2,6 +2,48 @@
 
 ## Current Verified State
 
+### Latest Checkpoint: Definition UI
+
+On 2026-10-12 at 12:46:57.358840 / 12:46:58.132094 / 12:46:59.343415
+Asia/Shanghai, GitLab, Gitee and GitHub final main refs all returned
+`eb19211ca7ca4b9304678fe747026009234d1515`.
+The chair received sync parent 32406's original rc0 at 12:47:00.620775:
+SYNCED/PASS, 1314 reachable objects and seven exact ordinary forward commits.
+Evidence: `/hf3fs-jd/data/tmp/opencad-definition-ui-integrated-three-repo-sync-20261012-v1/`;
+result SHA256 `95ed89e1df13407309e4fab271de4d8184b5109f92a323779a322569edd6b7b3`.
+
+The clean frozen source is
+`/data/dev/wt-opencad-definition-ui-integrated-20261012`, with 429 committed
+files. New all parent 3211 original rc0 finished at 12:37:33.173004:
+2520 tests, 2507 passes, 13 original skips, zero failures/errors and 15 HTTP
+checks. Euler consumer 91110 original rc0 passed five checks at 12:39:50.457263.
+The browser 78403 original rc0 passed 18 desktop/mobile workflows with
+28 geometry measurements, 514 responses and 88 artifacts; Darwin reader
+64845 rc0 and Aquinas's 12:33:19.831091 independent readback verified 18.
+Source/input drift is empty. Detailed roots, hashes and receipt ownership:
+`docs/handoff/20261012-definition-ui-release.md`.
+
+Euler postpublication result/marker is PASS7, LIVE_THREE_REF_VERIFIED at
+12:49:50.769258; fresh three main refs at 12:49:49.254843 /
+12:49:49.949231 / 12:49:50.546862 all returned eb19211. Its original parent
+exit receipt remains pending the owner; JSON actual_rc does not replace it.
+Evidence: `opencad-definition-ui-integrated-euler-postpub-20261012-v1/`,
+SHA256 `3425e74ea4c26a417a1fa914d46721025feb5f74097f405c514c16e74402f41e`.
+
+GitLab is primary, Gitee/GitHub explicit copies, not installed automatic
+mirrors or production deployments. The bounded migration, private transaction,
+definition API and configuration CRUD UI gates are now accepted in this
+snapshot; industrial breadth, current-source RTX benefit/admission, language
+completion and private-production cutover remain open. Captures use SwiftShader,
+not RTX; English-selected screenshots retain Chinese added-panel labels, not
+zh-CN contamination or full-site i18n acceptance. The long-term goal stays active;
+its status-only tool cannot edit objective, so the new handoff corrects ordering.
+
+This two-document successor is not part of the recorded all/sync, is not pushed,
+and needs the chair's separate review/publication. No product, credentials,
+permissions, service or protected local assets changed. Earlier checkpoints and
+their failures below retain their original source/time boundaries.
+
 On 2026-10-12 at 10:42:29-10:42:30 Asia/Shanghai, the recorded final
 GitLab, Gitee and GitHub main readbacks all returned
 `a00cac019d1f2f3f2b8a57df0dc2d7723c97674f`.
