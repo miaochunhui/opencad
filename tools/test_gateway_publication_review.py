@@ -26,6 +26,8 @@ class DynamicClosureTests(unittest.TestCase):
     baseline = None
     original_failure = None
     sqlite_source = None
+    failed_all_root = None
+    failed_source = None
     inputs = {}
     control_count = 0
 
@@ -420,6 +422,43 @@ class DynamicClosureTests(unittest.TestCase):
                 lambda path: log.replace(b"INDEPENDENT_CHILD_RC rc=0", b"INDEPENDENT_CHILD_RC rc=1")),
                 "SQLITE_NESTED_EXIT")
 
+    def test_actual_failed_six_stage_run_is_negative_not_partial_acceptance(self):
+        failed = json.loads(self.read(self.failed_all_root / "result.json"))
+        self.assertEqual((failed["verdict"], failed["actual_rc"], failed["stage"]), ("FAIL", 1, "all"))
+        source = review.manifest(self.failed_source)
+        self.assertEqual(source, failed["source_before"])
+        self.assertEqual(source, failed["source_after"])
+        self.assertEqual(failed["source_drift"], [])
+        head = review.git(self.failed_source, ["rev-parse", "HEAD"]).decode().strip()
+        self.assertEqual(failed["source_head_before"], head)
+        self.assertEqual(failed["source_head_after"], head)
+        self.assertEqual(failed["source_status_before"], "")
+        self.assertEqual(failed["source_status_after"], "")
+        plan, guarded, _ = review.all_stage_plan(
+            self.failed_source, source, self.failed_all_root, failed["test_runtime"]["root"])
+        self.assertTrue(guarded)
+        self.assertEqual(len(plan), 6)
+        self.assertEqual([row["label"] for row in failed["steps"]],
+                         [row["label"] for row in plan[:-1]])
+        self.assertEqual(plan[-1]["label"], "dxf")
+        self.assertNotEqual(failed["steps"][-1]["rc"], 0)
+        logs = {}
+        for row in failed["steps"]:
+            raw = self.read(self.failed_all_root / (row["label"] + ".log"))
+            self.assertEqual(review.sha(raw), row["log_sha256"])
+            logs[row["label"] + ".log"] = raw
+        logs["acceptance.log"] = self.read(self.failed_all_root / "acceptance.log")
+        self.reject(lambda: review.review_all(
+            failed, logs, self.failed_source, self.failed_all_root, self.previous, self.read),
+            "ALL_NOT_PASS")
+        forged = deepcopy(failed)
+        forged["verdict"] = "PASS"
+        forged.pop("error")
+        forged.pop("first_cause")
+        self.reject(lambda: review.review_all(
+            forged, logs, self.failed_source, self.failed_all_root, self.previous, self.read),
+            "STAGE_PLAN_SET_MISMATCH")
+
     def test_complete_six_child_fixture_and_source_identity_negatives(self):
         # This is a reviewer fixture, never a new measured product all-stage.
         with tempfile.TemporaryDirectory(prefix="gw-six-", dir="/data/tmp") as directory:
@@ -541,9 +580,12 @@ def main():
     parser.add_argument("--original-failure", type=Path, required=True)
     parser.add_argument("--expect-head", required=True)
     parser.add_argument("--sqlite-source-root", type=Path, required=True)
+    parser.add_argument("--failed-all-evidence", type=Path, required=True)
+    parser.add_argument("--failed-source-root", type=Path, required=True)
     args = parser.parse_args()
     out = review.external(args.out)
-    for path in (args.all_evidence, args.baseline_evidence, args.original_failure.parent):
+    for path in (args.all_evidence, args.baseline_evidence, args.original_failure.parent,
+                 args.failed_all_evidence):
         path = review.external(path)
         review.need(not out.resolve().is_relative_to(path.resolve())
                     and not path.resolve().is_relative_to(out.resolve()), "OUTPUT_OVERLAPS_INPUT")
@@ -554,9 +596,12 @@ def main():
     DynamicClosureTests.head = args.expect_head
     DynamicClosureTests.original_failure = args.original_failure
     DynamicClosureTests.sqlite_source = args.sqlite_source_root.resolve()
+    DynamicClosureTests.failed_all_root = review.external(args.failed_all_evidence)
+    DynamicClosureTests.failed_source = args.failed_source_root.resolve()
     started = review.now()
     before = review.manifest(DynamicClosureTests.source, modes=True)
     sqlite_before = review.manifest(DynamicClosureTests.sqlite_source, modes=True)
+    failed_source_before = review.manifest(DynamicClosureTests.failed_source, modes=True)
     tool_before = {name: review.binding(review.regular(review.ROOT / name)) for name in review.OWNED}
     head_before = review.git(DynamicClosureTests.source, ["rev-parse", "HEAD"]).decode().strip()
     transcript = io.StringIO()
@@ -569,12 +614,15 @@ def main():
     source_drift = review.difference(before, review.manifest(DynamicClosureTests.source, modes=True))
     sqlite_source_drift = review.difference(
         sqlite_before, review.manifest(DynamicClosureTests.sqlite_source, modes=True))
+    failed_source_drift = review.difference(
+        failed_source_before, review.manifest(DynamicClosureTests.failed_source, modes=True))
     tool_drift = [name for name, row in tool_before.items()
                   if review.binding(review.regular(review.ROOT / name)) != row]
     head_after = review.git(DynamicClosureTests.source, ["rev-parse", "HEAD"]).decode().strip()
     passed = (result.testsRun > 0 and result.wasSuccessful() and not result.skipped
               and not drift and not source_drift and not tool_drift
               and not sqlite_source_drift
+              and not failed_source_drift
               and head_before == head_after == args.expect_head)
     report = {"verdict": "PASS" if passed else "FAIL", "actual_rc": 0 if passed else 1,
               "started_at": started, "finished_at": review.now(), "tests": result.testsRun,
@@ -584,6 +632,9 @@ def main():
               "sqlite_source_root": str(DynamicClosureTests.sqlite_source),
               "sqlite_source_sha256": review.digest(sqlite_before),
               "sqlite_source_drift": sqlite_source_drift,
+              "failed_source_root": str(DynamicClosureTests.failed_source),
+              "failed_source_sha256": review.digest(failed_source_before),
+              "failed_source_drift": failed_source_drift,
               "inputs": DynamicClosureTests.inputs, "executor_files": tool_before,
               "test_log": review.binding(review.regular(out / "tests.log")),
               "product_tests_reexecuted": 0, "scope": "OFFLINE_REVIEWER_CONTROLS",

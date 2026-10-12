@@ -1272,6 +1272,7 @@ def main():
     try:
         evidence = external(args.all_evidence)
         report = json.loads(read(evidence / "result.json"))
+        need(report.get("verdict") == "PASS" and report.get("stage") == "all", "ALL_NOT_PASS")
         plan, _, _ = all_stage_plan(all_source, report["source_before"], evidence,
                                     report["test_runtime"]["root"])
         files = {name: read(evidence / name) for name in (

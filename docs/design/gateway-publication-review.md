@@ -191,6 +191,20 @@ publication-v3于08:07:22.937770 +08:00原rc0/7checks/36selftests，
 是修改嵌套marker逻辑前的离线证据，仍按当时executor hash绑定。
 所有FAIL和开发证据原样保留；最终提交后的复核以新外置result为准。
 
+4b3fb4b真实all于08:10:37.190994 +08:00 FAIL/actual_rc1，
+2394tests/2312passed/13skip/1failure/68errors/15HTTP，Web失败后未执行DXF。
+原result SHA为
+`60707e4850e130dfadf2974e6acd6b65940a54958231f5b106b31e83c97d93bd`。
+实际reviewer CLI负控在
+`/hf3fs-jd/data/tmp/opencad-dynamic-release-closure-config-fail-20261012-v1/result.json`
+于08:12:56.755578 +08:00原rc1/ALL_NOT_PASS，不能改记PASS。
+source-bound selftest-v10于08:13:09.770312 +08:00原rc0，
+22tests/60negative controls，绑定该原FAIL的HEAD、全集、5实际log和原rc；
+即使仅伪改顶层PASS/删除error，也因六步计划缺DXF拒绝。证据：
+`/hf3fs-jd/data/tmp/opencad-dynamic-release-closure-selftest-20261012-v10/result.json`。
+新完整六步真实PASS仍未取得，需Lovelace修复夹具后另收新冻结账；
+本次负控不重跑产品、不删除/改写原失败。
+
 本轮冻结all是83e66d1、all-v2原result完成于北京时间07:04:34，
 2396tests/2383passed/13skip/15HTTP。889e885后继仅
 `docs/handoff/20261012-surface-private-release.md`；这些数值是该输入
@@ -199,5 +213,5 @@ publication-v3于08:07:22.937770 +08:00原rc0/7checks/36selftests，
 ```bash
 sudo -n -u infra python3 -B /data/dev/wt-opencad-dynamic-release-closure-20261012/tools/gateway_publication_review.py --source-root /data/dev/wt-opencad-surface-private-release-20261012 --commit 83e66d1c98918a5197c71e6bf30436513ba06efc --all-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v2 --baseline-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v1 --selftest --out /hf3fs-jd/data/tmp/opencad-dynamic-release-closure-all-20261012-next
 sudo -n -u infra python3 -B /data/dev/wt-opencad-dynamic-release-closure-20261012/tools/gateway_publication_review.py --source-root /data/dev/wt-opencad-surface-release-docs-20261012 --commit bec25d3828b493347070f2e3943117eaef090ccc --all-source-root /data/dev/wt-opencad-surface-private-release-20261012 --all-commit 83e66d1c98918a5197c71e6bf30436513ba06efc --allow-doc-path docs/handoff/20261012-surface-private-release.md --all-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v2 --baseline-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v1 --publication-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-docs-sync-20261012-v1 --publication-commit 889e885a4a3935ee593b9e18afef04faff60e294 --selftest --out /hf3fs-jd/data/tmp/opencad-dynamic-release-closure-publication-20261012-next
-sudo -n -u infra python3 -B /data/dev/wt-opencad-dynamic-release-closure-20261012/tools/test_gateway_publication_review.py --source-root /data/dev/wt-opencad-surface-private-release-20261012 --expect-head 83e66d1c98918a5197c71e6bf30436513ba06efc --sqlite-source-root /data/dev/wt-opencad-sqlite-runtime-isolation-20261012 --all-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v2 --baseline-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v1 --original-failure /hf3fs-jd/data/tmp/opencad-surface-private-release-all-fermat-review-20261012-v1/result.json --out /hf3fs-jd/data/tmp/opencad-dynamic-release-closure-selftest-20261012-next
+sudo -n -u infra python3 -B /data/dev/wt-opencad-dynamic-release-closure-20261012/tools/test_gateway_publication_review.py --source-root /data/dev/wt-opencad-surface-private-release-20261012 --expect-head 83e66d1c98918a5197c71e6bf30436513ba06efc --sqlite-source-root /data/dev/wt-opencad-sqlite-runtime-isolation-20261012 --failed-source-root /data/dev/wt-opencad-config-integration-20261012 --failed-all-evidence /hf3fs-jd/data/tmp/opencad-config-integration-all-20261012-v1 --all-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v2 --baseline-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v1 --original-failure /hf3fs-jd/data/tmp/opencad-surface-private-release-all-fermat-review-20261012-v1/result.json --out /hf3fs-jd/data/tmp/opencad-dynamic-release-closure-selftest-20261012-next
 ```
