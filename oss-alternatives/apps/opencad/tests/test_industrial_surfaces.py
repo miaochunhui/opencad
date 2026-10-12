@@ -133,6 +133,12 @@ PAGE = """<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="/fixture.css"><title>Surface acceptance</title>
 <body style="margin:0;padding:12px;box-sizing:border-box"><main id="surfaces"></main>
+<script src="/web/js/locale-service.js"></script>
+<script>
+window.fixtureLocaleReady=(async function(){
+  await window.OpenCADLocale.ready;
+})().catch(function(error){window.fixtureLocaleError=String(error);throw error;});
+</script>
 <script src="/fixture.js"></script><script>
 let base;
 async function request(path, body) {
@@ -143,8 +149,10 @@ async function request(path, body) {
   if(!response.ok||!value.ok) throw new Error(value.first_cause||value.detail||value.error);
   base=value.document_sha256; return value;
 }
-window.panel=OpenCADSurfaces.mount(document.getElementById("surfaces"),{request});
-panel.reload().catch(function(error){document.body.dataset.error=String(error);});
+window.fixtureLocaleReady.then(function(){
+  window.panel=OpenCADSurfaces.mount(document.getElementById("surfaces"),{request});
+  panel.reload().catch(function(error){document.body.dataset.error=String(error);});
+});
 </script></body></html>"""
 
 
@@ -173,6 +181,15 @@ class FixtureHTTP(BaseHTTPRequestHandler):
                 self.reply({"ok": True, **snapshot(self.server.workspace)})
             elif self.path == "/":
                 self.reply(PAGE.encode(), media="text/html")
+            elif self.path in ("/web/js/locale-service.js", "/web/panel-i18n.json"):
+                target = APP / self.path.removeprefix("/")
+                raw = target.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/javascript" if self.path.endswith(".js")
+                                 else "application/json")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
             elif self.path in ("/fixture.js", "/fixture.css"):
                 path = APP / ("web/js/surfaces-panel.js" if self.path.endswith("js")
                               else "web/css/surfaces-panel.css")

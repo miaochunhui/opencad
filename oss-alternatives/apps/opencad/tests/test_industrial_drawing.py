@@ -216,6 +216,10 @@ class FixtureHandler(BaseHTTPRequestHandler):
             elif path in ("/web/js/drawing-panel.js", "/web/css/drawing-panel.css"):
                 data = (APP / path.removeprefix("/")).read_bytes()
                 status, headers = 200, {"Content-Type": "text/javascript" if path.endswith(".js") else "text/css"}
+            elif path in ("/web/js/locale-service.js", "/web/panel-i18n.json"):
+                data = (APP / path.removeprefix("/")).read_bytes()
+                status, headers = 200, {
+                    "Content-Type": "text/javascript" if path.endswith(".js") else "application/json"}
             else:
                 raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
                 payload = json.loads(raw) if raw else {}
@@ -242,6 +246,14 @@ PAGE = """<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8">
 <link rel="stylesheet" href="/web/css/drawing-panel.css">
 <style>body{margin:0;padding:12px;background:#e8e7df}main{max-width:1100px;margin:auto}</style>
 </head><body><main id="drawing-host"></main>
+<script src="/web/js/locale-service.js"></script>
+<script>
+window.fixtureLocaleReady=(async function(){
+  await window.OpenCADLocale.ready;
+  window.OpenCADLocale.update({locale:"zh-CN",strings:{fixture:"locale"}});
+  document.documentElement.lang="zh-CN";
+})().catch(function(error){window.fixtureLocaleError=String(error);throw error;});
+</script>
 <script src="/web/js/drawing-panel.js"></script><script>
 // Fixture-only project envelope. Production uses the chair's project-session.
 const rawFetch=window.fetch.bind(window);
@@ -256,8 +268,10 @@ async function fixtureFetch(path,options) {
  }
  return rawFetch(path,options);
 }
-window.panel=window.opencadDrawingPanel.mount(document.getElementById("drawing-host"),
- {fetch:fixtureFetch});
+window.fixtureLocaleReady.then(function(){
+ window.panel=window.opencadDrawingPanel.mount(document.getElementById("drawing-host"),
+  {fetch:fixtureFetch});
+});
 </script></body></html>"""
 
 

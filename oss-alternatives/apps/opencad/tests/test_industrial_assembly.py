@@ -766,13 +766,26 @@ class IndustrialAssemblyTests(unittest.TestCase):
         assets = {
             "/assembly-panel.js": (OWNED[1], "text/javascript"),
             "/assembly-panel.css": (OWNED[2], "text/css"),
+            "/web/js/locale-service.js": (APP / "web/js/locale-service.js", "text/javascript"),
+            "/web/panel-i18n.json": (APP / "web/panel-i18n.json", "application/json"),
         }
         page = """<!doctype html><html lang="zh-CN"><meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
         <link rel="stylesheet" href="/assembly-panel.css"><div id="panel"></div>
-        <script src="/assembly-panel.js"></script><script>
+        <script>
         window.fixtureErrors=[];window.addEventListener('error',e=>fixtureErrors.push(e.message));
         window.addEventListener('unhandledrejection',e=>fixtureErrors.push(String(e.reason)));
+        </script>
+        <script src="/web/js/locale-service.js"></script>
+        <script>
+        window.fixtureLocaleReady=(async function(){
+          await window.OpenCADLocale.ready;
+          window.OpenCADLocale.update({locale:"zh-CN",strings:{fixture:"locale"}});
+          document.documentElement.lang="zh-CN";
+          window.fixtureLocaleZh=true;
+        }()).catch(function(error){window.fixtureErrors.push(String(error));throw error;});
+        </script>
+        <script src="/assembly-panel.js"></script><script>
         window.fixtureBase=null;
         window.fixtureTransport=async function(r){
           const body=r.body&&structuredClone(r.body);
@@ -788,8 +801,10 @@ class IndustrialAssemblyTests(unittest.TestCase):
             fixtureBase={revision:value.revision,sha256:value.sha256};
           return value;
         };
-        window.panel=opencadAssembly.mount(document.getElementById('panel'),{
-          transport:r=>window.fixtureTransport(r)});
+        window.fixtureLocaleReady.then(function(){
+          window.panel=opencadAssembly.mount(document.getElementById('panel'),{
+            transport:r=>window.fixtureTransport(r)});
+        });
         </script></html>"""
 
         class Handler(BaseHTTPRequestHandler):

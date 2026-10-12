@@ -204,7 +204,15 @@ assert(tagSubsets["button, select"].every(item => item.tagName !== "INPUT") &&
   !tagSubsets["button, select"].includes(nodes.definitionName),
   "private_clear_fixture_subset_not_exact");
 let requests = 0;
-const window = {addEventListener() {}, fetch() { ++requests; throw Error("unexpected_private_fetch"); }};
+const window = {
+  OpenCADLocale: {
+    ready: Promise.resolve(),
+    snapshot: () => ({status: "ready", locale: "zh-CN"}),
+    t: (key, args) => args && Object.hasOwn(args, "message") ? String(args.message) : key,
+    bind: () => () => {}
+  },
+  addEventListener() {}, fetch() { ++requests; throw Error("unexpected_private_fetch"); }
+};
 const document = {readyState: "loading", addEventListener() {}};
 vm.runInNewContext(fs.readFileSync(process.argv[2], "utf8"), {window, document, console});
 const api = window.__privateClear;
