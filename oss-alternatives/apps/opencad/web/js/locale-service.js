@@ -133,19 +133,28 @@
     });
   }
 
+  function publicFailureCode(state) {
+    if (loadError) {
+      return loadError.code === "locale_package_http_error" ?
+        "locale_package_http_error" : "locale_package_load_failed";
+    }
+    return state.unsupported.length ? "locale_unsupported" : null;
+  }
+
   function publish() {
     const state = snapshot();
-    if (loadError || state.unsupported.length) {
+    const code = publicFailureCode(state);
+    if (code) {
       if (!alert && document.body) {
         alert = document.createElement("output");
         alert.setAttribute("role", "alert");
-        alert.setAttribute("data-opencad-locale-alert", "");
+        alert.setAttribute("lang", "en");
+        alert.setAttribute("data-opencad-public-locale-error", "foundation");
         document.body.append(alert);
       }
       if (alert) {
         alert.hidden = false;
-        alert.textContent = loadError ? loadError.code :
-          "locale_unsupported: " + state.unsupported.join(", ");
+        alert.textContent = code;
       }
     } else if (alert) {
       alert.textContent = "";

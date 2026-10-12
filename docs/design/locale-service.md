@@ -159,3 +159,49 @@ CLIs on fresh copied evidence, retaining each child exit and first cause.
 It rejects missing children/artifacts, false exits/counts/source SHA/modes,
 foreign roots, corrupted or extra artifacts, and rehashed terminal/completion
 logs. It never rewrites the original producer evidence.
+
+## Public Locale Diagnostic And Chair Resume
+
+The continuation session hardened the service's public failure output to the
+same finite contract used by the session shield. The only public diagnostic
+node is a body-direct, visible `output` with exactly `role=alert`, `lang=en`
+and `data-opencad-public-locale-error="foundation"`; it has no element children
+and its text is exactly one of `locale_package_http_error`,
+`locale_package_load_failed` or `locale_unsupported`. Arbitrary internal error
+text, dictionary values, locale lists, URLs and project/user data are not
+placed in that node. The true package error remains available through
+`snapshot().error.code`, and the unsupported codes remain available through
+`snapshot().unsupported`; console/local debugging is not a public DOM channel.
+An HTTP response failure keeps its specific public code; every other package
+load or validation failure maps to the finite generic load code. The alert is
+reused, becomes visible on failure and is cleared/hidden when the unsupported
+option is removed and a supported locale is accepted. It is never recreated
+per failure.
+
+This repair is developed from the clean foundation commit
+`97b80e675f39e23faffcb8c0f6bb8706a8238f0b` in the isolated
+`/data/dev/wt-opencad-locale-public-alert-from97-20261012` tree. It must be
+cherry-picked onto the catalog/parametric integration head; the service API
+itself is unchanged. The earlier 373-based experimental tree remains unused
+and untouched.
+
+The acceptance fixture now asserts the exact public-alert shape and attribute
+set, node parent, lack of child elements, finite codes for both HTTP and
+validation failures, preservation of the internal cause, and successful
+recovery after an unsupported selector is removed. The development run
+`/hf3fs-jd/data/tmp/opencad-locale-public-alert-dev-20261012-v2` returned the
+actual parent rc 0 with 742 positive checks and eight real rejecting negative
+children. Commands for this isolated tree:
+
+```bash
+sudo -n -u infra -B python3 -B \
+  /data/dev/wt-opencad-locale-public-alert-from97-20261012/oss-alternatives/apps/opencad/tests/test_locale_service.py \
+  --selftest --source-root /data/dev/wt-opencad-locale-public-alert-from97-20261012 \
+  --out /hf3fs-jd/data/tmp/opencad-locale-public-alert-final-dev-20261012-v1
+```
+
+Only the service, the test and this document are committed by this seat.
+Post-commit clean selftest, offline readback and reader controls are a
+separate acceptance step and must not inherit the development rc. No browser,
+session, private-page, parametric integration, production or credential
+operation is claimed here.

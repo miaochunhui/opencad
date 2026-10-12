@@ -139,12 +139,33 @@ function leaf(root, attribute, key, tag = "span") {
   const element = new Element(tag); element.setAttribute(attribute, key); root.append(element);
   return element;
 }
-async function readyFailure(options, expected, payload = shipped) {
+function publicAlert(f, expected, visible = true) {
+  const nodes = f.body.children.filter(node => node.tagName === "OUTPUT" &&
+    node.getAttribute("role") === "alert");
+  equal(nodes.length, 1);
+  const node = nodes[0];
+  equal(node.parentElement, f.body);
+  equal(node.getAttribute("role"), "alert");
+  equal(node.getAttribute("lang"), "en");
+  equal(node.getAttribute("data-opencad-public-locale-error"), "foundation");
+  equal(Array.from(node.attrs.keys()).sort(),
+    ["data-opencad-public-locale-error", "lang", "role"]);
+  equal(node.children.length, 0);
+  equal(node.hidden, !visible);
+  if (visible) {
+    check(!node.hasAttribute("hidden"), "public alert has hidden attribute");
+    equal(node.textContent, expected);
+  } else {
+    equal(node.textContent, "");
+  }
+  return node;
+}
+async function readyFailure(options, expected, publicCode, payload = shipped) {
   const f = fixture(payload, options);
   await assert.rejects(f.service.ready, error => error.code === expected); assertions++;
   equal(f.service.snapshot().status, "error");
-  equal(f.body.children[0].getAttribute("role"), "alert");
-  check(f.body.children[0].textContent.includes(expected), "visible error");
+  equal(f.service.snapshot().error.code, expected);
+  publicAlert(f, publicCode);
   return f;
 }
 async function main() {
@@ -248,8 +269,12 @@ async function main() {
   equal(f.service.snapshot().status, "unsupported");
   check(f.service.snapshot().unsupported.includes("fr"), "no allowlist silent fallback");
   rejects(() => f.service.t("panel.session.account"), "locale_unsupported");
-  check(f.body.children.some(x => x.getAttribute("role") === "alert" &&
-    x.textContent.includes("fr") && !x.hidden), "visible unsupported");
+  const unsupportedAlert = publicAlert(f, "locale_unsupported");
+  f.selectors.splice(f.selectors.indexOf(other), 1);
+  update(f, "en");
+  equal(f.service.snapshot().status, "ready");
+  equal(unsupportedAlert.textContent, "");
+  equal(unsupportedAlert.hidden, true);
   const data = {ok: true, locale: "ja", strings: strings(),
     doc: "private-document", project_id: "private-project", user: {name: "private-user"}};
   f.window.dispatchEvent({type: "opencad:state", detail: data});
@@ -286,25 +311,25 @@ async function main() {
   equal(html.split(serviceTag).length - 1, 1);
   check(html.indexOf(serviceTag) < html.indexOf('src="web/js/app.js"'),
     "service before app");
-  await readyFailure({http: false}, "locale_package_http_error");
-  await readyFailure({fetchError: true}, "locale_package_load_failed");
-  await readyFailure({text: "{"}, "locale_package_load_failed");
-  await readyFailure({}, "locale_invalid_package", {});
+  await readyFailure({http: false}, "locale_package_http_error", "locale_package_http_error");
+  await readyFailure({fetchError: true}, "locale_package_load_failed", "locale_package_load_failed");
+  await readyFailure({text: "{"}, "locale_package_load_failed", "locale_package_load_failed");
+  await readyFailure({}, "locale_invalid_package", "locale_package_load_failed", {});
   const missing = structuredClone(shipped); delete missing.locales.ja["panel.session.account"];
-  await readyFailure({}, "locale_key_set_mismatch", missing);
+  await readyFailure({}, "locale_key_set_mismatch", "locale_package_load_failed", missing);
   const placeholder = structuredClone(shipped);
   placeholder.locales.ja["panel.session.account"] = "{who}";
-  await readyFailure({}, "locale_placeholder_set_mismatch", placeholder);
+  await readyFailure({}, "locale_placeholder_set_mismatch", "locale_package_load_failed", placeholder);
   const empty = structuredClone(shipped); empty.locales.en = {};
-  await readyFailure({}, "locale_empty_dictionary", empty);
+  await readyFailure({}, "locale_empty_dictionary", "locale_package_load_failed", empty);
   const duplicate = JSON.stringify(shipped).replace('"schema":', '"schema":"wrong","schema":');
-  await readyFailure({text: duplicate}, "locale_duplicate_json_key");
+  await readyFailure({text: duplicate}, "locale_duplicate_json_key", "locale_package_load_failed");
   const nestedDuplicate = JSON.stringify(shipped).replace('"panel.session.account":',
     '"panel.session.account":"duplicated","panel.session.account":');
-  await readyFailure({text: nestedDuplicate}, "locale_duplicate_json_key");
+  await readyFailure({text: nestedDuplicate}, "locale_duplicate_json_key", "locale_package_load_failed");
   const invalidPlaceholder = structuredClone(shipped);
   invalidPlaceholder.locales.en["panel.session.account"] = "{0}";
-  await readyFailure({}, "locale_invalid_placeholder", invalidPlaceholder);
+  await readyFailure({}, "locale_invalid_placeholder", "locale_package_load_failed", invalidPlaceholder);
   const appended = structuredClone(shipped); appended.locales.fr = {...appended.locales.en};
   const extended = fixture(appended); await extended.service.ready; update(extended, "fr");
   equal(extended.service.snapshot().status, "ready");
