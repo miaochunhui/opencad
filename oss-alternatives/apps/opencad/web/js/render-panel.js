@@ -1,35 +1,25 @@
 /* Independent server-image controls; no WebGL/WebGPU or remote resource input. */
 (function () {
   "use strict";
-  const labels = {
-    title: "\u670d\u52a1\u7aef\u79bb\u5c4f\u6e32\u67d3",
-    camera: "\u89c6\u89d2",
-    isometric: "\u7b49\u8f74\u6d4b",
-    front: "\u524d\u89c6",
-    top: "\u4fef\u89c6",
-    right: "\u53f3\u89c6",
-    backend: "\u540e\u7aef",
-    fallback: "\u5141\u8bb8\u660e\u786e CPU \u56de\u9000",
-    render: "\u6e32\u67d3\u5f53\u524d\u6301\u4e45\u7248\u672c",
-    wait: "\u6b63\u5728\u8bfb\u53d6\u6301\u4e45\u7248\u672c\u5e76\u6e32\u67d3",
-    image: "\u670d\u52a1\u7aef\u6e32\u67d3 PNG",
-    idle: "\u5c1a\u672a\u8c03\u7528\u670d\u52a1\u7aef\u6e32\u67d3",
-    failed: "\u6e32\u67d3\u5931\u8d25"
-  };
+  const prefix = "panel.render.";
   function mount(root) {
     if (!root || root.querySelector(".oc-render-panel")) { return; }
     const panel = document.createElement("section");
     panel.className = "oc-render-panel";
     const title = document.createElement("h2");
-    title.textContent = labels.title;
+    title.setAttribute("data-panel-i18n", prefix + "title");
     function select(label, choices) {
       const wrap = document.createElement("label");
-      wrap.append(document.createTextNode(label));
+      const text = document.createElement("span");
+      text.setAttribute("data-panel-i18n", prefix + label);
+      wrap.append(text);
       const node = document.createElement("select");
+      node.setAttribute("data-panel-i18n-aria", prefix + label);
+      node.setAttribute("data-panel-i18n-title", prefix + label);
       choices.forEach(function (value) {
         const option = document.createElement("option");
         option.value = value;
-        option.textContent = labels[value] || value.toUpperCase();
+        option.setAttribute("data-panel-i18n", prefix + label + "." + value);
         node.append(option);
       });
       wrap.append(node);
@@ -37,38 +27,91 @@
       return node;
     }
     panel.append(title);
-    const camera = select(labels.camera, ["isometric", "front", "top", "right"]);
-    const backend = select(labels.backend, ["gpu", "cpu"]);
+    const camera = select("camera", ["isometric", "front", "top", "right"]);
+    const backend = select("backend", ["gpu", "cpu"]);
     const fallbackWrap = document.createElement("label");
     const fallback = document.createElement("input");
     fallback.type = "checkbox";
-    fallbackWrap.append(fallback, document.createTextNode(labels.fallback));
+    fallback.setAttribute("data-panel-i18n-aria", prefix + "fallback");
+    fallback.setAttribute("data-panel-i18n-title", prefix + "fallback");
+    const fallbackText = document.createElement("span");
+    fallbackText.setAttribute("data-panel-i18n", prefix + "fallback");
+    fallbackWrap.append(fallback, fallbackText);
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = labels.render;
+    button.setAttribute("data-panel-i18n", prefix + "submit");
+    button.setAttribute("data-panel-i18n-aria", prefix + "submit");
+    button.setAttribute("data-panel-i18n-title", prefix + "submit");
     const status = document.createElement("p");
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
-    status.textContent = labels.idle;
     const image = document.createElement("img");
-    image.alt = labels.image;
+    image.setAttribute("data-panel-i18n-alt", prefix + "image.alt");
     image.hidden = true;
-    panel.append(fallbackWrap, button, status, image);
+    const localeAlert = document.createElement("output");
+    localeAlert.setAttribute("role", "alert");
+    localeAlert.setAttribute("data-opencad-render-locale-alert", "");
+    localeAlert.hidden = true;
+    panel.append(fallbackWrap, button, status, image, localeAlert);
     root.append(panel);
     let active = false;
+    let languageReady = false;
+    let currentStatus = {key: "status.idle"};
+    const locale = window.OpenCADLocale;
+    function localeFailure(error) {
+      localeAlert.textContent = "render_locale_error: " + String(error.code || error.message || error);
+      localeAlert.hidden = false;
+      throw error;
+    }
+    function paintStatus() {
+      try {
+        const args = currentStatus.detailKey ?
+          {detail: locale.t(prefix + currentStatus.detailKey)} : currentStatus.args;
+        let text = locale.t(prefix + currentStatus.key, args);
+        if (currentStatus.reason) {
+          text += " | " + locale.t(prefix + "status.fallback", {reason: currentStatus.reason});
+        }
+        status.textContent = text;
+        localeAlert.textContent = "";
+        localeAlert.hidden = true;
+      } catch (error) {
+        localeFailure(error);
+      }
+    }
+    function setStatus(value) {
+      currentStatus = value;
+      paintStatus();
+    }
+    function localError(key) {
+      const error = new Error("render_" + key);
+      error.renderLocaleKey = "error." + key;
+      return error;
+    }
+    if (!locale) { localeFailure(new Error("locale_service_missing")); }
+    const ready = locale.ready.then(function () {
+      locale.bind(panel);
+      languageReady = true;
+      paintStatus();
+    }).catch(localeFailure);
+    window.addEventListener("opencad:locale", function () {
+      if (languageReady && locale.snapshot().status !== "loading") { paintStatus(); }
+    });
     async function render() {
+      if (active) { return; }
+      await ready;
       if (active) { return; }
       active = true;
       button.disabled = camera.disabled = backend.disabled = fallback.disabled = true;
       image.hidden = true;
       image.removeAttribute("src");
-      status.textContent = labels.wait;
       try {
+        setStatus({key: "status.wait"});
         const stateResponse = await window.fetch("/api/state", {credentials: "same-origin"});
         const state = await stateResponse.json();
         if (!stateResponse.ok || !Number.isSafeInteger(state.revision)
             || !/^[0-9a-f]{64}$/.test(state.sha256 || "")) {
-          throw new Error(state.detail || state.error || "DB snapshot unavailable");
+          if (state.detail || state.error) { throw new Error(state.detail || state.error); }
+          throw localError("snapshot");
         }
         const response = await window.fetch("/api/render", {
           method: "POST", credentials: "same-origin",
@@ -79,37 +122,43 @@
         });
         if (!response.ok) {
           const failure = await response.json();
-          throw new Error(failure.detail || failure.error || labels.failed);
+          if (failure.detail || failure.error) { throw new Error(failure.detail || failure.error); }
+          throw localError("request");
         }
         if ((response.headers.get("Content-Type") || "").split(";")[0] !== "image/png"
             || response.headers.get("X-OpenCAD-Revision") !== String(state.revision)
             || response.headers.get("X-OpenCAD-Snapshot-SHA256") !== state.sha256) {
-          throw new Error("Render response revision/media mismatch");
+          throw localError("response");
         }
         const blob = await response.blob();
         if (!blob.size || blob.size > 2 * 1024 * 1024) {
-          throw new Error("Render PNG byte budget invalid");
+          throw localError("budget");
         }
         const bytes = new Uint8Array(await blob.arrayBuffer());
         if ([137, 80, 78, 71, 13, 10, 26, 10].some(function (v, i) { return bytes[i] !== v; })) {
-          throw new Error("Render PNG magic invalid");
+          throw localError("magic");
         }
         // CSP permits same-origin/data images, not blob URLs. No renderer canvas.
         const reader = new FileReader();
         await new Promise(function (resolve, reject) {
           reader.onload = resolve;
-          reader.onerror = function () { reject(new Error("PNG read failed")); };
+          reader.onerror = function () { reject(localError("read")); };
           reader.readAsDataURL(blob);
         });
         image.src = reader.result;
         image.hidden = false;
         const reason = response.headers.get("X-OpenCAD-Fallback-Reason");
-        status.textContent = response.headers.get("X-OpenCAD-Render-Status") + " | "
-          + response.headers.get("X-OpenCAD-Render-Backend") + " | "
-          + response.headers.get("X-OpenCAD-Renderer") + " | revision " + state.revision
-          + (reason ? " | CPU fallback: " + reason : "");
+        setStatus({key: "status.result", args: {
+          status: String(response.headers.get("X-OpenCAD-Render-Status")),
+          backend: String(response.headers.get("X-OpenCAD-Render-Backend")),
+          renderer: String(response.headers.get("X-OpenCAD-Renderer")),
+          revision: state.revision
+        }, reason: reason});
       } catch (error) {
-        status.textContent = labels.failed + ": " + String(error.message || error);
+        if (typeof error.code === "string" && error.code.startsWith("locale_")) { throw error; }
+        setStatus(error.renderLocaleKey ?
+          {key: "status.failed", detailKey: error.renderLocaleKey} :
+          {key: "status.failed", args: {detail: String(error.message || error)}});
       } finally {
         active = false;
         button.disabled = camera.disabled = backend.disabled = fallback.disabled = false;
@@ -119,11 +168,12 @@
     camera.addEventListener("change", render);
     backend.addEventListener("change", render);
     fallback.addEventListener("change", render);
+    return ready;
   }
   window.OpenCADRenderPanel = {mount: mount};
   function boot() {
     const root = document.querySelector("[data-opencad-render-panel]");
-    if (root) { mount(root); }
+    if (root) { return mount(root); }
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot, {once: true});
