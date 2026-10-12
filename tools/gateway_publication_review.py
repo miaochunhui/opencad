@@ -485,14 +485,30 @@ def doc_successor(root, frozen_commit, commit, frozen, current, allowed):
     need(allowed and set(delta) == allowed, "DOC_PATH_SET_MISMATCH")
     tail = git(root, ["rev-list", "--reverse", frozen_commit + ".." + commit]).decode().splitlines()
     need(tail and tail[-1] == commit, "DOC_SUCCESSOR_ANCESTRY")
-    previous, changed = frozen_commit, set()
+    previous, changed, commits = frozen_commit, set(), []
     for item in tail:
         need(git(root, ["show", "-s", "--format=%P", item]).decode().split() == [previous],
              "DOC_SUCCESSOR_NOT_LINEAR")
-        names = git(root, ["diff-tree", "--no-commit-id", "--name-only", "-r",
-                          previous, item, "-z"]).split(b"\0")
-        changed.update(os.fsdecode(name) for name in names if name)
+        entries = git(root, ["diff-tree", "--no-commit-id", "--raw", "--no-abbrev",
+                            "--no-renames", "-r", previous, item, "-z"]).split(b"\0")
+        need(entries[-1] == b"" and len(entries[:-1]) % 2 == 0,
+             "DOC_INTERMEDIATE_RAW_FORMAT:" + item)
+        changes = []
+        for index in range(0, len(entries) - 1, 2):
+            metadata, name = entries[index].decode().split(), os.fsdecode(entries[index + 1])
+            safe_relative(name)
+            need(name in allowed, "NON_DOC_INTERMEDIATE_CHANGE")
+            need(len(metadata) == 5, "DOC_INTERMEDIATE_RAW_FORMAT:" + item)
+            old_mode, new_mode, old_oid, new_oid, status = metadata
+            need((status == "A" and old_mode == ":000000" and old_oid == "0" * 40
+                  or status == "M" and old_mode == ":100644" and SHA.fullmatch(old_oid))
+                 and new_mode == "100644" and SHA.fullmatch(new_oid),
+                 "DOC_INTERMEDIATE_MODE_OR_DELETION:" + item + ":" + name)
+            changes.append({"path": name, "status": status, "old_mode": old_mode[1:],
+                            "new_mode": new_mode, "old_oid": old_oid, "new_oid": new_oid})
+            changed.add(name)
         need(changed <= allowed, "NON_DOC_INTERMEDIATE_CHANGE")
+        commits.append({"parent": previous, "commit": item, "changes": changes})
         previous = item
     need(changed == allowed, "DOC_DECLARATION_NOT_EXACT")
     rows = []
@@ -502,6 +518,7 @@ def doc_successor(root, frozen_commit, commit, frozen, current, allowed):
              "DOC_MODE_OR_DELETION:" + name)
         rows.append({"path": name, "before": frozen.get(name), "after": current[name]})
     return {"status": "EXPLICIT_DOC_ONLY_SUCCESSOR", "tail": tail, "docs": rows,
+            "commit_changes": commits,
             "whole_source_all_accepted": False, "all_accepted_commit": frozen_commit,
             "publication_commit": commit}
 
@@ -597,6 +614,39 @@ def static_http_checks(root, sources):
     return names
 
 
+def check_all_executor(block, end, guarded):
+    """Allow only the managed serial fail-fast executor, not a lookalike loop."""
+    loop = block.body[end]
+
+    def same(actual, text):
+        expected = ast.parse(text).body[0]
+        return ast.dump(actual, include_attributes=False) == ast.dump(expected, include_attributes=False)
+
+    need(isinstance(loop, ast.For) and ast.unparse(loop.iter) == "commands"
+         and ast.unparse(loop.target) == "(label, argv, cwd)"
+         and not loop.orelse and len(loop.body) == 3, "ALL_STAGE_EXECUTOR_SHAPE")
+    need(same(loop.body[0], "result = child(argv, cwd, out, label, runtime)"),
+         "ALL_STAGE_EXECUTOR_CHILD")
+    need(same(loop.body[1], "report['steps'].append(result)"), "ALL_STAGE_EXECUTOR_APPEND")
+    failure = loop.body[2]
+    predicate = "result['rc'] or result.get('marker_error')"
+    if guarded:
+        predicate += " or result.get('runtime_error')"
+    need(isinstance(failure, ast.If) and not failure.orelse
+         and ast.dump(failure.test, include_attributes=False)
+         == ast.dump(ast.parse(predicate, mode="eval").body, include_attributes=False),
+         "ALL_STAGE_EXECUTOR_FAILURE_PREDICATE")
+    first_cause = "report['first_cause'] = dict(result)"
+    terminal = "raise RuntimeError(f'failed independent step: {label}')"
+    need(len(failure.body) == (2 if guarded else 1)
+         and (not guarded or same(failure.body[0], first_cause))
+         and same(failure.body[-1], terminal), "ALL_STAGE_EXECUTOR_FAILURE_EXIT")
+    # A break/continue, mutation or alternate PASS path must never hide a child.
+    need(len(block.body[end + 1:]) == 1
+         and same(block.body[end + 1], "report['verdict'] = 'PASS'"),
+         "ALL_STAGE_EXECUTOR_SUCCESS_PATH")
+
+
 def all_stage_plan(root, sources, evidence, runtime):
     """Read the managed all-stage command builder, never execute acceptance.py."""
     name = "tools/acceptance.py"
@@ -649,6 +699,8 @@ def all_stage_plan(root, sources, evidence, runtime):
             else:
                 raise Refused("UNSUPPORTED_ALL_STAGE_PLAN_STATEMENT")
 
+    guarded = any(isinstance(node, ast.ClassDef) and node.name == "SQLiteRuntimeGuard"
+                  for node in tree.body)
     blocks = [node for node in ast.walk(main[0]) if isinstance(node, ast.Try)]
     candidates = []
     for block in blocks:
@@ -656,14 +708,18 @@ def all_stage_plan(root, sources, evidence, runtime):
                       if isinstance(node, ast.Assign) and ast.unparse(node) == "commands = []"), None)
         if begin is not None:
             end = next((index for index in range(begin + 1, len(block.body))
-                        if isinstance(block.body[index], ast.For)
-                        and ast.unparse(block.body[index].iter) == "commands"), None)
+                        if isinstance(block.body[index], ast.For)), None)
             need(end is not None, "ALL_STAGE_EXECUTOR_REQUIRED")
-            candidates.append(block.body[begin + 1:end])
+            candidates.append((block, begin, end))
     need(len(candidates) == 1, "ALL_STAGE_PLAN_REQUIRED")
-    statements(candidates[0])
-    guarded = any(isinstance(node, ast.ClassDef) and node.name == "SQLiteRuntimeGuard"
-                  for node in tree.body)
+    block, begin, end = candidates[0]
+    need(block in main[0].body, "ALL_STAGE_EXECUTOR_CONDITIONAL")
+    check_all_executor(block, end, guarded)
+    permitted = {node for statement in block.body[begin:end + 1] for node in ast.walk(statement)}
+    need(all(node in permitted for node in ast.walk(main[0])
+             if isinstance(node, ast.Name) and node.id == "commands"),
+         "ALL_STAGE_EXECUTOR_COMMANDS_ESCAPE")
+    statements(block.body[begin + 1:end])
     expected = (("sqlite-runtime-negative-controls",) if guarded else ()) + LABELS
     need([row["label"] for row in plan] == list(expected), "UNSUPPORTED_ALL_STAGE_PLAN")
     need(all(row["cwd"] == str(root) for row in plan), "ALL_STAGE_PLAN_CWD")

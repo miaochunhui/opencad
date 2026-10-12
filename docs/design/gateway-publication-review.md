@@ -52,6 +52,10 @@ Git bytes/mode，再核发布候选自身Git bytes/mode，不将executor新HEAD
 增删文件、mode变异、产品先改再revert均拒绝。报告保留all_commit和
 publication_commit，文档后继 `whole_source_all_accepted=false`，不虚接
 整树all PASS。
+逐commit使用无rename合并的Git raw差集，新增只允许000000→100644，
+修改只允许100644→100644；删除、symlink、gitlink、执行mode和改坏再恢复
+不能靠末树正常过关。`source_relation.commit_changes`逐项保存parent、
+commit、path、status、old/new mode及blob OID。
 
 当前文档树已继续提交时，可用 `--publication-commit` 指定原sync记录的目标，
 必须位于已验证的all冻结点/文档线性尾。当前HEAD仍严格pin/clean/bytes/mode
@@ -75,6 +79,14 @@ result/tests.log，核原source、时刻、逐项身份/footer/terminal后并入
 命令构造与实际执行循环：旧入口的五child与带SQLiteRuntimeGuard的新入口
 六child分别要求完整有序集合；新SQLite负控必须在bootstrap前。未知构造、
 多余child、遗漏child、缩选argv均拒绝。原计划及acceptance源SHA随结果保存。
+执行白名单要求顶层受管try中的`for label, argv, cwd in commands`，
+单次`child(argv, cwd, out, label, runtime)`立即按序append同一result。
+随后必须检查rc/marker_error（新版另含runtime_error），失败抛出原具名
+RuntimeError，新版先保存first_cause；只有循环完整结束才允许PASS。
+break/continue、循环else、参数改写、重复/错序/缺失append、倒序或子集
+iterator、循环外commands逃逸、条件执行和循环后另一路成功均拒绝。
+未知AST形态fail-loud；此为受管入口结构白名单，不是任意Python等价证明，
+也不执行或证明child内部全部外部依赖语义。
 
 新版要求source_before/after完整相等，source_head/status首尾pin且clean、
 原actual_rc0。每child必须有唯一 `INDEPENDENT_RUNTIME_BINDING`，
@@ -229,3 +241,32 @@ sudo -n -u infra python3 -B /data/dev/wt-opencad-dynamic-release-closure-2026101
 sudo -n -u infra python3 -B /data/dev/wt-opencad-dynamic-release-closure-20261012/tools/gateway_publication_review.py --source-root /data/dev/wt-opencad-surface-release-docs-20261012 --commit bec25d3828b493347070f2e3943117eaef090ccc --all-source-root /data/dev/wt-opencad-surface-private-release-20261012 --all-commit 83e66d1c98918a5197c71e6bf30436513ba06efc --allow-doc-path docs/handoff/20261012-surface-private-release.md --all-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v2 --baseline-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v1 --publication-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-docs-sync-20261012-v1 --publication-commit 889e885a4a3935ee593b9e18afef04faff60e294 --selftest --out /hf3fs-jd/data/tmp/opencad-dynamic-release-closure-publication-20261012-next
 sudo -n -u infra python3 -B /data/dev/wt-opencad-dynamic-release-closure-20261012/tools/test_gateway_publication_review.py --source-root /data/dev/wt-opencad-surface-private-release-20261012 --expect-head 83e66d1c98918a5197c71e6bf30436513ba06efc --sqlite-source-root /data/dev/wt-opencad-sqlite-runtime-isolation-20261012 --failed-source-root /data/dev/wt-opencad-config-integration-20261012 --failed-all-evidence /hf3fs-jd/data/tmp/opencad-config-integration-all-20261012-v1 --all-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v2 --baseline-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v1 --original-failure /hf3fs-jd/data/tmp/opencad-surface-private-release-all-fermat-review-20261012-v1/result.json --out /hf3fs-jd/data/tmp/opencad-dynamic-release-closure-selftest-20261012-next
 ```
+
+## 独立P2修复与修前原账
+
+独占树 `/data/dev/wt-opencad-dynamic-reviewer-p2-20261012`，分支
+`codex/dynamic-reviewer-p2-20261012`，基准严格为
+`8d4eee2c859d3c620b28014f1c831c6acee4e216`，只改本页与两件review工具。
+不接触7a发布树、不重跑all、不启动GPU/HTTP、不push。
+
+修前只新增反证test，reviewer原SHA256保持
+`3c213a36e8d4733d72d5326feb0be654f6eb497d0650b77941856814449162e6`。
+2026-10-12 09:03:35.589128 +08:00亲收原rc1，4tests/4failures/0errors：
+遗漏child执行、循环内commands.reverse、中间文档删除后恢复、中间
+文档100755后恢复均未被原reviewer拒绝。原结果和每项observation、
+AST夹具/真实Git提交保留于
+`/hf3fs-jd/data/tmp/opencad-dynamic-reviewer-p2-before-20261012-v1/`。
+不追改该FAIL，不追认原22tests/60negatives为覆盖这两个P2。
+
+新增controls仅在独占新3FS目录写AST/Git夹具，并保留不清理。
+文档删除/mode负控只改新夹具Git index，不删除真实文件或改filesystem权限。
+普通两笔100644文档后继为正控；原五child真实all、新六child静态计划/
+完整reader夹具、4b3真实failed-all负控和全部原22测试继续保留。
+`--only`仅为明确具名选测，结果必录selected_tests，不把选测当完整suite。
+最终selftest另录完整executor bytes/mode/HEAD/status首尾及摘要与drift。
+这些是离线reviewer验证，不认证新产品回归、源发布或GPU收益。
+
+```bash
+sudo -n -u infra python3 -B /data/dev/wt-opencad-dynamic-reviewer-p2-20261012/tools/test_gateway_publication_review.py --source-root /data/dev/wt-opencad-surface-private-release-20261012 --expect-head 83e66d1c98918a5197c71e6bf30436513ba06efc --sqlite-source-root /data/dev/wt-opencad-sqlite-runtime-isolation-20261012 --failed-source-root /data/dev/wt-opencad-config-integration-20261012 --failed-all-evidence /hf3fs-jd/data/tmp/opencad-config-integration-all-20261012-v1 --all-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v2 --baseline-evidence /hf3fs-jd/data/tmp/opencad-surface-private-release-all-20261012-v1 --original-failure /hf3fs-jd/data/tmp/opencad-surface-private-release-all-fermat-review-20261012-v1/result.json --out /hf3fs-jd/data/tmp/opencad-dynamic-reviewer-p2-final-20261012-next
+```
+每次out须fresh；最终数字/退出码以新盘面result为准，不继承首轮29/78。

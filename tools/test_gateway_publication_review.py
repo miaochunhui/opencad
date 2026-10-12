@@ -8,6 +8,7 @@ Run directly with --out and --all-evidence to retain the test log and verdict.
 from __future__ import annotations
 
 import argparse
+import ast
 from copy import deepcopy
 import io
 import json
@@ -30,6 +31,7 @@ class DynamicClosureTests(unittest.TestCase):
     failed_source = None
     inputs = {}
     control_count = 0
+    out = None
 
     @classmethod
     def read(cls, path):
@@ -53,6 +55,210 @@ class DynamicClosureTests(unittest.TestCase):
         with self.assertRaisesRegex(review.Refused, "^" + code):
             function()
         type(self).control_count += 1
+
+    def p2_reject(self, name, function, code, fixture):
+        def observed():
+            try:
+                value = function()
+            except review.Refused as exc:
+                review.save(self.out / (name + "-observation.json"),
+                            {"observed": "REFUSED", "first_cause": str(exc),
+                             "expected_prefix": code, "fixture": fixture, "at": review.now()})
+                raise
+            review.save(self.out / (name + "-observation.json"),
+                        {"observed": "ACCEPTED_UNSAFE_MUTANT", "expected_prefix": code,
+                         "fixture": fixture, "at": review.now(), "result": value})
+            return value
+        self.reject(observed, code)
+
+    def executor_source_mutant(self, name, mutate):
+        root = self.out / name
+        (root / "tools").mkdir(parents=True)
+        original = review.regular(self.source / "tools/acceptance.py")
+        tree = ast.parse(original)
+        main = next(node for node in tree.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "main")
+        loops = [node for node in ast.walk(main) if isinstance(node, ast.For)
+                 and ast.unparse(node.iter) == "commands"]
+        self.assertEqual(len(loops), 1)
+        mutate(main, loops[0])
+        raw = (ast.unparse(ast.fix_missing_locations(tree)) + "\n").encode()
+        (root / "tools/acceptance.py").write_bytes(raw)
+        sources = {"tools/acceptance.py": review.binding(raw)}
+        return root, sources
+
+    def executor_mutant(self, name, mutate):
+        return self.executor_source_mutant(name, lambda main, loop: mutate(loop))
+
+    def test_executor_missing_child_is_refused(self):
+        root, sources = self.executor_mutant(
+            "executor-omission", lambda loop: setattr(loop, "body", [ast.Pass()]))
+        self.p2_reject("executor-omission", lambda: review.all_stage_plan(
+            root, sources, self.all_root, self.report["test_runtime"]["root"]),
+            "ALL_STAGE_EXECUTOR", {"root": str(root), "sources": sources})
+
+    def test_executor_reordering_is_refused(self):
+        root, sources = self.executor_mutant("executor-reorder", lambda loop: loop.body.insert(
+            0, ast.Expr(value=ast.Call(func=ast.Attribute(
+                value=ast.Name(id="commands", ctx=ast.Load()), attr="reverse", ctx=ast.Load()),
+                args=[], keywords=[]))))
+        self.p2_reject("executor-reorder", lambda: review.all_stage_plan(
+            root, sources, self.all_root, self.report["test_runtime"]["root"]),
+            "ALL_STAGE_EXECUTOR", {"root": str(root), "sources": sources})
+
+    def test_executor_semantic_mutants_are_refused(self):
+        def body(text):
+            return lambda loop: setattr(loop, "body", ast.parse(text).body)
+
+        mutations = (
+            ("append-omitted", lambda loop: loop.body.pop(1)),
+            ("append-before-child", lambda loop: loop.body.reverse()),
+            ("wrong-child-argv", body(
+                "result = child(argv[:1], cwd, out, label, runtime)\n"
+                "report['steps'].append(result)\n"
+                "if result['rc'] or result.get('marker_error'):\n"
+                " raise RuntimeError(f'failed independent step: {label}')")),
+            ("failure-break", lambda loop: setattr(loop.body[-1], "body", [ast.Break()])),
+            ("failure-continue", lambda loop: setattr(loop.body[-1], "body", [ast.Continue()])),
+            ("failure-ignored", lambda loop: setattr(loop.body[-1], "body", [ast.Pass()])),
+            ("failure-inverted", lambda loop: setattr(
+                loop.body[-1], "test", ast.UnaryOp(op=ast.Not(), operand=loop.body[-1].test))),
+            ("wrong-append-result", lambda loop: setattr(
+                loop.body[1].value, "args", [ast.Constant(value=None)])),
+            ("duplicate-child", lambda loop: loop.body.insert(1, deepcopy(loop.body[0]))),
+            ("subset-iterator", lambda loop: setattr(
+                loop, "iter", ast.parse("commands[:1]", mode="eval").body)),
+            ("reverse-iterator", lambda loop: setattr(
+                loop, "iter", ast.parse("reversed(commands)", mode="eval").body)),
+            ("wrong-target", lambda loop: setattr(loop, "target",
+                ast.Tuple(elts=[ast.Name(id=name, ctx=ast.Store())
+                               for name in ("cwd", "argv", "label")], ctx=ast.Store()))),
+            ("loop-else", lambda loop: setattr(loop, "orelse", [ast.Pass()])),
+            ("failure-else", lambda loop: setattr(loop.body[-1], "orelse", [ast.Pass()])),
+        )
+        for name, mutate in mutations:
+            with self.subTest(name=name):
+                root, sources = self.executor_mutant("executor-" + name, mutate)
+                self.p2_reject("executor-" + name, lambda: review.all_stage_plan(
+                    root, sources, self.all_root, self.report["test_runtime"]["root"]),
+                    "ALL_STAGE_EXECUTOR", {"root": str(root), "sources": sources})
+
+    def test_executor_surrounding_control_flow_mutants_are_refused(self):
+        def block(main, loop):
+            return next(node for node in ast.walk(main)
+                        if isinstance(node, ast.Try) and loop in node.body)
+
+        def success_jump(main, loop):
+            owner = block(main, loop)
+            owner.body.insert(owner.body.index(loop) + 1, ast.Return(value=ast.Constant(value=0)))
+
+        def outside_reorder(main, loop):
+            main.body.append(ast.parse("commands.reverse()").body[0])
+
+        def conditional_executor(main, loop):
+            owner = block(main, loop)
+            main.body[main.body.index(owner)] = ast.If(
+                test=ast.Name(id="unknown_runtime_selection", ctx=ast.Load()),
+                body=[owner], orelse=[])
+
+        for name, mutate in (("success-jump", success_jump), ("outside-reorder", outside_reorder),
+                             ("conditional-execution", conditional_executor)):
+            with self.subTest(name=name):
+                root, sources = self.executor_source_mutant("executor-" + name, mutate)
+                self.p2_reject("executor-" + name, lambda: review.all_stage_plan(
+                    root, sources, self.all_root, self.report["test_runtime"]["root"]),
+                    "ALL_STAGE_EXECUTOR", {"root": str(root), "sources": sources})
+
+    def test_executor_loop_rejects_runtime_failure_gate_removal(self):
+        root = self.out / "executor-six-runtime"
+        (root / "tools").mkdir(parents=True)
+        raw = review.regular(self.sqlite_source / "tools/acceptance.py")
+        tree = ast.parse(raw)
+        loop = next(node for node in ast.walk(tree)
+                    if isinstance(node, ast.For) and ast.unparse(node.iter) == "commands")
+        self.assertEqual(ast.unparse(loop.body[-1].test),
+                         "result['rc'] or result.get('marker_error') or result.get('runtime_error')")
+        loop.body[-1].test.values.pop()
+        changed = (ast.unparse(ast.fix_missing_locations(tree)) + "\n").encode()
+        (root / "tools/acceptance.py").write_bytes(changed)
+        sources = {"tools/acceptance.py": review.binding(changed)}
+        self.p2_reject("executor-six-runtime", lambda: review.all_stage_plan(
+            root, sources, self.all_root, "/data/tmp/fixture-plan-runtime"),
+            "ALL_STAGE_EXECUTOR", {"root": str(root), "sources": sources})
+
+    def test_executor_six_child_first_cause_required(self):
+        root = self.out / "executor-six-first-cause"
+        (root / "tools").mkdir(parents=True)
+        tree = ast.parse(review.regular(self.sqlite_source / "tools/acceptance.py"))
+        loop = next(node for node in ast.walk(tree)
+                    if isinstance(node, ast.For) and ast.unparse(node.iter) == "commands")
+        self.assertEqual(ast.unparse(loop.body[-1].body[0]),
+                         "report['first_cause'] = dict(result)")
+        loop.body[-1].body.pop(0)
+        raw = (ast.unparse(ast.fix_missing_locations(tree)) + "\n").encode()
+        (root / "tools/acceptance.py").write_bytes(raw)
+        sources = {"tools/acceptance.py": review.binding(raw)}
+        self.p2_reject("executor-six-first-cause", lambda: review.all_stage_plan(
+            root, sources, self.all_root, "/data/tmp/fixture-plan-runtime"),
+            "ALL_STAGE_EXECUTOR", {"root": str(root), "sources": sources})
+
+    def doc_history_mutant(self, name, mutation):
+        root = self.out / name
+        (root / "docs").mkdir(parents=True)
+        path = root / "docs/note.md"
+        path.write_bytes(b"before\n")
+
+        def git(*args):
+            return review.git(root, list(args)).decode().strip()
+
+        def commit(message):
+            git("-c", "user.name=Reviewer Fixture", "-c", "user.email=fixture@example.invalid",
+                "-c", "core.hooksPath=/dev/null", "commit", "-qm", message)
+            return git("rev-parse", "HEAD")
+
+        git("init", "-q")
+        git("add", "--", "docs/note.md")
+        base = commit("base")
+        if mutation == "delete":
+            git("update-index", "--force-remove", "--", "docs/note.md")
+        elif mutation == "mode":
+            git("update-index", "--chmod=+x", "--", "docs/note.md")
+        else:
+            path.write_bytes(b"middle\n")
+            git("add", "--", "docs/note.md")
+        middle = commit(mutation)
+        path.write_bytes(b"after\n")
+        git("add", "--", "docs/note.md")
+        if mutation == "mode":
+            git("update-index", "--chmod=-x", "--", "docs/note.md")
+        tip = commit("restore regular document")
+        frozen = review.committed_manifest(root, base, modes=True)
+        current = review.committed_manifest(root, tip, modes=True)
+        self.assertEqual(current["docs/note.md"]["mode"], "100644")
+        fixture = {"root": str(root), "base": base, "middle": middle, "tip": tip}
+        return root, base, tip, frozen, current, fixture
+
+    def test_doc_delete_restore_is_refused(self):
+        root, base, tip, frozen, current, fixture = self.doc_history_mutant("doc-delete", "delete")
+        self.p2_reject("doc-delete", lambda: review.doc_successor(
+            root, base, tip, frozen, current, ["docs/note.md"]), "DOC_INTERMEDIATE", fixture)
+
+    def test_doc_mode_restore_is_refused(self):
+        root, base, tip, frozen, current, fixture = self.doc_history_mutant("doc-mode", "mode")
+        self.p2_reject("doc-mode", lambda: review.doc_successor(
+            root, base, tip, frozen, current, ["docs/note.md"]), "DOC_INTERMEDIATE", fixture)
+
+    def test_doc_regular_multi_commit_tail_is_accepted(self):
+        root, base, tip, frozen, current, fixture = self.doc_history_mutant(
+            "doc-regular", "regular")
+        result = review.doc_successor(root, base, tip, frozen, current, ["docs/note.md"])
+        self.assertEqual(result["tail"], [fixture["middle"], tip])
+        self.assertEqual(len(result["commit_changes"]), 2)
+        for item in result["commit_changes"]:
+            self.assertEqual(item["changes"][0]["status"], "M")
+            self.assertEqual(item["changes"][0]["old_mode"], "100644")
+            self.assertEqual(item["changes"][0]["new_mode"], "100644")
+        self.assertFalse(result["whole_source_all_accepted"])
 
     def changed_log(self, mutate):
         report, files = deepcopy(self.report), dict(self.files)
@@ -607,6 +813,8 @@ def main():
     parser.add_argument("--sqlite-source-root", type=Path, required=True)
     parser.add_argument("--failed-all-evidence", type=Path, required=True)
     parser.add_argument("--failed-source-root", type=Path, required=True)
+    parser.add_argument("--only", action="append",
+                        help="exact test method; new evidence still retains all input/source checks")
     args = parser.parse_args()
     out = review.external(args.out)
     for path in (args.all_evidence, args.baseline_evidence, args.original_failure.parent,
@@ -623,15 +831,21 @@ def main():
     DynamicClosureTests.sqlite_source = args.sqlite_source_root.resolve()
     DynamicClosureTests.failed_all_root = review.external(args.failed_all_evidence)
     DynamicClosureTests.failed_source = args.failed_source_root.resolve()
+    DynamicClosureTests.out = out
     started = review.now()
     before = review.manifest(DynamicClosureTests.source, modes=True)
     sqlite_before = review.manifest(DynamicClosureTests.sqlite_source, modes=True)
     failed_source_before = review.manifest(DynamicClosureTests.failed_source, modes=True)
     tool_before = {name: review.binding(review.regular(review.ROOT / name)) for name in review.OWNED}
+    executor_before = review.manifest(review.ROOT, modes=True)
+    executor_head_before = review.git(review.ROOT, ["rev-parse", "HEAD"]).decode().strip()
+    executor_status_before = review.git(
+        review.ROOT, ["status", "--porcelain=v1", "--untracked-files=all"]).decode()
     head_before = review.git(DynamicClosureTests.source, ["rev-parse", "HEAD"]).decode().strip()
     transcript = io.StringIO()
-    result = unittest.TextTestRunner(stream=transcript, verbosity=2).run(
-        unittest.defaultTestLoader.loadTestsFromTestCase(DynamicClosureTests))
+    suite = (unittest.TestSuite(DynamicClosureTests(name) for name in args.only)
+             if args.only else unittest.defaultTestLoader.loadTestsFromTestCase(DynamicClosureTests))
+    result = unittest.TextTestRunner(stream=transcript, verbosity=2).run(suite)
     with (out / "tests.log").open("x", encoding="utf-8") as log:
         log.write(transcript.getvalue())
     drift = [name for name, row in DynamicClosureTests.inputs.items()
@@ -643,16 +857,24 @@ def main():
         failed_source_before, review.manifest(DynamicClosureTests.failed_source, modes=True))
     tool_drift = [name for name, row in tool_before.items()
                   if review.binding(review.regular(review.ROOT / name)) != row]
+    executor_after = review.manifest(review.ROOT, modes=True)
+    executor_head_after = review.git(review.ROOT, ["rev-parse", "HEAD"]).decode().strip()
+    executor_status_after = review.git(
+        review.ROOT, ["status", "--porcelain=v1", "--untracked-files=all"]).decode()
+    executor_drift = review.difference(executor_before, executor_after)
     head_after = review.git(DynamicClosureTests.source, ["rev-parse", "HEAD"]).decode().strip()
     passed = (result.testsRun > 0 and result.wasSuccessful() and not result.skipped
               and not drift and not source_drift and not tool_drift
               and not sqlite_source_drift
               and not failed_source_drift
+              and not executor_drift and executor_head_before == executor_head_after
+              and executor_status_before == executor_status_after
               and head_before == head_after == args.expect_head)
     report = {"verdict": "PASS" if passed else "FAIL", "actual_rc": 0 if passed else 1,
               "started_at": started, "finished_at": review.now(), "tests": result.testsRun,
               "failures": len(result.failures), "errors": len(result.errors), "skips": len(result.skipped),
               "negative_controls": DynamicClosureTests.control_count, "input_drift": drift,
+              "selected_tests": args.only or [],
               "source_drift": source_drift, "tool_drift": tool_drift, "head": head_after,
               "sqlite_source_root": str(DynamicClosureTests.sqlite_source),
               "sqlite_source_sha256": review.digest(sqlite_before),
@@ -661,6 +883,12 @@ def main():
               "failed_source_sha256": review.digest(failed_source_before),
               "failed_source_drift": failed_source_drift,
               "inputs": DynamicClosureTests.inputs, "executor_files": tool_before,
+              "executor_source_before": executor_before, "executor_source_after": executor_after,
+              "executor_source_sha256": review.digest(executor_before),
+              "executor_after_sha256": review.digest(executor_after), "executor_drift": executor_drift,
+              "executor_head_before": executor_head_before, "executor_head_after": executor_head_after,
+              "executor_status_before": executor_status_before,
+              "executor_status_after": executor_status_after,
               "test_log": review.binding(review.regular(out / "tests.log")),
               "product_tests_reexecuted": 0, "scope": "OFFLINE_REVIEWER_CONTROLS",
               "failures_detail": [{"test": str(test), "detail": detail}
