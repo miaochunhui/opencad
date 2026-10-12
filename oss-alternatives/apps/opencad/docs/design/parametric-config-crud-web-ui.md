@@ -76,6 +76,24 @@ stdout/stderr are retained outside the source tree. Use fresh evidence and local
 runtime paths for each invocation. Missing Node fails loudly; no dependency is
 installed. Synthetic DOM controls are not Chromium/HTTP acceptance.
 
+The selector fixture now has distinct enabled BUTTON/INPUT/SELECT samples,
+including a private name input and a read-only input. Known tag selectors return
+their exact subsets; creation and v2 attribute selectors also have explicit
+subsets. Every unknown selector fails with `private_clear_unknown_selector`,
+including otherwise legal CSS. Temporary shield retains the existing reload/
+discard exceptions and read-only restrictions. Complete JS mutants omitting each
+control type must fail the permanent and temporary action gates, whose diagnostics
+include actual tag/disabled state. The three original cleanup mutations remain.
+
+`--selftest --selector-fixture-before` extracts the exact original 22de probe
+from Git and runs the full-JS `button, select` mutant. Its child rc0 demonstrates
+the fixture blind spot, making the parent fail with
+`selector_fixture_accepted_omitted_control`. Original evidence is retained under
+`/hf3fs-jd/data/tmp/opencad-config-crud-selector-fixture-before-20261012-v1`.
+The old 31-control results do not cover this repaired fixture. This follow-up
+changes only test/doc; source/HEAD capture and all seven reader functions and the
+repair allowlist are unchanged. No real browser is rerun in this fixture repair.
+
 Historical positive controls read the exact 380 test-file Git bytes through one
 test-only path substitution because the new browser assertions intentionally
 change scenario semantics. The production historical reader/allowlist are

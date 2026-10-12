@@ -75,6 +75,27 @@ HISTORICAL_FIXTURE_READER = "d00f3fd8977f3b43345c06f115ba500da3c179e9"
 INTEGRATION_FIXTURE_BASE = "7c63a289a4c6965d24254ba7115bac85aa17b68f"
 PRIVATE_CLEAR_BASE = "380596370d614659964b15e5e33a3b5d312cb894"
 PRIVATE_CLEAR_BEFORE = False
+SELECTOR_FIXTURE_BASE = "22de80c1059c9b18518f1b4b4e7804a6e441489a"
+SELECTOR_FIXTURE_BEFORE = False
+
+
+def selector_fixture_probe(runtime, data, *, temporary=False):
+    if not SELECTOR_FIXTURE_BEFORE:
+        return private_clear_probe(runtime, data=data, temporary=temporary)
+    old = subprocess.check_output(["git", "--no-replace-objects", "-C", str(ROOT),
+        "show", SELECTOR_FIXTURE_BASE + ":" + OWNED[2]])
+    functions = [item for item in ast.parse(old).body if isinstance(item, ast.FunctionDef) and
+                 item.name == "private_clear_probe"]
+    require(len(functions) == 1, "selector_baseline_probe_not_exact")
+    namespace = dict(globals())
+    exec(compile(ast.Module(body=functions, type_ignores=[]),
+                 SELECTOR_FIXTURE_BASE + ":" + OWNED[2], "exec"), namespace)
+    tested = namespace["private_clear_probe"](runtime, data=data, temporary=temporary)
+    binding = json.loads((runtime / "binding.json").read_bytes())
+    binding.update(probe_commit=SELECTOR_FIXTURE_BASE, probe_file_sha256=digest(old))
+    (runtime / "binding.json").unlink()
+    write(runtime / "binding.json", binding)
+    return tested
 
 
 def private_clear_probe(runtime, *, temporary=False, data=None):
@@ -122,28 +143,65 @@ def private_clear_probe(runtime, *, temporary=False, data=None):
     runner = r"""
 "use strict";
 const fs = require("fs"), vm = require("vm"), assert = require("assert");
-function element() {
-  return {value: "private-config", textContent: "private-text", hidden: false, disabled: false,
+function element(tagName = "DIV") {
+  return {tagName, value: "private-config", textContent: "private-text", hidden: false, disabled: false,
     dataset: {}, children: ["private-option"], attributes: {},
     replaceChildren() { this.children = []; this.value = ""; this.textContent = ""; },
     setAttribute(key, value) { this.attributes[key] = value; },
-    querySelectorAll() { return []; }};
+    querySelectorAll(selector) { throw Error("private_clear_unknown_selector:" + selector); }};
 }
 const names = ["panel", "form", "fields", "dimensions", "configurations", "features", "result",
   "notice", "discardConfirmation", "definitionForm", "definitionTarget", "definitionName",
   "definitionParameters", "definitionFeatures", "selectionPolicy", "deleteReplacement",
   "deleteConfirmation", "definitionNotice"];
 const nodes = Object.fromEntries(names.map(name => [name, element()]));
+nodes.definitionName.tagName = "INPUT";
+for (const name of ["configurations", "definitionTarget", "deleteReplacement", "selectionPolicy"]) {
+  nodes[name].tagName = "SELECT";
+}
 nodes.definitionForm.dataset.editingTarget = "private-config";
 nodes.panel.dataset = {documentSha: "private-doc", projectId: "private-project", revision: "9"};
 nodes.result.dataset = {documentSha: "private-doc", volumeMm3: "42", revision: "9"};
 nodes.selectionPolicy.value = "target";
-const buttons = [element(), element()];
+const buttons = [element("BUTTON"), element("BUTTON")];
 buttons[0].dataset.parametricCreate = "create_configurable_plate";
 buttons[1].dataset.parametricReload = "true";
-const actions = [...buttons, nodes.definitionTarget, nodes.deleteReplacement, nodes.selectionPolicy];
-nodes.panel.querySelectorAll = selector =>
-  selector === "[data-parametric-create]" ? [buttons[0]] : actions;
+const permitted = [buttons[1]];
+for (const key of ["parametricDiscard", "parametricConfirmDiscard", "parametricCancelDiscard",
+    "definitionDiscard"]) {
+  const button = element("BUTTON"); button.dataset[key] = "true";
+  buttons.push(button); permitted.push(button);
+}
+const readonlyInput = element("INPUT"); readonlyInput.dataset.readonly = "true";
+const actions = [...buttons, nodes.definitionName, readonlyInput, nodes.configurations,
+  nodes.definitionTarget, nodes.deleteReplacement, nodes.selectionPolicy];
+nodes.selectionPolicy.dataset.definitionV2 = "true";
+const queries = [];
+function selectKnown(selector, known) {
+  queries.push(selector);
+  assert(Object.hasOwn(known, selector), "private_clear_unknown_selector:" + selector);
+  return known[selector];
+}
+const tagSubsets = Object.fromEntries(["button, input, select", "button, select",
+  "input, select", "button, input"].map(selector => {
+  const tags = selector.split(", ").map(tag => tag.toUpperCase());
+  return [selector, actions.filter(item => tags.includes(item.tagName))];
+}));
+nodes.panel.querySelectorAll = selector => selectKnown(selector, {
+  ...tagSubsets, "[data-parametric-create]": actions.filter(item =>
+    Object.hasOwn(item.dataset, "parametricCreate"))
+});
+nodes.definitionForm.querySelectorAll = selector => selectKnown(selector, {
+  "[data-definition-v2]": [nodes.selectionPolicy]
+});
+assert.deepStrictEqual(tagSubsets["button, input, select"], actions, "private_clear_fixture_full_set");
+for (const tag of ["BUTTON", "INPUT", "SELECT"]) {
+  assert(actions.some(item => item.tagName === tag && !item.disabled),
+    "private_clear_fixture_missing_enabled_type:" + tag);
+}
+assert(tagSubsets["button, select"].every(item => item.tagName !== "INPUT") &&
+  !tagSubsets["button, select"].includes(nodes.definitionName),
+  "private_clear_fixture_subset_not_exact");
 let requests = 0;
 const window = {addEventListener() {}, fetch() { ++requests; throw Error("unexpected_private_fetch"); }};
 const document = {readyState: "loading", addEventListener() {}};
@@ -179,7 +237,8 @@ if (permanent) {
   assert(nodes.result.textContent === "" && nodes.definitionNotice.textContent === "" &&
     Object.keys(nodes.panel.dataset).length === 0 && Object.keys(nodes.result.dataset).length === 0,
     "private_clear_receipt_metadata_left");
-  assert(actions.every(item => item.disabled), "private_clear_action_gate");
+  assert(actions.every(item => item.disabled), "private_clear_action_gate:" +
+    JSON.stringify(actions.map(item => ({tag: item.tagName, disabled: item.disabled}))));
   api.report(new Error("late-private-error"));
   assert(nodes.notice.textContent === "private-session-expired", "private_clear_notice_overwritten");
 } else {
@@ -192,15 +251,18 @@ if (permanent) {
     nodes.definitionForm.dataset.editingTarget === "private-config" &&
     nodes.definitionName.value === "private-config" && nodes.selectionPolicy.value === "target" &&
     nodes.panel.dataset.projectId === "private-project", "private_clear_temporary_dom_erased");
-  assert(!buttons[1].disabled && actions.filter(item => item !== buttons[1]).every(item => item.disabled),
-    "private_clear_temporary_action_gate");
+  assert(permitted.every(item => !item.disabled) &&
+    actions.filter(item => !permitted.includes(item)).every(item => item.disabled),
+    "private_clear_temporary_action_gate:" +
+      JSON.stringify(actions.map(item => ({tag: item.tagName, disabled: item.disabled}))));
 }
 (async function () {
   await assert.rejects(api.submit("replace_configuration"), permanent ?
     /parametric_operation_unavailable/ : /private-config-error/);
   if (permanent) await api.refresh(true);
   assert(requests === 0, "private_clear_post_shield_request");
-  console.log(JSON.stringify({permanent, state: after, requests, real_js_executed: true}));
+  console.log(JSON.stringify({permanent, state: after, requests, real_js_executed: true, queries,
+    actions: actions.map(item => ({tag: item.tagName, disabled: item.disabled}))}));
 }()).catch(error => { console.error(error.stack); process.exitCode = 1; });
 """
     write(runtime / "probe.cjs", runner.encode())
@@ -761,6 +823,40 @@ def verify_bound(report, out, *, current=True, producer_root=None):
 
 
 class Controls(unittest.TestCase):
+    def test_private_clear_selector_omission_negative(self):
+        data = (ROOT / OWNED[0]).read_bytes()
+        selector = b'panel.querySelectorAll("button, input, select")'
+        self.assertEqual(data.count(selector), 1, "selector_mutation_anchor_not_exact")
+        for replacement in (b'panel.querySelectorAll("button, select")',
+                            b'panel.querySelectorAll("input, select")',
+                            b'panel.querySelectorAll("button, input")'):
+            for temporary in (False, True):
+                tested = selector_fixture_probe(self.control_child(),
+                    data.replace(selector, replacement), temporary=temporary)
+                self.assertEqual(tested.returncode, 1,
+                    "selector_fixture_accepted_omitted_control:" + replacement.decode() +
+                    "\n" + tested.stdout.decode() + tested.stderr.decode())
+                self.assertIn("private_clear_" + ("temporary_" if temporary else "") +
+                              "action_gate", tested.stderr.decode())
+
+    def test_private_clear_unknown_selector_fail_loud(self):
+        data = (ROOT / OWNED[0]).read_bytes()
+        for original, changed, temporary in (
+            (b'panel.querySelectorAll("button, input, select")',
+             b'panel.querySelectorAll("button, input, select, textarea")', False),
+            (b'panel.querySelectorAll("[data-parametric-create]").forEach(function (button) {\n'
+             b'      button.hidden = true;',
+             b'panel.querySelectorAll("[data-parametric-create-other]").forEach(function (button) {\n'
+             b'      button.hidden = true;', False),
+            (b'definitionForm.querySelectorAll("[data-definition-v2]")',
+             b'definitionForm.querySelectorAll("[data-definition-unknown]")', True),
+        ):
+            self.assertEqual(data.count(original), 1, "unknown_selector_anchor_not_exact")
+            tested = private_clear_probe(self.control_child(),
+                data=data.replace(original, changed), temporary=temporary)
+            self.assertEqual(tested.returncode, 1)
+            self.assertIn("private_clear_unknown_selector:", tested.stderr.decode())
+
     def test_private_clear_permanent_private_state(self):
         tested = private_clear_probe(self.control_child())
         self.assertEqual(tested.returncode, 0, tested.stderr.decode())
@@ -1895,7 +1991,7 @@ def finalize_browser(record, review):
 
 
 def main(argv=None):
-    global CONTROL_RUNTIME, PRIVATE_CLEAR_BEFORE
+    global CONTROL_RUNTIME, PRIVATE_CLEAR_BEFORE, SELECTOR_FIXTURE_BEFORE
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence-dir", type=Path, required=True)
     parser.add_argument("--runtime-root", type=Path)
@@ -1906,6 +2002,8 @@ def main(argv=None):
                         help="Exact 380 Git JS counterexample, no browser; requires --selftest.")
     parser.add_argument("--private-clear-only", action="store_true",
                         help="Only permanent/temporary shield execution and mutation controls.")
+    parser.add_argument("--selector-fixture-before", action="store_true",
+                        help="Exact 22de probe on omitted-input full JS; requires --selftest.")
     parser.add_argument("--verify-evidence", type=Path)
     parser.add_argument("--verify-historical-evidence", type=Path,
                         help="Pinned c112-compatible historical producer; never rebinding old evidence.")
@@ -1938,12 +2036,15 @@ def main(argv=None):
                                                 "runner_source_mismatch"))
     record.guard("fixture_selftest_scope", lambda: require(
         (not args.integration_fixture_selftest and not args.discovery_check and
-         not args.private_clear_before and not args.private_clear_only) or args.selftest,
+         not args.private_clear_before and not args.private_clear_only and
+         not args.selector_fixture_before) or args.selftest,
         "fixture_modes_require_selftest"))
     record.guard("private_clear_scope", lambda: require(
         not ((args.private_clear_before or args.private_clear_only) and (
             args.discovery_check or args.integration_fixture_selftest)) and
-        not (args.private_clear_before and args.private_clear_only),
+        not (args.private_clear_before and args.private_clear_only) and
+        not (args.selector_fixture_before and (args.private_clear_before or args.private_clear_only or
+             args.discovery_check or args.integration_fixture_selftest)),
         "private_clear_modes_conflict"))
     before = record.capture("source_before")
     if record.report["first_cause"] is not None:
@@ -1999,13 +2100,18 @@ def main(argv=None):
     if args.selftest:
         CONTROL_RUNTIME = runtime
         PRIVATE_CLEAR_BEFORE = args.private_clear_before
+        SELECTOR_FIXTURE_BEFORE = args.selector_fixture_before
         names = sorted(unittest.defaultTestLoader.getTestCaseNames(Controls))
-        if args.private_clear_before:
+        if args.selector_fixture_before:
+            names = ["test_private_clear_selector_omission_negative"]
+        elif args.private_clear_before:
             names = ["test_private_clear_permanent_private_state"]
         elif args.private_clear_only:
             names = [name for name in names if name.startswith("test_private_clear_")]
         record.report.update(browser_executed=False, runtime_root=str(runtime),
-                             private_clear_baseline=PRIVATE_CLEAR_BASE if args.private_clear_before else None)
+                             private_clear_baseline=PRIVATE_CLEAR_BASE if args.private_clear_before else None,
+                             selector_fixture_baseline=SELECTOR_FIXTURE_BASE
+                             if args.selector_fixture_before else None)
         tested, log = None, None
         try:
             if args.discovery_check:
