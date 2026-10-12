@@ -143,13 +143,57 @@ from this repaired source, with separate original parent exit collection.
 
 For retained real-response mutants, run the HTTP script with
 `--response-controls <new real HTTP producer root> --evidence-dir <fresh 3FS root>`.
-This offline entry starts no HTTP server or kernel. It retains eight mutated
+This offline entry starts no HTTP server or kernel. It retains twelve mutated
 copies, recomputes their artifact/ledger/terminal hashes as applicable, and calls
 the actual offline reader once per case. Each reader must return original rc1
 and the named first cause for missing response fields, false hash, changed body,
 rehashed wrong project/status/actor/test and incomplete exchange set. The parent
 returns rc0 only when every intended rejection and source stability is confirmed.
-These are evidence controls, not eight additional industrial product workflows.
+The additional controls remove the terminal response and its files while
+rehashing all remaining records, swap two known test identities, select another
+logged-in actor in the same fixture, and select another recorded project's ID
+while rehashing the body. These are evidence controls, not industrial workflows.
+
+## Required Flow Closure
+
+The first `fce0884` repair remains HOLD for complete response closure: its
+continuous indices/file-set checks allowed the response list and files to shrink
+together, and membership in a known test set did not establish actual ownership.
+The retained before-red evidence is
+`/hf3fs-jd/data/tmp/opencad-definition-response-flow-before-20261012-v1/result.json`.
+At 2026-10-12 09:31:54 +08:00 the unchanged fce offline CLI returned original
+rc0/EVIDENCE_VERIFIED for both the deleted terminal 409/body/record and an
+ordinary response assigned to another known test. The counterexample parent
+returned original rc1/`response_flow_mutants_accepted`. Neither original producer
+nor prior 24/19-test and eight-control evidence is modified or upgraded.
+
+Schema 2 adds a per-test `flow_index` and the actual client's `user` slot.
+The producer's literal `HTTP_FLOW` is the required workflow source. The reader
+parses it statically, requires its test keys to equal all declared HTTP/CLI test
+methods, derives schema-refusal cases and comparison cases from the test source,
+and refuses unknown recipes. It never uses a historical HTTP count or derives
+the expected set by filtering observed rows. The actual client claims a required
+slot before each request, checking method/route/action/user/project presence and
+body-loss flag. The producer saves the expanded plan and source hash; the reader
+recomputes that same plan and requires exact equality.
+
+Required `(test, flow_index)` identities and actual responses are equal in both
+directions, with no omissions, extras or duplicates. One fixture belongs to one
+test; login replies bind each account slot across restarts, and actual actor,
+project creation and required action/status are checked for every exchange,
+including ordinary errors without geometry witnesses. Every source-required
+geometry witness binds its exact five slots. Sequential slots preserve order;
+the two measured CAS requests may complete in either order but require distinct
+request IDs, both named candidates, one success and one conflict, and placement
+before replay. This is a bounded workflow contract, not generic source execution
+analysis or protection against replacement of both source and all evidence.
+
+For the retained before-red reproduction only, use
+`--flow-controls-before <original fce real HTTP root> --evidence-dir <fresh 3FS>`.
+It invokes the original byte-checked fce reader on newly copied artifacts and
+always preserves a FAIL diagnostic. It starts no HTTP server or kernel, does not
+clean evidence, and is not an admission/retry path. New positive evidence requires
+the repaired source; a schema 1 record is not silently filled or rebound.
 
 Not accepted: UI CRUD, production, GPU performance, arbitrary UUID rebinding,
 baseline suppression editing, industrial parity or all-config BRep validity.

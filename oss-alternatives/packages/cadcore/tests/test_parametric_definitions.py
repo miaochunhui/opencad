@@ -10,6 +10,7 @@ The app definition suite reuses only this gate's helpers, not these test classes
 from __future__ import annotations
 
 import argparse
+import ast
 import copy
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
@@ -47,12 +48,12 @@ OWNED = (
 )
 MARKER = "OPENCAD_DEFINITION_ACCEPTANCE"
 CONTEXT = None
-RESPONSE_SCHEMA = 1
+RESPONSE_SCHEMA = 2
 HTTP_HEADERS = {"content-type", "content-length", "cache-control",
                 "x-content-type-options", "x-opencad-document-sha256", "x-opencad-revision"}
 HTTP_FIELDS = {"index", "test", "fixture", "at", "method", "route", "status", "bytes",
                "response_sha256", "lost_body", "project_id", "request_id", "actor",
-               "request", "headers", "body_file", "record_file"}
+               "request", "headers", "body_file", "record_file", "flow_index", "user"}
 REPAIR_PATHS = {
     "oss-alternatives/packages/cadcore/tests/test_parametric_definitions.py",
     "oss-alternatives/apps/opencad/tests/test_parametric_definition_api.py",
@@ -160,6 +161,207 @@ def definition(width="50 * mm", suppressed=True):
     return {"parameters": {"width": width}, "suppressions": {"hole_cut": suppressed}}
 
 
+def http_flow_plan(raw=None):
+    """Expand a literal source contract, never infer required exchanges from a ledger."""
+    path = APP / "tests/test_parametric_definition_api.py"
+    raw = path.read_bytes() if raw is None else raw
+    tree = ast.parse(raw)
+    declarations = [node.value for node in tree.body if isinstance(node, ast.Assign)
+                    and any(isinstance(target, ast.Name) and target.id == "HTTP_FLOW"
+                            for target in node.targets)]
+    require(len(declarations) == 1, "http_flow_source_missing")
+    recipes = ast.literal_eval(declarations[0])
+    methods = {node.name + "." + method.name: method for node in tree.body
+               if isinstance(node, ast.ClassDef) and node.name in {
+                   "DefinitionHTTPTests", "DefinitionCLITests"}
+               for method in node.body if isinstance(method, ast.FunctionDef)
+               and method.name.startswith("test_")}
+    require(isinstance(recipes, dict) and recipes and set(recipes) == set(methods),
+            "http_flow_source_test_set_mismatch")
+    plans = {}
+    for test, recipe in recipes.items():
+        steps = []
+
+        def exchange(method, route, action=None, user=0, status=200, lost=False, **extra):
+            steps.append({"method": method, "route": route, "action": action, "user": user,
+                          "status": status, "lost_body": lost,
+                          "project": route not in {"/api/auth/login", "/api/auth/logout",
+                                                  "/api/projects"}, **extra})
+
+        def login():
+            for slot in range(2):
+                exchange("POST", "/api/auth/login", user=None, login_slot=slot)
+
+        for token in recipe:
+            require(isinstance(token, tuple) and token, "http_flow_source_token")
+            name = token[0]
+            if name == "setup" and len(token) == 1:
+                login()
+                exchange("POST", "/api/projects", status=201)
+                exchange("GET", "/api/state")
+                exchange("POST", "/api/parametric", "create_configurable_plate")
+                exchange("GET", "/api/state")
+            elif name == "login" and len(token) == 1:
+                login()
+            elif name == "witness" and len(token) == 2 and isinstance(token[1], str):
+                for part, route in (("before", "/api/state"), ("definition", "/api/parametric"),
+                                    ("mesh", "/api/mesh"), ("step", "/api/step"),
+                                    ("after", "/api/state")):
+                    exchange("GET", route, witness=token[1], witness_part=part)
+            elif name == "parametric" and len(token) in {4, 5}:
+                exchange("POST", "/api/parametric", token[1], token[2], token[3],
+                         token[4] if len(token) == 5 else False)
+            elif name == "state" and len(token) == 1:
+                exchange("GET", "/api/state")
+            elif name == "command" and len(token) == 2:
+                exchange("POST", "/api/command", token[1])
+            elif name in {"save", "logout"} and len(token) == 1:
+                exchange("POST", "/api/" + ("auth/logout" if name == "logout" else name))
+            elif name == "schema-cases" and len(token) == 1:
+                declarations = [node.value for node in methods[test].body
+                                if isinstance(node, ast.Assign)
+                                and any(isinstance(target, ast.Name) and target.id == "cases"
+                                        for target in node.targets)]
+                require(len(declarations) == 1 and isinstance(declarations[0], ast.List)
+                        and declarations[0].elts, "http_flow_schema_source_unknown")
+                for case in declarations[0].elts:
+                    require(isinstance(case, ast.Tuple) and len(case.elts) == 3
+                            and isinstance(case.elts[0], ast.Dict), "http_flow_schema_source_unknown")
+                    fields = {key.value: value for key, value in
+                              zip(case.elts[0].keys, case.elts[0].values)
+                              if isinstance(key, ast.Constant)}
+                    exchange("POST", "/api/parametric", ast.literal_eval(fields["action"]),
+                             status=ast.literal_eval(case.elts[1]),
+                             error=ast.literal_eval(case.elts[2]))
+            elif name == "compare-fields" and len(token) == 1:
+                loops = [node for node in methods[test].body if isinstance(node, ast.For)]
+                require(len(loops) == 1 and isinstance(loops[0].iter, ast.Tuple)
+                        and loops[0].iter.elts, "http_flow_compare_source_unknown")
+                for item in loops[0].iter.elts:
+                    require(isinstance(item, ast.Tuple) and len(item.elts) == 2,
+                            "http_flow_compare_source_unknown")
+                    exchange("POST", "/api/parametric", "create_configuration", status=409,
+                             compare_field=ast.literal_eval(item.elts[0]))
+            elif name == "cas-pair" and len(token) == 1:
+                for slot in range(2):
+                    exchange("POST", "/api/parametric", "create_configuration", status=[200, 409],
+                             cas_slot=slot)
+            else:
+                require(False, "http_flow_source_token_unknown")
+        require(steps and all(step["user"] in (None, 0, 1) and
+                             type(step["lost_body"]) is bool for step in steps),
+                "http_flow_source_empty_or_invalid")
+        plans[test] = steps
+    return {"source_file": path.relative_to(ROOT).as_posix(), "source_sha256": digest(raw),
+            "tests": plans, "sha256": digest(canonical(plans))}
+
+
+def http_action(method, route, request):
+    if method == "POST" and route in {"/api/parametric", "/api/command"}:
+        return (request or {}).get("action" if route == "/api/parametric" else "command")
+    return None
+
+
+def claim_http_flow(method, route, request, user, project, lost):
+    context = CONTEXT
+    require(context is not None and context.active_test is not None, "http_flow_no_active_test")
+    test = ".".join(context.active_test.split(".")[-2:])
+    with context.lock:
+        if context.http_flow is None:
+            context.http_flow = http_flow_plan()
+        require(test in context.http_flow["tests"], "http_flow_unknown_test")
+        index = context.http_claims.get(test, 0)
+        expected = context.http_flow["tests"][test]
+        require(index < len(expected), "http_flow_unexpected_exchange")
+        step = expected[index]
+        require((method, route, http_action(method, route, request), user,
+                 project is not None, lost) ==
+                tuple(step[key] for key in ("method", "route", "action", "user",
+                                           "project", "lost_body")), "http_flow_request_mismatch")
+        context.http_claims[test] = index + 1
+    return index
+
+
+def verify_http_flow(report, out):
+    plan = http_flow_plan()
+    require(report.get("http_flow") == plan, "http_flow_source_binding_mismatch")
+    expected = {(test, index): step for test, steps in plan["tests"].items()
+                for index, step in enumerate(steps)}
+    actual = {}
+    fixtures = {}
+    actor_slots = {}
+    projects = {}
+    for row in report["http"]:
+        test = ".".join(row["test"].split(".")[-2:])
+        require(type(row["flow_index"]) is int and row["flow_index"] >= 0,
+                "http_flow_identity_invalid")
+        identity = (test, row["flow_index"])
+        require(identity not in actual, "http_flow_duplicate_exchange")
+        actual[identity] = row
+        require(row["fixture"] not in fixtures or fixtures[row["fixture"]] == test,
+                "http_flow_test_fixture_mismatch")
+        fixtures[row["fixture"]] = test
+    require(set(actual) == set(expected), "http_flow_exchange_set_mismatch")
+    require(set(fixtures.values()) == set(plan["tests"]) and
+            len(fixtures) == len(plan["tests"]), "http_flow_fixture_set_mismatch")
+    for identity, step in expected.items():
+        row = actual[identity]
+        require((row["method"], row["route"], http_action(row["method"], row["route"], row["request"]),
+                 row["user"], row["project_id"] is not None, row["lost_body"]) ==
+                tuple(step[key] for key in ("method", "route", "action", "user",
+                                           "project", "lost_body")), "http_flow_action_identity_mismatch")
+        require(type(row["user"]) is int if step["user"] is not None else row["user"] is None,
+                "http_flow_user_invalid")
+        require(row["status"] in step["status"] if isinstance(step["status"], list) else
+                row["status"] == step["status"], "http_flow_status_mismatch")
+        value = (_json_body((out / row["body_file"]).read_bytes())
+                 if not row["lost_body"] and row["route"] != "/api/step" else None)
+        if "login_slot" in step:
+            key = (row["fixture"], step["login_slot"])
+            require(value is not None and row["actor"] == "anonymous", "http_flow_login_mismatch")
+            actor = value["user"]["user_id"]
+            require(key not in actor_slots or actor_slots[key] == actor,
+                    "http_flow_restart_actor_mismatch")
+            actor_slots[key] = actor
+        else:
+            require(row["actor"] == actor_slots.get((row["fixture"], step["user"])),
+                    "http_flow_actor_slot_mismatch")
+        if row["route"] == "/api/projects":
+            require(row["fixture"] not in projects and value is not None,
+                    "http_flow_project_create_mismatch")
+            projects[row["fixture"]] = value["project_id"]
+        elif step["project"]:
+            require(row["project_id"] == projects.get(row["fixture"]),
+                    "http_flow_project_identity_mismatch")
+        if "error" in step:
+            require(value is not None and value.get("error") == step["error"],
+                    "http_flow_error_mismatch")
+        if "compare_field" in step:
+            require(step["compare_field"] in (row["request"] or {}),
+                    "http_flow_compare_identity_mismatch")
+    for test, steps in plan["tests"].items():
+        pair = [actual[(test, index)] for index, step in enumerate(steps) if "cas_slot" in step]
+        if pair:
+            require(sorted(row["status"] for row in pair) == [200, 409] and
+                    len({row["request_id"] for row in pair}) == len(pair) and
+                    {row["request"]["name"] for row in pair} == {"custom0", "custom1"},
+                    "http_flow_cas_pair_mismatch")
+        ordered = [actual[(test, index)]["index"] for index, step in enumerate(steps)
+                   if "cas_slot" not in step]
+        require(ordered == sorted(ordered), "http_flow_exchange_order_mismatch")
+        if pair:
+            positions = [index for index, step in enumerate(steps) if "cas_slot" in step]
+            require(actual[(test, positions[0] - 1)]["index"] <
+                    min(row["index"] for row in pair) <= max(row["index"] for row in pair) <
+                    actual[(test, positions[-1] + 1)]["index"], "http_flow_cas_order_mismatch")
+        for label in {step["witness"] for step in steps if "witness" in step}:
+            indices = {step["witness_part"]: actual[(test, index)]["index"]
+                       for index, step in enumerate(steps) if step.get("witness") == label}
+            measurements = [item for item in report["measurements"] if item["label"] == label]
+            require(len(measurements) == 1 and measurements[0]["http_indices"] == indices,
+                    "http_flow_measurement_identity_mismatch")
+
+
 class Context:
     def __init__(self, out, runtime):
         self.out, self.runtime = out, runtime
@@ -167,6 +369,8 @@ class Context:
         self.secrets = []
         self.lock = threading.Lock()
         self.active_test = None
+        self.http_flow = None
+        self.http_claims = {}
 
     def child(self, label):
         path = self.runtime / (label + "-" + uuid4().hex[:8])
@@ -332,7 +536,7 @@ def verify_report(report, out, *, current=True, contract=None):
 
 def verify_execution(report, out):
     if report["label"] == "http-definition" and report["mode"] == "real":
-        require(len(report["http"]) >= 80 and all(row["method"] in {"GET", "POST"} and
+        require(report["http"] and all(row["method"] in {"GET", "POST"} and
                 row["route"].startswith("/api/") and row["fixture"].startswith(report["runtime_root"] + "/")
                 for row in report["http"]), "http_ledger_incomplete")
         require(not any(row["route"] == "/api/open" for row in report["http"]), "open_rebuild_forbidden")
@@ -509,6 +713,8 @@ def verify_http_responses(report, out):
     actual = {path.relative_to(out).as_posix() for path in (out / "responses").rglob("*")
               if path.is_file()}
     require(actual == expected_files, "http_response_set_mismatch")
+    if report.get("label") == "http-definition" and report.get("mode") == "real":
+        verify_http_flow(report, out)
     witnessed = set()
     for measurement in report["measurements"]:
         indices = measurement.get("http_indices")
@@ -550,6 +756,7 @@ def run_gate(classes, *, label, argv=None, minimum_measurements=1):
     parser.add_argument("--controls-only", action="store_true")
     parser.add_argument("--verify-evidence", type=Path)
     parser.add_argument("--response-controls", type=Path)
+    parser.add_argument("--flow-controls-before", type=Path)
     args = parser.parse_args(argv)
     def names(items):
         return sorted(cls.__name__ + "." + name for cls in items
@@ -559,6 +766,8 @@ def run_gate(classes, *, label, argv=None, minimum_measurements=1):
     out = args.evidence_dir.resolve()
     require(out.is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()), "external_evidence_required")
     out.mkdir(parents=True, exist_ok=False)
+    if args.flow_controls_before:
+        return run_flow_before(args.flow_controls_before.resolve(), out)
     if args.response_controls:
         return run_response_controls(args.response_controls.resolve(), out, contract)
     if args.verify_evidence:
@@ -625,6 +834,8 @@ def run_gate(classes, *, label, argv=None, minimum_measurements=1):
               "runtime_root": str(runtime), "runtime_filesystem": filesystem,
               "production_operations": False, **ledger}
     report["response_schema"] = RESPONSE_SCHEMA
+    if label == "http-definition" and not args.controls_only:
+        report["http_flow"] = http_flow_plan()
     report["artifacts"] = {}
     for path in out.rglob("*"):
         if path.is_file():
@@ -654,6 +865,83 @@ def run_gate(classes, *, label, argv=None, minimum_measurements=1):
     return report["intended_rc"]
 
 
+def run_flow_before(original, out):
+    """Exercise both newly reported holes against the unchanged fce reader."""
+    outcomes = []
+    started = now()
+    try:
+        report = json.loads((original / "result.json").read_bytes())
+        frozen = Path(report["source_after"]["root"])
+        require(report["source_after"]["head"] ==
+                "fce0884f69873af8d1c1973714a18087bead2e96", "before_reader_not_fce")
+        reader = frozen / "oss-alternatives/apps/opencad/tests/test_parametric_definition_api.py"
+        for name, item in report["source_after"]["files"].items():
+            require(digest((frozen / name).read_bytes()) == item["sha256"],
+                    "before_source_changed")
+        original_hash = digest((original / "result.json").read_bytes())
+        for case in ("tail-delete", "known-test-swap"):
+            mutant = out / case
+            mutant.mkdir()
+            changed = copy.deepcopy(report)
+            row = (changed["http"][-1] if case == "tail-delete" else
+                   next(row for row in changed["http"] if row["route"] == "/api/state"))
+            omitted = {row["body_file"], row["record_file"]} if case == "tail-delete" else set()
+            for path in original.rglob("*"):
+                name = path.relative_to(original).as_posix()
+                if path.is_file() and name not in omitted and name not in {
+                        "result.json", "terminal-candidate.json", "completion.log", "ledger.json"}:
+                    destination = mutant / name
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    write(destination, path.read_bytes())
+            if case == "tail-delete":
+                changed["http"].pop()
+            else:
+                row["test"] = next(item["test"] for item in changed["events"]
+                                   if ".DefinitionHTTPTests." in item["test"] and
+                                   item["test"] != row["test"])
+                with (mutant / row["record_file"]).open("wb") as handle:
+                    handle.write(canonical(row))
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            write(mutant / "ledger.json", {
+                key: changed[key] for key in ("events", "measurements", "http", "cli", "actors")})
+            changed["artifacts"] = {
+                path.relative_to(mutant).as_posix(): {
+                    "sha256": digest(path.read_bytes()), "bytes": path.stat().st_size}
+                for path in mutant.rglob("*") if path.is_file()}
+            write(mutant / "result.json", changed)
+            write(mutant / "terminal-candidate.json", changed)
+            write(mutant / "completion.log",
+                  f"{MARKER} verdict=PASS tests={changed['tests']} rc=0\n".encode())
+            destination = out / (case + "-reader")
+            argv = [sys.executable, "-B", str(reader), "--verify-evidence", str(mutant),
+                    "--evidence-dir", str(destination)]
+            process = subprocess.run(argv, cwd=frozen, capture_output=True, check=False)
+            write(out / (case + ".stdout.log"), process.stdout)
+            write(out / (case + ".stderr.log"), process.stderr)
+            result = json.loads((destination / "result.json").read_bytes())
+            outcomes.append({"case": case, "argv": argv, "actual_rc": process.returncode,
+                             "verdict": result["verdict"], "first_cause": result["first_cause"],
+                             "reader_result": str(destination / "result.json"),
+                             "reader_result_sha256": digest((destination / "result.json").read_bytes())})
+        require(digest((original / "result.json").read_bytes()) == original_hash,
+                "original_evidence_drift")
+        result = {"verdict": "FAIL", "intended_rc": 1, "started_at": started, "finished_at": now(),
+                  "first_cause": "response_flow_mutants_accepted",
+                  "outcomes": outcomes, "original_result_sha256": original_hash,
+                  "reader_source": report["source_after"], "runner_source": source(),
+                  "scope": "BEFORE_RED; retained copies, unchanged fce offline CLI"}
+        require(all(row["actual_rc"] == 0 and row["verdict"] == "EVIDENCE_VERIFIED"
+                    for row in outcomes), "before_counterexample_not_reproduced")
+    except Exception:
+        result = {"verdict": "FAIL", "intended_rc": 1, "finished_at": now(),
+                  "outcomes": outcomes, "first_cause": traceback.format_exc()}
+    write(out / "result.json", result)
+    write(out / "completion.log", b"OPENCAD_FLOW_BEFORE verdict=FAIL rc=1\n")
+    print("OPENCAD_FLOW_BEFORE verdict=FAIL rc=1 evidence=" + str(out), flush=True)
+    return 1
+
+
 def run_response_controls(original, out, contract):
     """Retain real producer mutants and call the actual offline reader once each."""
     started = now()
@@ -669,23 +957,30 @@ def run_response_controls(original, out, contract):
                       row["status"] == 200)
         cases = ("missing-field", "fake-hash", "changed-body", "rehashed-wrong-project",
                  "rehashed-wrong-status", "rehashed-wrong-actor", "rehashed-wrong-test",
-                 "missing-exchange")
+                 "missing-exchange", "tail-delete", "known-test-swap", "known-actor-swap",
+                 "known-project-swap")
         causes = ("http_response_fields_missing", "http_response_hash_mismatch",
                   "http_response_hash_mismatch", "http_project_identity_mismatch",
                   "http_status_body_mismatch", "http_actor_identity_mismatch",
-                  "http_test_identity_mismatch", "http_exchange_set_mismatch")
+                  "http_test_identity_mismatch", "http_exchange_set_mismatch",
+                  "http_flow_exchange_set_mismatch", "http_flow_test_fixture_mismatch",
+                  "http_flow_actor_slot_mismatch", "http_project_origin_missing")
         for name, expected in zip(cases, causes):
             mutant = out / name
             mutant.mkdir()
             changed = copy.deepcopy(report)
+            if name == "known-actor-swap":
+                row = next(item for item in changed["http"] if item["status"] == 403)
+            else:
+                row = changed["http"][-1] if name == "tail-delete" else changed["http"][target]
+            omitted = {row["body_file"], row["record_file"]} if name == "tail-delete" else set()
             # New copies only. Original producer evidence is never modified.
             for path in original.rglob("*"):
-                if path.is_file() and path.name not in {
+                if path.is_file() and path.relative_to(original).as_posix() not in omitted and path.name not in {
                         "result.json", "terminal-candidate.json", "completion.log", "ledger.json"}:
                     destination = mutant / path.relative_to(original)
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     write(destination, path.read_bytes())
-            row = changed["http"][target]
             if name == "missing-field":
                 del row["response_sha256"]
             elif name == "fake-hash":
@@ -707,9 +1002,38 @@ def run_response_controls(original, out, contract):
                 row["actor"] = "unobserved-actor"
             elif name == "rehashed-wrong-test":
                 row["test"] = "Other.test_unobserved"
-            else:
+            elif name == "missing-exchange":
                 del changed["http"][target]
-            if name != "missing-exchange":
+            elif name == "tail-delete":
+                changed["http"].pop()
+            elif name == "known-test-swap":
+                other = next(item for item in changed["http"] if item["route"] == row["route"]
+                             and item["test"] != row["test"] and item["status"] == row["status"])
+                row["test"], other["test"] = other["test"], row["test"]
+                with (mutant / other["record_file"]).open("wb") as handle:
+                    handle.write(canonical(other))
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            elif name == "known-actor-swap":
+                require(row["status"] >= 400, "actor_control_requires_refusal")
+                row["actor"] = next(item["actor"] for item in changed["http"]
+                                    if item["fixture"] == row["fixture"] and item["actor"] not in {
+                                        row["actor"], "anonymous"})
+            elif name == "known-project-swap":
+                other = next(item for item in changed["http"] if item["route"] == "/api/projects"
+                             and item["fixture"] != row["fixture"])
+                value = _json_body((mutant / other["body_file"]).read_bytes())
+                row["project_id"] = value["project_id"]
+                body = _json_body((mutant / row["body_file"]).read_bytes())
+                body["project_id"] = row["project_id"]
+                raw = canonical(body)
+                with (mutant / row["body_file"]).open("wb") as handle:
+                    handle.write(raw)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                row["bytes"], row["response_sha256"] = len(raw), digest(raw)
+                row["headers"]["content-length"] = str(len(raw))
+            if name not in {"missing-exchange", "tail-delete"}:
                 with (mutant / row["record_file"]).open("wb") as handle:
                     handle.write((json.dumps(row, indent=2, sort_keys=True) + "\n").encode())
                     handle.flush()
@@ -754,6 +1078,103 @@ def run_response_controls(original, out, contract):
 
 
 class GateControls(unittest.TestCase):
+    def flow_fixture(self):
+        ensure_context()
+        out = CONTEXT.out / ("flow-controls-" + uuid4().hex)
+        (out / "responses").mkdir(parents=True)
+        plan = http_flow_plan()
+        rows, measurements = [], {}
+        for test, steps in plan["tests"].items():
+            fixture = "/data/tmp/flow/" + test
+            for index, step in enumerate(steps):
+                position = len(rows)
+                request = {}
+                if step["action"] is not None:
+                    request["command" if step["route"] == "/api/command" else "action"] = step["action"]
+                if "compare_field" in step:
+                    request[step["compare_field"]] = "synthetic"
+                if "cas_slot" in step:
+                    request["name"] = "custom" + str(step["cas_slot"])
+                value = {"ok": True, "project_id": test, "user": {
+                    "user_id": test + "-" + str(step.get("login_slot", 0))},
+                    "error": step.get("error")}
+                status = (step["status"][step["cas_slot"]] if isinstance(step["status"], list)
+                          else step["status"])
+                row = {"index": position, "test": "fixture." + test, "flow_index": index,
+                       "fixture": fixture, "method": step["method"], "route": step["route"],
+                       "request": request, "user": step["user"], "status": status,
+                       "lost_body": step["lost_body"], "project_id": test if step["project"] else None,
+                       "actor": "anonymous" if step["user"] is None else test + "-" + str(step["user"]),
+                       "request_id": test + "-" + str(index), "body_file": f"responses/{position:04d}.body"}
+                write(out / row["body_file"], canonical(value))
+                rows.append(row)
+                if "witness" in step:
+                    measurement = measurements.setdefault(step["witness"], {
+                        "label": step["witness"], "http_indices": {}})
+                    measurement["http_indices"][step["witness_part"]] = position
+        return {"http_flow": plan, "http": rows, "measurements": list(measurements.values())}, out
+
+    def test_flow_source_complete_actions_and_identity_negatives(self):
+        report, out = self.flow_fixture()
+        verify_http_flow(report, out)
+        for name, mutate, cause in (
+                ("tail", lambda r: r["http"].pop(), "http_flow_exchange_set_mismatch"),
+                ("plan", lambda r: r["http_flow"]["tests"].pop(next(iter(r["http_flow"]["tests"]))),
+                 "http_flow_source_binding_mismatch"),
+                ("actor", lambda r: next(row for row in r["http"] if row["route"] == "/api/state"
+                                         ).update(actor="other"), "http_flow_actor_slot_mismatch"),
+                ("action", lambda r: next(row for row in r["http"] if row["route"] == "/api/command"
+                                          )["request"].update(command="other"),
+                 "http_flow_action_identity_mismatch"),
+                ("duplicate", lambda r: r["http"].append(copy.deepcopy(r["http"][-1])),
+                 "http_flow_duplicate_exchange")):
+            with self.subTest(name=name):
+                changed = copy.deepcopy(report)
+                mutate(changed)
+                with self.assertRaisesRegex(AssertionError, cause):
+                    verify_http_flow(changed, out)
+        changed = copy.deepcopy(report)
+        row = next(row for row in changed["http"] if row["route"] == "/api/state")
+        other = next(item for item in changed["http"] if item["route"] == row["route"]
+                     and item["test"] != row["test"])
+        row["test"], other["test"] = other["test"], row["test"]
+        with self.assertRaisesRegex(AssertionError, "http_flow_test_fixture_mismatch"):
+            verify_http_flow(changed, out)
+
+    def test_flow_actual_claims_follow_source_without_count_threshold(self):
+        plan = http_flow_plan()
+        test, steps = next(iter(plan["tests"].items()))
+        context = Context(CONTEXT.out, CONTEXT.runtime)
+        context.active_test = "fixture." + test
+        with patch(__name__ + ".CONTEXT", context):
+            self.assertEqual(claim_http_flow("POST", "/api/auth/login", {}, None, None, False), 0)
+            with self.assertRaisesRegex(AssertionError, "http_flow_request_mismatch"):
+                claim_http_flow("GET", "/api/state", None, 0, "project", False)
+            self.assertEqual(context.http_claims[test], 1)
+        self.assertTrue(all(steps for steps in plan["tests"].values()))
+
+    def test_flow_static_test_set_and_unknown_recipe_rejected(self):
+        raw = (APP / "tests/test_parametric_definition_api.py").read_bytes()
+        changed = raw.replace(b'("cas-pair",)', b'("unknown-operation",)', 1)
+        self.assertNotEqual(changed, raw)
+        with self.assertRaisesRegex(AssertionError, "http_flow_source_token_unknown"):
+            http_flow_plan(changed)
+        changed = raw.replace(b"    def test_candidate_measured_once_and_final_cas(self):",
+                              b"    def test_unlisted_candidate(self):", 1)
+        self.assertNotEqual(changed, raw)
+        with self.assertRaisesRegex(AssertionError, "http_flow_source_test_set_mismatch"):
+            http_flow_plan(changed)
+        report, out = self.flow_fixture()
+        test, steps = next((test, steps) for test, steps in report["http_flow"]["tests"].items()
+                           if any("cas_slot" in step for step in steps))
+        pair = [row for row in report["http"] if row["test"].endswith(test) and
+                "cas_slot" in steps[row["flow_index"]]]
+        pair[0]["index"], pair[1]["index"] = pair[1]["index"], pair[0]["index"]
+        verify_http_flow(report, out)
+        pair[1]["status"] = pair[0]["status"]
+        with self.assertRaisesRegex(AssertionError, "http_flow_cas_pair_mismatch"):
+            verify_http_flow(report, out)
+
     def valid(self):
         return {"verdict": "PASS", "intended_rc": 0, "first_cause": None,
                 "source_before": {"head": "a"}, "source_after": {"head": "a"}, "source_drift": [],
@@ -892,7 +1313,8 @@ class GateControls(unittest.TestCase):
                "actor": "synthetic-user", "request": {"request_id": "synthetic-request"},
                "headers": {"content-type": "application/json", "content-length": str(len(body)),
                            "cache-control": "no-store", "x-content-type-options": "nosniff"},
-               "body_file": "responses/0000.body", "record_file": "responses/0000.json"}
+               "body_file": "responses/0000.body", "record_file": "responses/0000.json",
+               "flow_index": 0, "user": 0}
         row.update(row_changes or {})
         write(out / "responses/0000.body", body)
         write(out / "responses/0000.json", row)
@@ -964,7 +1386,8 @@ class GateControls(unittest.TestCase):
                 "headers": {"content-type": "application/json", "content-length": str(len(raw)),
                             "cache-control": "no-store", "x-content-type-options": "nosniff"},
                 "body_file": f"responses/{index:04d}.body",
-                "record_file": f"responses/{index:04d}.json"})
+                "record_file": f"responses/{index:04d}.json",
+                "flow_index": index, "user": None if index == 0 else 0})
         report = {"response_schema": RESPONSE_SCHEMA, "runtime_root": "/data/tmp/x",
                   "http": rows, "events": [{"test": "Synthetic.test_response"}], "measurements": []}
         if mutation is not None:

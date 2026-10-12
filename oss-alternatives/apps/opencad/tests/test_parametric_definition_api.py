@@ -93,6 +93,52 @@ from secure_web import build_server
 
 BASE_VOLUME = (800 - math.pi * 16) * 8
 
+# Declarative exchange contract. The gate parses this literal without importing
+# the producer; actual requests must claim and fulfill each source-defined slot.
+HTTP_FLOW = {
+    "DefinitionCLITests.test_real_cli_crud_lossresponse_save_undo_redo_restart": [
+        ("setup",), ("witness", "http-base"),
+        ("parametric", "create_configuration", 0, 200, True),
+        ("parametric", "create_configuration", 0, 200),
+        ("login",), ("parametric", "create_configuration", 0, 200),
+        ("witness", "http-create-restart"),
+        ("parametric", "replace_configuration", 0, 200), ("witness", "http-replace"),
+        ("parametric", "set_suppressions", 0, 200), ("witness", "http-unsuppress"),
+        ("state",), ("command", "undo"), ("witness", "http-undo"),
+        ("state",), ("command", "redo"), ("witness", "http-redo"),
+        ("state",), ("save",), ("state",), ("login",), ("witness", "http-save-restart"),
+        ("parametric", "delete_configuration", 0, 200), ("witness", "http-delete"),
+        ("parametric", "delete_configuration", 1, 403), ("logout",),
+        ("parametric", "delete_configuration", 0, 401),
+    ],
+    "DefinitionHTTPTests.test_action_schema_boolean_parameter_and_active_delete_rejections": [
+        ("setup",), ("schema-cases",), ("parametric", "rebuild", 0, 200),
+        ("state",), ("parametric", "delete_configuration", 0, 422),
+    ],
+    "DefinitionHTTPTests.test_candidate_measured_once_and_final_cas": [
+        ("setup",), ("parametric", "create_configuration", 0, 200),
+    ],
+    "DefinitionHTTPTests.test_owner_and_three_exact_compare_fields": [
+        ("setup",), ("parametric", "create_configuration", 1, 403), ("compare-fields",),
+    ],
+    "DefinitionHTTPTests.test_two_measured_candidates_one_cas_receipt": [
+        ("setup",), ("cas-pair",), ("parametric", "create_configuration", 0, 200),
+        ("parametric", "create_configuration", 0, 409),
+    ],
+    "DefinitionHTTPTests.test_prior_revocation_prevents_candidate_receipt": [
+        ("setup",), ("parametric", "create_configuration", 0, 401),
+    ],
+    "DefinitionHTTPTests.test_guard_wins_revoke_busy_then_receipt_replay_rechecks_live_session": [
+        ("setup",), ("parametric", "create_configuration", 0, 200),
+        ("parametric", "create_configuration", 0, 401),
+    ],
+    "DefinitionHTTPTests.test_step_failure_and_real_sqlite_receipt_abort_are_atomic": [
+        ("setup",), ("parametric", "create_configuration", 0, 503),
+        ("parametric", "create_configuration", 0, 503),
+        ("parametric", "create_configuration", 0, 200),
+    ],
+}
+
 
 def process_identity(process, argv):
     gate.require(process.poll() is None, "cli_exited_before_observation")
@@ -119,6 +165,7 @@ class Client:
         self.last_index = None
 
     def call(self, method, route, body=None, *, user=0, project=None, lose_response=False):
+        flow_index = gate.claim_http_flow(method, route, body, user, project, lose_response)
         headers = {"Origin": self.origin, "X-OpenCAD-Request": "1"}
         if body is not None:
             headers["Content-Type"] = "application/json"
@@ -146,7 +193,8 @@ class Client:
                    "actor": "anonymous" if user is None else self.actors[user],
                    "request": ({"username": body["username"], "password_omitted": True}
                                if route == "/api/auth/login" else copy.deepcopy(body)),
-                   "headers": retained_headers, "test": gate.CONTEXT.active_test}
+                   "headers": retained_headers, "test": gate.CONTEXT.active_test,
+                   "flow_index": flow_index, "user": user}
             with gate.CONTEXT.lock:
                 index = len(gate.CONTEXT.http)
                 row.update(index=index, body_file=f"responses/{index:04d}.body",
@@ -237,6 +285,7 @@ class Client:
 class DefinitionHTTPTests(unittest.TestCase):
     def setUp(self):
         gate.ensure_context()
+        gate.CONTEXT.active_test = self.id()
         self.root = gate.CONTEXT.child("http")
         self.auth = AuthController(self.root / "accounts", allow_registration=True)
         self.names = ["definition_" + uuid4().hex for _ in range(2)]
@@ -462,6 +511,7 @@ class DefinitionHTTPTests(unittest.TestCase):
 class DefinitionCLITests(unittest.TestCase):
     def setUp(self):
         gate.ensure_context()
+        gate.CONTEXT.active_test = self.id()
         self.root = gate.CONTEXT.child("cli")
         self.names = ["definition_" + uuid4().hex for _ in range(2)]
         self.passwords = [uuid4().hex for _ in self.names]
