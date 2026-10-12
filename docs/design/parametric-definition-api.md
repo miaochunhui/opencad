@@ -249,3 +249,28 @@ both source and evidence.
 sudo -n -u infra python3 -B /data/dev/wt-opencad-definition-source-binding-20261012/oss-alternatives/packages/cadcore/tests/test_parametric_definitions.py --source-binding-controls --evidence-dir /hf3fs-jd/data/tmp/opencad-definition-source-binding-controls-20261012-next
 sudo -n -u infra python3 -B /data/dev/wt-opencad-definition-source-binding-20261012/oss-alternatives/packages/cadcore/tests/test_parametric_definitions.py --source-preflight --expect-head FULL_COMMIT --evidence-dir /hf3fs-jd/data/tmp/opencad-definition-source-binding-preflight-20261012-next
 ```
+
+### Root Git Metadata Boundary
+
+The original b263 nested-Git CLI counterexample remains immutable at
+`/hf3fs-jd/data/tmp/opencad-definition-source-binding-anscombe-review-20261012-v1/independent-nested-git-negative/`.
+At 10:44:49 Asia/Shanghai the source-only CLI returned rc 0/SOURCE_VERIFIED
+with 404 files despite extra ignored `__pycache__/nested-source-negative/.git`.
+This is a source-ruler failure, not accepted integrated product evidence.
+
+Only the source root's `.git` directory (ordinary repository) or pointer file
+(worktree) is excluded. A nested `.git` directory, file or symlink fails with
+`nested_git_metadata` before exclusion, even when Git status ignores it.
+`--nested-git-before` runs the immutable b263 child CLI on fresh isolated
+fixtures and returns FAIL/rc 1 when its three false-success cases reproduce.
+`--nested-git-controls` uses committed repair snapshots, records the two root
+positives and three expected child rc 1 refusals, and never deletes fixtures.
+It does not modify b263, production, parent acceptance or Git hooks.
+
+The original 20 source controls remain. Adding `--source-http-discovery` to
+`--source-binding-controls` requests one further normal HTTP-file discovery
+under the actual guarded, same-source parent, after normal core-file discovery.
+This uses new local generated accounts, SQLite files and loopback HTTP only;
+it is not full all or inherited acceptance of a different source. The actual
+HTTP request count is not collected by this discovery entry and is null, not
+reported as zero.

@@ -102,7 +102,7 @@ def fixture_command(argv, out, *, env=None):
     return process
 
 
-def source_fixture(out, *, current=False):
+def source_fixture(out, *, current=False, revision=FLOW_BASE):
     root = out / "source"
     commands = out / "commands"
     commands.mkdir()
@@ -110,7 +110,7 @@ def source_fixture(out, *, current=False):
     prefix = ["git", "--no-optional-locks", "--no-replace-objects"]
     for argv in (
             [*prefix, "init", str(root)],
-            [*prefix, "-C", str(root), "fetch", "--no-tags", str(ROOT), FLOW_BASE],
+            [*prefix, "-C", str(root), "fetch", "--no-tags", str(ROOT), revision],
             [*prefix, "-C", str(root), "switch", "--create", "fixture", "FETCH_HEAD"]):
         result = fixture_command(argv, commands, env=env)
         require(result.returncode == 0, "source_fixture_git_failed")
@@ -120,6 +120,76 @@ def source_fixture(out, *, current=False):
             path.write_bytes((ROOT / name).read_bytes())
         fixture_commit(root, commands, sorted(REPAIR_PATHS), "Source binding test snapshot")
     return root, commands
+
+
+def run_nested_git_controls(out, *, before=False):
+    """Retain real nested metadata fixtures and every child CLI exit."""
+    revision = "b2636df4c0b70c7d311e0e8bfc067a0d488aa31d"
+    root, commands = source_fixture(out, current=not before, revision=revision)
+    outcomes = []
+
+    def check(name, source_root, expected):
+        evidence = out / name
+        child = fixture_command([
+            sys.executable, "-B", str(source_root / REPAIR_CORE), "--source-preflight",
+            "--evidence-dir", str(evidence)], commands)
+        report = json.loads((evidence / "result.json").read_bytes())
+        passed = child.returncode == report["intended_rc"] == expected
+        passed = passed and (report["verdict"] == "SOURCE_VERIFIED" if expected == 0 else
+                            report["verdict"] == "FAIL" and
+                            "nested_git_metadata" in report["first_cause"])
+        outcomes.append({"case": name, "actual_rc": child.returncode, "pass": passed,
+                         "source_root": str(source_root), "first_cause": report["first_cause"],
+                         "result": str(evidence / "result.json"),
+                         "result_sha256": digest((evidence / "result.json").read_bytes())})
+        require(passed, "nested_git_control_failed:" + name)
+
+    try:
+        require((root / ".git").is_dir(), "ordinary_repo_fixture_required")
+        check("root-git-directory", root, 0)
+        for name in ("root-git-worktree", "nested-directory", "nested-file", "nested-symlink"):
+            worktree = out / (name + "-source")
+            child = fixture_command([
+                "git", "-C", str(root), "worktree", "add", "--detach", str(worktree), "HEAD"],
+                commands)
+            require(child.returncode == 0 and (worktree / ".git").is_file(),
+                    "root_git_worktree_fixture_required")
+            if name != "root-git-worktree":
+                nested = worktree / "__pycache__/nested-source-negative"
+                nested.mkdir(parents=True)
+                metadata = nested / ".git"
+                if name == "nested-directory":
+                    child = fixture_command(["git", "init", str(nested)], commands)
+                    require(child.returncode == 0 and metadata.is_dir(),
+                            "nested_git_directory_fixture_required")
+                elif name == "nested-file":
+                    write(metadata, b"gitdir: ../../.git\n")
+                    require(metadata.is_file(), "nested_git_file_fixture_required")
+                else:
+                    metadata.symlink_to(root / ".git", target_is_directory=True)
+                    require(metadata.is_symlink(), "nested_git_symlink_fixture_required")
+                require(not local_git(worktree, "status", "--porcelain=v1",
+                                      "--untracked-files=all"), "negative_must_be_git_ignored")
+            check(name, worktree, 0 if before or name == "root-git-worktree" else 1)
+        first = None
+    except Exception:
+        first = traceback.format_exc()
+        write(out / "failure.log", first.encode())
+    passed = first is None and len(outcomes) == 5 and all(row["pass"] for row in outcomes)
+    rc = 1 if before or not passed else 0
+    result = {"verdict": "FAIL" if rc else "PASS", "intended_rc": rc,
+              "regression_reproduced": passed if before else None,
+              "controls": len(outcomes), "outcomes": outcomes,
+              "first_cause": first or ("nested_git_metadata_omitted" if before else None),
+              "finished_at": now(), "original_reader_commit": revision if before else None,
+              "runner_head": local_git(ROOT, "rev-parse", "HEAD").decode().strip(),
+              "runner_status": local_git(ROOT, "status", "--porcelain=v1").decode(),
+              "scope": "source-only isolated Git/CLI controls; no fixture cleanup"}
+    write(out / "result.json", result)
+    marker = f"OPENCAD_NESTED_GIT_CONTROLS verdict={result['verdict']} rc={rc}\n"
+    write(out / "completion.log", marker.encode())
+    print(marker.strip() + " evidence=" + str(out), flush=True)
+    return rc
 
 
 def fixture_commit(root, commands, paths, message):
@@ -295,6 +365,8 @@ def source_manifest(root, *, scope="integration", expected_head=None):
             "source_dirty")
     files = {}
     for directory, dirs, names in os.walk(root, followlinks=False):
+        require(Path(directory) == root or ".git" not in (*dirs, *names),
+                "nested_git_metadata:" + str(Path(directory).relative_to(root)))
         dirs[:] = sorted(name for name in dirs if name != ".git")
         require(all(not (Path(directory) / name).is_symlink() for name in dirs),
                 "linked_source_directory")
@@ -364,7 +436,7 @@ def run_source_preflight(out):
 PREFLIGHT_RUNTIME = None
 
 
-def run_source_controls(out):
+def run_source_controls(out, *, http_discovery=False):
     """Use only this run's new local Git fixtures and actual child CLIs."""
     root, commands = source_fixture(out, current=True)
     core = root / REPAIR_CORE
@@ -520,6 +592,27 @@ def run_source_controls(out):
                          "counts": summaries[0] if len(summaries) == 1 else None,
                          "runtime": str(runtime), "evidence": str(external)})
         require(passed, "source_control_failed:actual-parent-full-core-file-discovery")
+        if http_discovery:
+            runtime = Path("/data/tmp") / ("oc-dsb-httpdis-" + uuid4().hex[:12])
+            runtime.mkdir()
+            external = out / "http-discovery"
+            external.mkdir()
+            env = dict(os.environ, OPENCAD_EVIDENCE_ROOT=str(external),
+                       OPENCAD_TEST_RUNTIME_ROOT=str(runtime), TMPDIR=str(runtime))
+            child = fixture_command([
+                sys.executable, "-B", str(root / parent_name), "--suite",
+                str(root / "oss-alternatives/apps/opencad/tests"), "--top",
+                str(root / "oss-alternatives/apps/opencad"), "--pattern",
+                "test_parametric_definition_api.py"], commands, env=env)
+            summaries = [json.loads(line.removeprefix("INDEPENDENT_TEST_COUNTS "))
+                         for line in child.stdout.decode().splitlines()
+                         if line.startswith("INDEPENDENT_TEST_COUNTS ")]
+            passed = child.returncode == 0 and len(summaries) == 1 and summaries[0]["successful"]
+            outcomes.append({"case": "actual-parent-full-http-file-discovery",
+                             "actual_rc": child.returncode, "pass": passed,
+                             "counts": summaries[0] if len(summaries) == 1 else None,
+                             "runtime": str(runtime), "evidence": str(external)})
+            require(passed, "source_control_failed:actual-parent-full-http-file-discovery")
         require(runner_snapshot() == source_base, "source_control_runner_drift")
         first = None
     except Exception:
@@ -529,8 +622,8 @@ def run_source_controls(out):
     report = {"verdict": "PASS" if passed else "FAIL", "intended_rc": 0 if passed else 1,
               "controls": len(outcomes), "outcomes": outcomes, "first_cause": first,
               "runner_source": source_base, "fixture_root": str(root), "finished_at": now(),
-              "http_requests": 0,
-              "scope": "actual Git/CLI source gates and targeted core discovery; not full all"}
+              "http_requests": None if http_discovery else 0,
+              "scope": "actual Git/CLI source gates and requested file discovery; not full all"}
     write(out / "result.json", report)
     marker = f"OPENCAD_SOURCE_CONTROLS verdict={report['verdict']} rc={report['intended_rc']}\n"
     write(out / "completion.log", marker.encode())
@@ -1159,6 +1252,9 @@ def run_gate(classes, *, label, argv=None, minimum_measurements=1):
     parser.add_argument("--flow-controls-before", type=Path)
     parser.add_argument("--source-binding-before", action="store_true")
     parser.add_argument("--source-binding-controls", action="store_true")
+    parser.add_argument("--source-http-discovery", action="store_true")
+    parser.add_argument("--nested-git-before", action="store_true")
+    parser.add_argument("--nested-git-controls", action="store_true")
     parser.add_argument("--source-preflight", action="store_true")
     parser.add_argument("--source-scope", choices=("integration", "repair-owner"), default="integration")
     parser.add_argument("--expect-head")
@@ -1175,10 +1271,14 @@ def run_gate(classes, *, label, argv=None, minimum_measurements=1):
     out = args.evidence_dir.resolve()
     require(out.is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()), "external_evidence_required")
     out.mkdir(parents=True, exist_ok=False)
+    if args.nested_git_before or args.nested_git_controls:
+        require(not (args.nested_git_before and args.nested_git_controls),
+                "exclusive_nested_git_mode_required")
+        return run_nested_git_controls(out, before=args.nested_git_before)
     if args.source_binding_before:
         return run_source_before(out)
     if args.source_binding_controls:
-        return run_source_controls(out)
+        return run_source_controls(out, http_discovery=args.source_http_discovery)
     if args.source_preflight:
         return run_source_preflight(out)
     if args.flow_controls_before:
