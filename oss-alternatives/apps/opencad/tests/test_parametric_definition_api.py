@@ -115,6 +115,8 @@ class Client:
         self.origin = "http://127.0.0.1:" + str(port)
         self.fixture = str(fixture)
         self.cookies = []
+        self.actors = []
+        self.last_index = None
 
     def call(self, method, route, body=None, *, user=0, project=None, lose_response=False):
         headers = {"Origin": self.origin, "X-OpenCAD-Request": "1"}
@@ -130,14 +132,34 @@ class Client:
                                headers=headers)
             response = connection.getresponse()
             response_headers = dict(response.getheaders())
+            retained_headers = {}
+            for name, value in response.getheaders():
+                key = name.lower()
+                if key in gate.HTTP_HEADERS:
+                    gate.require(key not in retained_headers, "duplicate_response_header")
+                    retained_headers[key] = value
             raw = b"" if lose_response else response.read()
             row = {"fixture": self.fixture, "at": gate.now(), "method": method, "route": route,
                    "status": response.status, "bytes": len(raw),
-                   "response_sha256": None if route.startswith("/api/auth/") or lose_response
-                   else gate.digest(raw), "lost_body": lose_response,
-                   "project_id": project, "request_id": None if body is None else body.get("request_id")}
+                   "response_sha256": gate.digest(raw), "lost_body": lose_response,
+                   "project_id": project, "request_id": None if body is None else body.get("request_id"),
+                   "actor": "anonymous" if user is None else self.actors[user],
+                   "request": ({"username": body["username"], "password_omitted": True}
+                               if route == "/api/auth/login" else copy.deepcopy(body)),
+                   "headers": retained_headers, "test": gate.CONTEXT.active_test}
             with gate.CONTEXT.lock:
+                index = len(gate.CONTEXT.http)
+                row.update(index=index, body_file=f"responses/{index:04d}.body",
+                           record_file=f"responses/{index:04d}.json")
+                directory = gate.CONTEXT.out / "responses"
+                directory.mkdir(exist_ok=True)
+                for data in (raw, gate.canonical(row)):
+                    gate.require(not any(secret in data for secret in gate.CONTEXT.secrets),
+                                 "secret_in_http_evidence")
+                gate.write(gate.CONTEXT.out / row["body_file"], raw)
+                gate.write(gate.CONTEXT.out / row["record_file"], row)
                 gate.CONTEXT.http.append(row)
+                self.last_index = index
             value = None if lose_response else (
                 json.loads(raw) if response.getheader("Content-Type", "").startswith("application/json")
                 else raw)
@@ -147,6 +169,7 @@ class Client:
 
     def login(self, names, passwords):
         self.cookies = []
+        self.actors = []
         for name, password in zip(names, passwords):
             status, headers, reply = self.call(
                 "POST", "/api/auth/login", {"username": name, "password": password}, user=None)
@@ -154,6 +177,7 @@ class Client:
             cookie = headers["Set-Cookie"].split(";", 1)[0]
             gate.CONTEXT.secrets.extend([cookie.encode(), cookie.split("=", 1)[1].encode()])
             self.cookies.append(cookie)
+            self.actors.append(reply["user"]["user_id"])
 
     def state(self, project):
         status, _, value = self.call("GET", "/api/state", project=project)
@@ -184,23 +208,29 @@ class Client:
 
     def witness(self, project, expected, label, kernel):
         state = self.state(project)
+        indices = {"before": self.last_index}
         status, _, definition = self.call("GET", "/api/parametric", project=project)
+        indices["definition"] = self.last_index
         gate.require(status == 200 and definition["document_sha256"] == gate.digest(state["doc"]),
                      "definition_read_version_mismatch")
         status, _, mesh = self.call("GET", "/api/mesh", project=project)
+        indices["mesh"] = self.last_index
         gate.require(status == 200 and len(mesh["solids"]) == 1, "mesh_http_failed")
         gate.require((mesh["project_id"], mesh["revision"], mesh["sha256"]) ==
                      (project, state["revision"], state["sha256"]), "mesh_snapshot_mismatch")
         status, headers, step = self.call("GET", "/api/step", project=project)
+        indices["step"] = self.last_index
         gate.require(status == 200 and headers["X-OpenCAD-Document-SHA256"] ==
                      gate.digest(state["doc"]) and int(headers["X-OpenCAD-Revision"]) ==
                      state["revision"],
                      "step_snapshot_mismatch")
         after = self.state(project)
+        indices["after"] = self.last_index
         gate.require(all(after[key] == state[key] for key in (
             "project_id", "revision", "sha256", "doc")), "step_readback_snapshot_changed")
         gate.CONTEXT.measure(docmodel.document_from_l1(state["doc"]), mesh["solids"][0],
-                             step, expected, label, kernel, receipt=state, mesh_envelope=mesh)
+                             step, expected, label, kernel, receipt=state, mesh_envelope=mesh,
+                             http_indices=indices)
         return state
 
 

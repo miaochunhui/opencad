@@ -47,6 +47,18 @@ OWNED = (
 )
 MARKER = "OPENCAD_DEFINITION_ACCEPTANCE"
 CONTEXT = None
+RESPONSE_SCHEMA = 1
+HTTP_HEADERS = {"content-type", "content-length", "cache-control",
+                "x-content-type-options", "x-opencad-document-sha256", "x-opencad-revision"}
+HTTP_FIELDS = {"index", "test", "fixture", "at", "method", "route", "status", "bytes",
+               "response_sha256", "lost_body", "project_id", "request_id", "actor",
+               "request", "headers", "body_file", "record_file"}
+REPAIR_PATHS = {
+    "oss-alternatives/packages/cadcore/tests/test_parametric_definitions.py",
+    "oss-alternatives/apps/opencad/tests/test_parametric_definition_api.py",
+    "docs/design/parametric-definition-api.md",
+}
+PRODUCT_BASE = "bbdd7280d3d995f7caa97e0161bb0dfbb46091f3"
 
 
 def now():
@@ -116,6 +128,9 @@ def source():
         return subprocess.check_output(
             ["git", "--no-optional-locks", "--no-replace-objects", "-C", str(ROOT), *args],
             text=True).strip()
+    require(set(git("diff", "--name-only", PRODUCT_BASE, "--").splitlines()) <= REPAIR_PATHS,
+            "product_source_changed")
+    require(set(files) == set(git("ls-files").splitlines()), "source_file_set_changed")
     return {"root": str(ROOT), "head": git("rev-parse", "HEAD"),
             "branch": git("branch", "--show-current"), "status": git("status", "--porcelain=v1"),
             "files": files, "owned": {name: files[name] for name in OWNED},
@@ -151,6 +166,7 @@ class Context:
         self.measurements, self.http, self.cli, self.actors = [], [], [], []
         self.secrets = []
         self.lock = threading.Lock()
+        self.active_test = None
 
     def child(self, label):
         path = self.runtime / (label + "-" + uuid4().hex[:8])
@@ -158,7 +174,7 @@ class Context:
         return path
 
     def measure(self, document, mesh, step, expected, label, kernel, *, receipt=None,
-                mesh_envelope=None):
+                mesh_envelope=None, http_indices=None):
         text = docmodel.document_to_l1(document)
         sha = digest(text)
         binding = mesh if mesh_envelope is None else mesh_envelope
@@ -183,7 +199,7 @@ class Context:
                   "step_file": filename, "step_sha256": digest(step), "step_bytes": len(step),
                   "expected_mm3": expected, "brep_mm3": actual, "mesh_mm3": integrated,
                   "step_mm3": props.volume_nm3 / 1e18, "step_bbox_nm": list(props.bbox_nm),
-                  "receipt": receipt}
+                  "receipt": receipt, "http_indices": http_indices}
         write(self.out / f"{number:03d}-{label}.json", record)
         self.measurements.append(record)
         return record
@@ -193,6 +209,15 @@ class EvidenceResult(unittest.TextTestResult):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.first_cause, self.events = None, []
+
+    def startTest(self, test):
+        super().startTest(test)
+        ensure_context()
+        CONTEXT.active_test = test.id()
+
+    def stopTest(self, test):
+        CONTEXT.active_test = None
+        super().stopTest(test)
 
     def remember(self, test, error):
         if self.first_cause is None:
@@ -327,6 +352,194 @@ def verify_execution(report, out):
                 json.loads(row["stdout"]) == row["outcome"] for row in report["actors"]) and
                 sorted(row["outcome"]["state"] for row in report["actors"]) ==
                 ["BUSY", "REVOKED", "REVOKED"], "actor_terminal_incomplete")
+        verify_http_responses(report, out)
+
+
+def _json_body(raw):
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            require(key not in value, "http_duplicate_json_key")
+            value[key] = item
+        return value
+    value = json.loads(raw, object_pairs_hook=unique,
+                       parse_constant=lambda _: require(False, "http_nonfinite_json"))
+    require(isinstance(value, dict), "http_response_object_required")
+    return value
+
+
+def validate_http_response(row, out, *, tests):
+    require(isinstance(row, dict) and set(row) == HTTP_FIELDS, "http_response_fields_missing")
+    require(type(row["index"]) is int and row["index"] >= 0 and row["test"] in tests,
+            "http_test_identity_mismatch")
+    require(isinstance(row["at"], str) and datetime.fromisoformat(row["at"]).tzinfo is not None,
+            "http_timestamp_invalid")
+    prefix = f"responses/{row['index']:04d}"
+    require(row["body_file"] == prefix + ".body" and row["record_file"] == prefix + ".json",
+            "http_response_identity_mismatch")
+    require(row["method"] in {"GET", "POST"} and row["route"] in {
+        "/api/auth/login", "/api/auth/logout", "/api/projects", "/api/state",
+        "/api/parametric", "/api/mesh", "/api/step", "/api/command", "/api/save"},
+        "http_route_mismatch")
+    headers = row["headers"]
+    require(isinstance(headers, dict) and set(headers) <= HTTP_HEADERS and
+            {"content-type", "content-length", "cache-control", "x-content-type-options"} <= set(headers)
+            and all(isinstance(value, str) and "\r" not in value and "\n" not in value
+                    for value in headers.values()), "http_headers_invalid")
+    require(headers["content-length"].isascii() and headers["content-length"].isdigit() and
+            headers["cache-control"] == "no-store" and headers["x-content-type-options"] == "nosniff",
+            "http_headers_semantics")
+    for name in (row["body_file"], row["record_file"]):
+        path = out / name
+        require(path.is_file() and not path.is_symlink() and
+                all(not parent.is_symlink() for parent in path.parents if parent != out.parent),
+                "http_response_artifact_invalid")
+    raw = (out / row["body_file"]).read_bytes()
+    require(type(row["bytes"]) is int and row["bytes"] == len(raw) and
+            row["response_sha256"] == digest(raw), "http_response_hash_mismatch")
+    require(json.loads((out / row["record_file"]).read_bytes()) == row,
+            "http_response_record_mismatch")
+    require(type(row["lost_body"]) is bool and type(row["status"]) is int and
+            row["status"] in {200, 201, 400, 401, 403, 409, 422, 503},
+            "http_status_invalid")
+    request = row["request"]
+    require(request is None or isinstance(request, dict), "http_request_invalid")
+    require(row["request_id"] == (None if request is None else request.get("request_id")),
+            "http_request_identity_mismatch")
+    require(isinstance(row["actor"], str) and row["actor"], "http_actor_identity_missing")
+    if row["lost_body"]:
+        require(not raw and int(headers["content-length"]) > 0 and row["status"] == 200 and
+                row["route"] == "/api/parametric" and row["method"] == "POST",
+                "http_lost_response_invalid")
+        return None
+    require(len(raw) == int(headers["content-length"]), "http_content_length_mismatch")
+    if row["route"] == "/api/step" and row["status"] == 200:
+        require(row["method"] == "GET" and raw.startswith(b"ISO-10303-21;") and
+                headers["content-type"] == "application/step" and
+                len(headers.get("x-opencad-document-sha256", "")) == 64 and
+                headers.get("x-opencad-revision", "").isdigit(), "http_step_semantics")
+        return raw
+    require(headers["content-type"].startswith("application/json"), "http_content_type_mismatch")
+    value = _json_body(raw)
+    require(value.get("ok") is (row["status"] < 400), "http_status_body_mismatch")
+    if row["status"] >= 400:
+        require(isinstance(value.get("error"), str) and value["error"], "http_error_semantics")
+        return value
+    require((row["status"] == 201) == (row["route"] == "/api/projects"),
+            "http_success_status_mismatch")
+    if row["route"] == "/api/auth/login":
+        require(row["actor"] == "anonymous" and row["method"] == "POST" and
+                set(request or {}) == {"username", "password_omitted"} and
+                request["password_omitted"] is True and isinstance(value.get("user"), dict) and
+                value["user"].get("user_id") and type(value.get("expires_at")) is int,
+                "http_login_semantics")
+        return value
+    if row["route"] == "/api/auth/logout":
+        require(row["method"] == "POST" and row["actor"] != "anonymous",
+                "http_logout_semantics")
+        return value
+    require(value.get("project_id") == row["project_id"] or row["route"] == "/api/projects",
+            "http_project_identity_mismatch")
+    require(type(value.get("revision")) is int and value["revision"] > 0 and
+            isinstance(value.get("sha256"), str) and len(value["sha256"]) == 64,
+            "http_snapshot_identity_missing")
+    if row["method"] == "POST" and row["route"] != "/api/projects":
+        require(isinstance(request, dict) and type(request.get("expected_revision")) is int and
+                value["revision"] == request["expected_revision"] + 1 and row["request_id"],
+                "http_revision_semantics")
+    if "doc" in value:
+        require(isinstance(value["doc"], str), "http_document_invalid")
+        document = docmodel.document_from_l1(value["doc"])
+        require(docmodel.document_to_l1(document) == value["doc"], "http_document_not_canonical")
+        if "document_sha256" in value:
+            require(value["document_sha256"] == digest(value["doc"]),
+                    "http_document_identity_mismatch")
+    if row["route"] == "/api/parametric" and row["method"] == "POST":
+        require(value.get("base_document_sha256") == request.get("expected_document_sha256") and
+                value.get("mesh", {}).get("document_sha256") == digest(value["doc"]) and
+                value.get("step", {}).get("document_sha256") == digest(value["doc"]),
+                "http_candidate_identity_mismatch")
+    return value
+
+
+def verify_http_responses(report, out):
+    require(report.get("response_schema") == RESPONSE_SCHEMA, "http_response_schema_missing")
+    tests = {row["test"] for row in report["events"]}
+    rows = report["http"]
+    require([row.get("index") for row in rows] == list(range(len(rows))),
+            "http_exchange_set_mismatch")
+    values, actors, owners, committed = [], {}, {}, {}
+    expected_files = set()
+    for row in rows:
+        require(isinstance(row, dict) and set(row) == HTTP_FIELDS, "http_response_fields_missing")
+        require(row["fixture"].startswith(report["runtime_root"] + "/"),
+                "http_fixture_identity_mismatch")
+        value = validate_http_response(row, out, tests=tests)
+        values.append(value)
+        expected_files.update((row["body_file"], row["record_file"]))
+        known = actors.setdefault(row["fixture"], set())
+        if row["route"] == "/api/auth/login" and row["status"] == 200:
+            known.add(value["user"]["user_id"])
+        elif row["actor"] != "anonymous":
+            require(row["actor"] in known, "http_actor_identity_mismatch")
+        if row["route"] == "/api/projects" and row["status"] == 201:
+            key = (row["fixture"], value["project_id"])
+            require(row["actor"] in known and key not in owners, "http_project_create_identity")
+            owners[key] = row["actor"]
+        elif row["project_id"] is not None:
+            key = (row["fixture"], row["project_id"])
+            require(key in owners, "http_project_origin_missing")
+            if row["status"] < 400:
+                require(owners[key] == row["actor"], "http_owner_semantics")
+        if row["method"] == "POST" and row["request_id"] and row["status"] == 200:
+            key = (row["fixture"], row["project_id"], row["request_id"])
+            receipt = (row["route"], row["request"], row["actor"], value)
+            if key in committed:
+                require(committed[key] == receipt, "http_replay_semantics")
+            elif value is not None:
+                committed[key] = receipt
+    for row in rows:
+        if row["lost_body"]:
+            require(any(other["index"] > row["index"] and not other["lost_body"] and
+                        (other["fixture"], other["test"], other["project_id"], other["request_id"],
+                         other["actor"], other["request"], other["route"], other["status"]) ==
+                        (row["fixture"], row["test"], row["project_id"], row["request_id"],
+                         row["actor"], row["request"], row["route"], 200) for other in rows),
+                    "http_lost_replay_identity_mismatch")
+    actual = {path.relative_to(out).as_posix() for path in (out / "responses").rglob("*")
+              if path.is_file()}
+    require(actual == expected_files, "http_response_set_mismatch")
+    witnessed = set()
+    for measurement in report["measurements"]:
+        indices = measurement.get("http_indices")
+        require(isinstance(indices, dict) and set(indices) == {
+            "before", "definition", "mesh", "step", "after"} and
+            all(type(index) is int and 0 <= index < len(rows) for index in indices.values()),
+            "http_measurement_exchange_missing")
+        chosen = {name: rows[index] for name, index in indices.items()}
+        require([chosen[key]["route"] for key in ("before", "definition", "mesh", "step", "after")] ==
+                ["/api/state", "/api/parametric", "/api/mesh", "/api/step", "/api/state"] and
+                all(row["method"] == "GET" and row["status"] == 200 and
+                    (row["fixture"], row["test"], row["project_id"]) ==
+                    (chosen["before"]["fixture"], chosen["before"]["test"],
+                     measurement["receipt"]["project_id"]) for row in chosen.values()),
+                "http_measurement_identity_mismatch")
+        before, after = values[indices["before"]], values[indices["after"]]
+        require(before == measurement["receipt"] and
+                all(before[key] == after[key] for key in ("project_id", "revision", "sha256", "doc")) and
+                values[indices["mesh"]] == measurement["mesh_envelope"] and
+                values[indices["definition"]]["document_sha256"] == measurement["document_sha256"],
+                "http_measurement_body_mismatch")
+        step = values[indices["step"]]
+        require(step == (out / measurement["step_file"]).read_bytes() and
+                chosen["step"]["headers"]["x-opencad-document-sha256"] ==
+                measurement["document_sha256"] and
+                int(chosen["step"]["headers"]["x-opencad-revision"]) == before["revision"],
+                "http_measurement_step_mismatch")
+        require(indices["step"] not in witnessed, "http_measurement_exchange_duplicate")
+        witnessed.add(indices["step"])
+    actual_steps = {row["index"] for row in rows if row["route"] == "/api/step" and row["status"] == 200}
+    require(witnessed == actual_steps, "http_step_exchange_set_mismatch")
 
 
 def run_gate(classes, *, label, argv=None, minimum_measurements=1):
@@ -336,6 +549,7 @@ def run_gate(classes, *, label, argv=None, minimum_measurements=1):
     parser.add_argument("--runtime-root", type=Path)
     parser.add_argument("--controls-only", action="store_true")
     parser.add_argument("--verify-evidence", type=Path)
+    parser.add_argument("--response-controls", type=Path)
     args = parser.parse_args(argv)
     def names(items):
         return sorted(cls.__name__ + "." + name for cls in items
@@ -345,6 +559,8 @@ def run_gate(classes, *, label, argv=None, minimum_measurements=1):
     out = args.evidence_dir.resolve()
     require(out.is_relative_to(Path("/hf3fs-jd/data/tmp").resolve()), "external_evidence_required")
     out.mkdir(parents=True, exist_ok=False)
+    if args.response_controls:
+        return run_response_controls(args.response_controls.resolve(), out, contract)
     if args.verify_evidence:
         try:
             original = args.verify_evidence.resolve()
@@ -408,6 +624,7 @@ def run_gate(classes, *, label, argv=None, minimum_measurements=1):
               "started_at": started, "finished_at": now(), "minimum_measurements": minimum_measurements,
               "runtime_root": str(runtime), "runtime_filesystem": filesystem,
               "production_operations": False, **ledger}
+    report["response_schema"] = RESPONSE_SCHEMA
     report["artifacts"] = {}
     for path in out.rglob("*"):
         if path.is_file():
@@ -435,6 +652,105 @@ def run_gate(classes, *, label, argv=None, minimum_measurements=1):
     write(out / "completion.log", marker.encode())
     print(marker.strip() + " evidence=" + str(out))
     return report["intended_rc"]
+
+
+def run_response_controls(original, out, contract):
+    """Retain real producer mutants and call the actual offline reader once each."""
+    started = now()
+    outcomes = []
+    try:
+        report = json.loads((original / "result.json").read_bytes())
+        verify_report(report, original, contract=contract)
+        require(report["label"] == "http-definition" and report["mode"] == "real",
+                "real_http_producer_required")
+        saved_source = source()
+        rows = report["http"]
+        target = next(row["index"] for row in rows if row["route"] == "/api/state" and
+                      row["status"] == 200)
+        cases = ("missing-field", "fake-hash", "changed-body", "rehashed-wrong-project",
+                 "rehashed-wrong-status", "rehashed-wrong-actor", "rehashed-wrong-test",
+                 "missing-exchange")
+        causes = ("http_response_fields_missing", "http_response_hash_mismatch",
+                  "http_response_hash_mismatch", "http_project_identity_mismatch",
+                  "http_status_body_mismatch", "http_actor_identity_mismatch",
+                  "http_test_identity_mismatch", "http_exchange_set_mismatch")
+        for name, expected in zip(cases, causes):
+            mutant = out / name
+            mutant.mkdir()
+            changed = copy.deepcopy(report)
+            # New copies only. Original producer evidence is never modified.
+            for path in original.rglob("*"):
+                if path.is_file() and path.name not in {
+                        "result.json", "terminal-candidate.json", "completion.log", "ledger.json"}:
+                    destination = mutant / path.relative_to(original)
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    write(destination, path.read_bytes())
+            row = changed["http"][target]
+            if name == "missing-field":
+                del row["response_sha256"]
+            elif name == "fake-hash":
+                row["response_sha256"] = "0"*64
+            elif name in {"changed-body", "rehashed-wrong-project", "rehashed-wrong-status"}:
+                body = json.loads((mutant / row["body_file"]).read_bytes())
+                body["project_id" if name == "rehashed-wrong-project" else "ok"] = (
+                    "different-project" if name == "rehashed-wrong-project" else False)
+                raw = canonical(body)
+                # A retained mutant copy, not an edit of the original artifact.
+                with (mutant / row["body_file"]).open("wb") as handle:
+                    handle.write(raw)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                if name != "changed-body":
+                    row["bytes"], row["response_sha256"] = len(raw), digest(raw)
+                    row["headers"]["content-length"] = str(len(raw))
+            elif name == "rehashed-wrong-actor":
+                row["actor"] = "unobserved-actor"
+            elif name == "rehashed-wrong-test":
+                row["test"] = "Other.test_unobserved"
+            else:
+                del changed["http"][target]
+            if name != "missing-exchange":
+                with (mutant / row["record_file"]).open("wb") as handle:
+                    handle.write((json.dumps(row, indent=2, sort_keys=True) + "\n").encode())
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            write(mutant / "ledger.json", {
+                key: changed[key] for key in ("events", "measurements", "http", "cli", "actors")})
+            changed["artifacts"] = {
+                path.relative_to(mutant).as_posix(): {
+                    "sha256": digest(path.read_bytes()), "bytes": path.stat().st_size}
+                for path in mutant.rglob("*") if path.is_file()}
+            write(mutant / "result.json", changed)
+            write(mutant / "terminal-candidate.json", changed)
+            write(mutant / "completion.log",
+                  f"{MARKER} verdict=PASS tests={changed['tests']} rc=0\n".encode())
+            reader = out / (name + "-reader")
+            command = [sys.executable, "-B", str(APP / "tests/test_parametric_definition_api.py"),
+                       "--verify-evidence", str(mutant), "--evidence-dir", str(reader)]
+            process = subprocess.run(command, cwd=ROOT, capture_output=True, check=False)
+            write(out / (name + ".stdout.log"), process.stdout)
+            write(out / (name + ".stderr.log"), process.stderr)
+            result = json.loads((reader / "result.json").read_bytes())
+            outcomes.append({"case": name, "argv": command, "actual_rc": process.returncode,
+                             "expected_first_cause": expected, "reader_result": str(reader / "result.json"),
+                             "reader_result_sha256": digest((reader / "result.json").read_bytes()),
+                             "observed_first_cause": result.get("first_cause")})
+            require(process.returncode == 1 and result["verdict"] == "FAIL" and
+                    expected in result["first_cause"], "response_mutant_not_rejected:" + name)
+        require(source() == saved_source, "response_control_source_drift")
+        result = {"verdict": "PASS", "intended_rc": 0, "started_at": started, "finished_at": now(),
+                  "controls": len(outcomes), "outcomes": outcomes, "source": saved_source,
+                  "original_result_sha256": digest((original / "result.json").read_bytes()),
+                  "first_cause": None}
+    except Exception:
+        result = {"verdict": "FAIL", "intended_rc": 1, "started_at": started, "finished_at": now(),
+                  "outcomes": outcomes, "first_cause": traceback.format_exc()}
+        write(out / "failure.log", result["first_cause"].encode())
+    write(out / "result.json", result)
+    marker = f"OPENCAD_RESPONSE_CONTROLS verdict={result['verdict']} rc={result['intended_rc']}\n"
+    write(out / "completion.log", marker.encode())
+    print(marker.strip() + " evidence=" + str(out), flush=True)
+    return result["intended_rc"]
 
 
 class GateControls(unittest.TestCase):
@@ -534,7 +850,11 @@ class GateControls(unittest.TestCase):
             outcome = {"state": state, "changed": 0 if state == "BUSY" else 1}
             report["actors"].append({"rc": 0, "stderr": "", "stdout": json.dumps(outcome),
                                      "outcome": outcome})
-        verify_execution(report, CONTEXT.out)
+        report["response_schema"] = RESPONSE_SCHEMA
+        report["events"] = [{"test": "Synthetic.test_http", "pass": True}]
+        report["measurements"] = []
+        with self.assertRaisesRegex(AssertionError, "http_exchange_set_mismatch"):
+            verify_execution(report, CONTEXT.out)
         cases = [
             ("http", [], "http_ledger_incomplete"),
             ("cli", [], "cli_terminal_incomplete"),
@@ -557,6 +877,151 @@ class GateControls(unittest.TestCase):
         changed["cli"][0]["identity"]["argv"] = ["wrong"]
         with self.assertRaisesRegex(AssertionError, "cli_terminal_incomplete"):
             verify_execution(changed, CONTEXT.out)
+
+    def response_fixture(self, *, value=None, row_changes=None, raw=None):
+        ensure_context()
+        out = CONTEXT.out / ("response-controls-" + uuid4().hex)
+        (out / "responses").mkdir(parents=True)
+        body = canonical({"ok": False, "error": "synthetic_refusal"} if value is None else value)
+        if raw is not None:
+            body = raw
+        row = {"index": 0, "test": "Synthetic.test_response", "fixture": "/data/tmp/x/fixture",
+               "at": now(), "method": "POST", "route": "/api/parametric", "status": 422,
+               "bytes": len(body), "response_sha256": digest(body), "lost_body": False,
+               "project_id": "synthetic-project", "request_id": "synthetic-request",
+               "actor": "synthetic-user", "request": {"request_id": "synthetic-request"},
+               "headers": {"content-type": "application/json", "content-length": str(len(body)),
+                           "cache-control": "no-store", "x-content-type-options": "nosniff"},
+               "body_file": "responses/0000.body", "record_file": "responses/0000.json"}
+        row.update(row_changes or {})
+        write(out / "responses/0000.body", body)
+        write(out / "responses/0000.json", row)
+        return row, out
+
+    def response_rejects(self, reason, *, value=None, row_changes=None, raw=None):
+        row, out = self.response_fixture(value=value, row_changes=row_changes, raw=raw)
+        with self.assertRaisesRegex(AssertionError, reason):
+            validate_http_response(row, out, tests={"Synthetic.test_response"})
+
+    def test_http_response_missing_hash_body_identity_and_semantics(self):
+        row, out = self.response_fixture()
+        self.assertEqual(validate_http_response(row, out, tests={row["test"]})["ok"], False)
+        for field in sorted(HTTP_FIELDS):
+            changed = dict(row)
+            del changed[field]
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(AssertionError, "http_response_fields_missing"):
+                    validate_http_response(changed, out, tests={row["test"]})
+        self.response_rejects("http_response_hash_mismatch",
+                              row_changes={"response_sha256": "0"*64})
+        self.response_rejects("http_response_hash_mismatch", row_changes={"bytes": 1})
+        self.response_rejects("http_response_hash_mismatch",
+                              value={"ok": False, "error": "modified_body"},
+                              row_changes={"response_sha256": row["response_sha256"]})
+        self.response_rejects("http_test_identity_mismatch", row_changes={"test": "Other.test"})
+        self.response_rejects("http_response_identity_mismatch",
+                              row_changes={"body_file": "responses/9999.body"})
+        self.response_rejects("http_request_identity_mismatch",
+                              row_changes={"request_id": "other-request"})
+        self.response_rejects("http_actor_identity_missing", row_changes={"actor": ""})
+        self.response_rejects("http_status_body_mismatch",
+                              value={"ok": True, "error": "synthetic_refusal"})
+        self.response_rejects("http_headers_semantics",
+                              row_changes={"headers": {**row["headers"], "cache-control": "public"}})
+        self.response_rejects("http_headers_invalid",
+                              row_changes={"headers": {**row["headers"], "set-cookie": "not-retained"}})
+        self.response_rejects("http_error_semantics", value={"ok": False, "detail": "no error code"})
+        self.response_rejects("http_duplicate_json_key", raw=b'{"ok":false,"ok":false,"error":"x"}')
+        row, out = self.response_fixture()
+        changed = {**row, "status": 400}
+        with self.assertRaisesRegex(AssertionError, "http_response_record_mismatch"):
+            validate_http_response(changed, out, tests={row["test"]})
+
+    def http_exchange_fixture(self, *, mutation=None):
+        ensure_context()
+        out = CONTEXT.out / ("exchange-controls-" + uuid4().hex)
+        (out / "responses").mkdir(parents=True)
+        login = {"ok": True, "user": {"user_id": "synthetic-user"}, "expires_at": 100}
+        project = {"ok": True, "project_id": "synthetic-project", "revision": 1, "sha256": "a"*64}
+        saved = {**project, "revision": 2, "saved": True}
+        requests = [
+            {"username": "definition_synthetic", "password_omitted": True},
+            {"title": "Synthetic", "request_id": "create"},
+            {"request_id": "save", "expected_revision": 1, "expected_sha": "a"*64},
+        ]
+        rows, bodies = [], [login, project, saved]
+        for index, (route, status, body) in enumerate(zip(
+                ("/api/auth/login", "/api/projects", "/api/save"), (200, 201, 200), bodies)):
+            raw = canonical(body)
+            rows.append({
+                "index": index, "test": "Synthetic.test_response", "fixture": "/data/tmp/x/fixture",
+                "at": now(), "method": "POST", "route": route, "status": status,
+                "bytes": len(raw), "response_sha256": digest(raw), "lost_body": False,
+                "project_id": "synthetic-project" if index == 2 else None,
+                "request_id": requests[index].get("request_id"),
+                "actor": "anonymous" if index == 0 else "synthetic-user",
+                "request": requests[index],
+                "headers": {"content-type": "application/json", "content-length": str(len(raw)),
+                            "cache-control": "no-store", "x-content-type-options": "nosniff"},
+                "body_file": f"responses/{index:04d}.body",
+                "record_file": f"responses/{index:04d}.json"})
+        report = {"response_schema": RESPONSE_SCHEMA, "runtime_root": "/data/tmp/x",
+                  "http": rows, "events": [{"test": "Synthetic.test_response"}], "measurements": []}
+        if mutation is not None:
+            mutation(report, bodies)
+        for row, body in zip(report["http"], bodies):
+            raw = canonical(body)
+            row["bytes"], row["response_sha256"] = len(raw), digest(raw)
+            row["headers"]["content-length"] = str(len(raw))
+            write(out / row["body_file"], raw)
+            write(out / row["record_file"], row)
+        return report, out
+
+    def test_http_exact_exchange_actor_and_rehashed_identity_controls(self):
+        report, out = self.http_exchange_fixture()
+        verify_http_responses(report, out)
+        cases = [
+            ("http_actor_identity_mismatch",
+             lambda report, _: report["http"][2].update(actor="other-user")),
+            ("http_project_origin_missing",
+             lambda report, bodies: (
+                 report["http"][2].update(project_id="other-project"),
+                 bodies[2].update(project_id="other-project"))),
+            ("http_response_identity_mismatch",
+             lambda report, _: report["http"][2].update(index=3)),
+            ("http_test_identity_mismatch",
+             lambda report, _: report["http"][2].update(test="Other.test_response")),
+        ]
+        for reason, mutation in cases:
+            with self.subTest(reason=reason):
+                report, out = self.http_exchange_fixture(mutation=mutation)
+                with self.assertRaisesRegex(AssertionError, reason if
+                                            reason != "http_response_identity_mismatch" else
+                                            "http_exchange_set_mismatch"):
+                    verify_http_responses(report, out)
+        report, out = self.http_exchange_fixture()
+        del report["http"][-1]
+        with self.assertRaisesRegex(AssertionError, "http_response_set_mismatch"):
+            verify_http_responses(report, out)
+        report, out = self.http_exchange_fixture()
+        write(out / "responses/9999.body", b"unlisted")
+        with self.assertRaisesRegex(AssertionError, "http_response_set_mismatch"):
+            verify_http_responses(report, out)
+
+    def test_http_rehashed_response_still_rejects_wrong_snapshot(self):
+        valid = {"ok": True, "project_id": "synthetic-project", "revision": 2, "sha256": "a"*64}
+        changes = {"status": 200, "route": "/api/save",
+                   "request": {"request_id": "synthetic-request", "expected_revision": 1}}
+        row, out = self.response_fixture(value=valid, row_changes=changes)
+        self.assertEqual(validate_http_response(row, out, tests={row["test"]}), valid)
+        self.response_rejects("http_project_identity_mismatch",
+                              value={**valid, "project_id": "other-project"}, row_changes=changes)
+        self.response_rejects("http_revision_semantics", value={**valid, "revision": 3},
+                              row_changes=changes)
+        self.response_rejects("http_snapshot_identity_missing", value={**valid, "sha256": ""},
+                              row_changes=changes)
+        self.response_rejects("http_route_mismatch", value=valid,
+                              row_changes={**changes, "route": "/api/other"})
 
     def test_measurement_document_and_receipt_negative(self):
         tetra = {"vertices_mm": [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],

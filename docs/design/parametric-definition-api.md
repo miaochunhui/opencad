@@ -99,6 +99,58 @@ The reader checks the actual STEP doc-SHA/revision headers and stable state
 before/after; this route has no snapshot-SHA header. Mesh SHA is at the actual
 outer envelope, whose single measured solid is retained verbatim.
 
+## Response Evidence Closure
+
+The response-closure repair owns only
+`oss-alternatives/packages/cadcore/tests/test_parametric_definitions.py`,
+`oss-alternatives/apps/opencad/tests/test_parametric_definition_api.py` and this
+document. The HTTP test's actual filename is not
+`test_parametric_definitions_http.py`. The source gate rejects product changes
+relative to `bbdd7280d3d995f7caa97e0161bb0dfbb46091f3`; no API implementation is
+changed or inherited from another integration tree.
+
+Every exchange stores `responses/<index>.body` and a matching JSON record.
+The body is the received wire bytes, including login JSON which contains no
+session token. Cookie/Set-Cookie, authorization and login password are never
+stored. The safe login request records the username and an explicit
+`password_omitted=true`, not a password or its hash. Necessary response headers
+are an explicit allowlist: content type/length, no-store, nosniff, document SHA
+and revision. All generated credentials are checked against evidence bytes
+before writing and again at finalization.
+
+The reader requires the exact response schema, continuous exchange identities,
+source-discovered test identity, exact per-exchange record equality, raw body
+length/hash and a bidirectional response-file set. It also checks status/body
+agreement, canonical document and candidate hashes, request/revision identity,
+login-derived actor and project-owner origin, and exact replay identity.
+Measurement witnesses bind their before/definition/mesh/STEP/after exchanges:
+retained STEP bytes and headers match the measured same-version document and
+the before/after state. Every successful STEP exchange must have one witness.
+
+An intentionally lost response has an empty retained body, an explicit loss
+flag and the observed nonempty Content-Length; it is not a claimed full download.
+Its later successful replay must match request, actor, project, route and test.
+Offline verification checks the recorded FreeCAD measurement, not a new kernel
+measurement. Evidence is integrity/semantic binding, not protection against a
+party replacing all evidence and its source together.
+
+The original `bbdd` 21/16-test evidence and 134 HTTP execution records remain
+unchanged. They lack this new response schema and cannot be upgraded to complete
+response closure by rehashing. The repair-before failure is retained at
+`/hf3fs-jd/data/tmp/opencad-definition-response-closure-before-20261012-v1`:
+the old reader failed to reject missing response fields. New evidence must come
+from this repaired source, with separate original parent exit collection.
+
+For retained real-response mutants, run the HTTP script with
+`--response-controls <new real HTTP producer root> --evidence-dir <fresh 3FS root>`.
+This offline entry starts no HTTP server or kernel. It retains eight mutated
+copies, recomputes their artifact/ledger/terminal hashes as applicable, and calls
+the actual offline reader once per case. Each reader must return original rc1
+and the named first cause for missing response fields, false hash, changed body,
+rehashed wrong project/status/actor/test and incomplete exchange set. The parent
+returns rc0 only when every intended rejection and source stability is confirmed.
+These are evidence controls, not eight additional industrial product workflows.
+
 Not accepted: UI CRUD, production, GPU performance, arbitrary UUID rebinding,
 baseline suppression editing, industrial parity or all-config BRep validity.
 The previous UI slice and its original STEP download-race failure remain intact.
