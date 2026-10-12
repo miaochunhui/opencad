@@ -59,6 +59,9 @@
       configurations.replaceChildren(); result.textContent = "";
       definitionInputs.clear(); suppressionInputs.clear();
       definitionTarget.replaceChildren(); definitionName.value = "";
+      deleteReplacement.replaceChildren();
+      delete definitionForm.dataset.editingTarget;
+      definitionMode = "edit"; selectionPolicy.value = "keep"; bindingError = null;
       definitionParameters.replaceChildren(); definitionFeatures.replaceChildren();
       definitionNotice.textContent = "";
       definitionDirty = false; modelStale = false; definitionStale = false;

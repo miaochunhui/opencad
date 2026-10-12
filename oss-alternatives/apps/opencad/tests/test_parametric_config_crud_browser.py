@@ -21,6 +21,7 @@ import json
 import math
 import os
 from pathlib import Path
+import shutil
 from types import SimpleNamespace
 import sqlite3
 import subprocess
@@ -72,6 +73,147 @@ HISTORICAL_RESULT_SHA = "addfe08de7e20383b6d20b971c57033b2cf32f94f409b6f1bdfe4ef
 READER_REPAIR_PATHS = {OWNED[2], OWNED[3]}
 HISTORICAL_FIXTURE_READER = "d00f3fd8977f3b43345c06f115ba500da3c179e9"
 INTEGRATION_FIXTURE_BASE = "7c63a289a4c6965d24254ba7115bac85aa17b68f"
+PRIVATE_CLEAR_BASE = "380596370d614659964b15e5e33a3b5d312cb894"
+PRIVATE_CLEAR_BEFORE = False
+
+
+def private_clear_probe(runtime, *, temporary=False, data=None):
+    """Execute the complete owned JS; only the fixture exposes closed-over state."""
+    node = shutil.which("node")
+    require(node is not None, "private_clear_node_required")
+    if data is None:
+        data = (subprocess.check_output(["git", "--no-replace-objects", "-C", str(ROOT),
+                "show", PRIVATE_CLEAR_BASE + ":" + OWNED[0]]) if PRIVATE_CLEAR_BEFORE else
+                (ROOT / OWNED[0]).read_bytes())
+    anchor = b"window.opencadParametric = {mount: mount, refresh: refresh, submit: submit};"
+    require(data.count(anchor) == 1, "private_clear_export_anchor_not_exact")
+    exposure = b"""
+  window.__privateClear = {
+    shield: shield, report: report, submit: submit, refresh: refresh,
+    seed: function (nodes) {
+      panel = nodes.panel; form = nodes.form; fields = nodes.fields;
+      dimensions = nodes.dimensions; configurations = nodes.configurations;
+      features = nodes.features; result = nodes.result; notice = nodes.notice;
+      discardConfirmation = nodes.discardConfirmation; definitionForm = nodes.definitionForm;
+      definitionTarget = nodes.definitionTarget; definitionName = nodes.definitionName;
+      definitionParameters = nodes.definitionParameters; definitionFeatures = nodes.definitionFeatures;
+      selectionPolicy = nodes.selectionPolicy; deleteReplacement = nodes.deleteReplacement;
+      deleteConfirmation = nodes.deleteConfirmation; definitionNotice = nodes.definitionNotice;
+      owner = "private-owner"; current = {project_id: "private-project", parametric_version: 2};
+      specification = {private: "definition"}; bindingError = new Error("private-config-error");
+      inputs.set("private-width", {input: nodes.fields});
+      dimensionInputs.set("private-dimension", nodes.dimensions);
+      definitionInputs.set("private-expression", {expression: nodes.definitionParameters,
+        explicit: {checked: true}});
+      suppressionInputs.set("private-feature", nodes.definitionFeatures);
+      blocked = false; expired = false; busy = true; dirty = true; definitionDirty = true;
+      modelStale = true; definitionStale = true; clearOverrides = true; definitionMode = "create";
+    },
+    state: function () {
+      return {owner, current, specification, blocked, expired, busy, dirty, definitionDirty,
+        modelStale, definitionStale, clearOverrides, definitionMode, epoch, reads,
+        bindingError: bindingError && bindingError.message,
+        maps: [inputs.size, dimensionInputs.size, definitionInputs.size, suppressionInputs.size]};
+    }
+  };
+"""
+    instrumented = data.replace(anchor, anchor + exposure)
+    write(runtime / "product.js", instrumented)
+    runner = r"""
+"use strict";
+const fs = require("fs"), vm = require("vm"), assert = require("assert");
+function element() {
+  return {value: "private-config", textContent: "private-text", hidden: false, disabled: false,
+    dataset: {}, children: ["private-option"], attributes: {},
+    replaceChildren() { this.children = []; this.value = ""; this.textContent = ""; },
+    setAttribute(key, value) { this.attributes[key] = value; },
+    querySelectorAll() { return []; }};
+}
+const names = ["panel", "form", "fields", "dimensions", "configurations", "features", "result",
+  "notice", "discardConfirmation", "definitionForm", "definitionTarget", "definitionName",
+  "definitionParameters", "definitionFeatures", "selectionPolicy", "deleteReplacement",
+  "deleteConfirmation", "definitionNotice"];
+const nodes = Object.fromEntries(names.map(name => [name, element()]));
+nodes.definitionForm.dataset.editingTarget = "private-config";
+nodes.panel.dataset = {documentSha: "private-doc", projectId: "private-project", revision: "9"};
+nodes.result.dataset = {documentSha: "private-doc", volumeMm3: "42", revision: "9"};
+nodes.selectionPolicy.value = "target";
+const buttons = [element(), element()];
+buttons[0].dataset.parametricCreate = "create_configurable_plate";
+buttons[1].dataset.parametricReload = "true";
+const actions = [...buttons, nodes.definitionTarget, nodes.deleteReplacement, nodes.selectionPolicy];
+nodes.panel.querySelectorAll = selector =>
+  selector === "[data-parametric-create]" ? [buttons[0]] : actions;
+let requests = 0;
+const window = {addEventListener() {}, fetch() { ++requests; throw Error("unexpected_private_fetch"); }};
+const document = {readyState: "loading", addEventListener() {}};
+vm.runInNewContext(fs.readFileSync(process.argv[2], "utf8"), {window, document, console});
+const api = window.__privateClear;
+assert(api && typeof api.shield === "function", "private_clear_real_shield_missing");
+api.seed(nodes);
+const before = JSON.stringify(api.state()), permanent = process.argv[3] === "permanent";
+api.shield("private-session-expired", permanent);
+const after = JSON.parse(JSON.stringify(api.state()));
+assert(after.epoch === 1 && after.reads === 1 && after.blocked && !after.busy,
+  "private_clear_generation_or_busy_gate");
+assert(nodes.form.hidden && nodes.definitionForm.hidden && nodes.deleteConfirmation.hidden &&
+  nodes.discardConfirmation.hidden && buttons[0].hidden, "private_clear_visibility_gate");
+if (permanent) {
+  assert(nodes.deleteReplacement.children.length === 0 && nodes.deleteReplacement.value === "",
+    "private_clear_replacement_options_left");
+  assert(!Object.hasOwn(nodes.definitionForm.dataset, "editingTarget"),
+    "private_clear_editing_target_left");
+  assert(nodes.definitionTarget.children.length === 0 && nodes.definitionName.value === "" &&
+    nodes.selectionPolicy.value === "keep" && after.definitionMode === "edit",
+    "private_clear_definition_selection_left");
+  assert(after.expired && after.owner === null && after.current === null &&
+    after.specification === null && after.bindingError === null,
+    "private_clear_owner_or_binding_left");
+  assert(after.maps.every(size => size === 0) && !after.dirty && !after.definitionDirty &&
+    !after.modelStale && !after.definitionStale && !after.clearOverrides,
+    "private_clear_private_draft_left");
+  for (const name of ["fields", "dimensions", "features", "configurations",
+      "definitionParameters", "definitionFeatures"]) {
+    assert(nodes[name].children.length === 0, "private_clear_rows_left:" + name);
+  }
+  assert(nodes.result.textContent === "" && nodes.definitionNotice.textContent === "" &&
+    Object.keys(nodes.panel.dataset).length === 0 && Object.keys(nodes.result.dataset).length === 0,
+    "private_clear_receipt_metadata_left");
+  assert(actions.every(item => item.disabled), "private_clear_action_gate");
+  api.report(new Error("late-private-error"));
+  assert(nodes.notice.textContent === "private-session-expired", "private_clear_notice_overwritten");
+} else {
+  const original = JSON.parse(before);
+  for (const key of ["owner", "current", "specification", "dirty", "definitionDirty",
+      "modelStale", "definitionStale", "clearOverrides", "definitionMode", "bindingError", "maps"]) {
+    assert.deepStrictEqual(after[key], original[key], "private_clear_temporary_draft_erased:" + key);
+  }
+  assert(!after.expired && nodes.deleteReplacement.children[0] === "private-option" &&
+    nodes.definitionForm.dataset.editingTarget === "private-config" &&
+    nodes.definitionName.value === "private-config" && nodes.selectionPolicy.value === "target" &&
+    nodes.panel.dataset.projectId === "private-project", "private_clear_temporary_dom_erased");
+  assert(!buttons[1].disabled && actions.filter(item => item !== buttons[1]).every(item => item.disabled),
+    "private_clear_temporary_action_gate");
+}
+(async function () {
+  await assert.rejects(api.submit("replace_configuration"), permanent ?
+    /parametric_operation_unavailable/ : /private-config-error/);
+  if (permanent) await api.refresh(true);
+  assert(requests === 0, "private_clear_post_shield_request");
+  console.log(JSON.stringify({permanent, state: after, requests, real_js_executed: true}));
+}()).catch(error => { console.error(error.stack); process.exitCode = 1; });
+"""
+    write(runtime / "probe.cjs", runner.encode())
+    argv = [node, str(runtime / "probe.cjs"), str(runtime / "product.js"),
+            "temporary" if temporary else "permanent"]
+    tested = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    write(runtime / "stdout.log", tested.stdout)
+    write(runtime / "stderr.log", tested.stderr)
+    write(runtime / "binding.json", {"argv": argv, "actual_rc": tested.returncode,
+        "product_sha256": digest(data), "instrumented_sha256": digest(instrumented),
+        "runner_sha256": digest(runner.encode()), "baseline_commit": PRIVATE_CLEAR_BASE
+        if PRIVATE_CLEAR_BEFORE else None})
+    return tested
 
 
 def historical_diff_command():
@@ -99,6 +241,23 @@ def control_git_diff(commit):
         yield {"base": REVISION_BASE, "commit": commit, "command": exact, "paths": paths}
 
 
+@contextmanager
+def control_historical_browser_source():
+    """Historical positive controls read their exact old scenario, never current UI."""
+    historical = subprocess.check_output(["git", "--no-replace-objects", "-C", str(ROOT),
+        "show", PRIVATE_CLEAR_BASE + ":" + OWNED[2]])
+    require(browser_semantics(historical) == browser_semantics(baseline_reader_bytes()),
+            "historical_control_browser_not_exact")
+    original = Path.read_bytes
+    target = Path(__file__).resolve()
+
+    def read(path):
+        return historical if path.resolve() == target else original(path)
+
+    with patch.object(Path, "read_bytes", read):
+        yield
+
+
 def previous_historical_controls():
     data = subprocess.check_output(["git", "--no-replace-objects", "-C", str(ROOT),
                                    "show", HISTORICAL_FIXTURE_READER + ":" + OWNED[2]])
@@ -124,7 +283,7 @@ def historical_fixture_case(record, kind):
     try:
         original, current = Controls().historical_fixture()
         commit = HISTORICAL_FIXTURE_READER if kind == "compatible" else INTEGRATION_FIXTURE_BASE
-        with control_git_diff(commit) as binding:
+        with control_git_diff(commit) as binding, control_historical_browser_source():
             record.report["fixture_git_binding"] = binding
             require((set(binding["paths"]) <= READER_REPAIR_PATHS) == (kind == "compatible"),
                     "fixture_git_boundary_not_exercised")
@@ -602,6 +761,31 @@ def verify_bound(report, out, *, current=True, producer_root=None):
 
 
 class Controls(unittest.TestCase):
+    def test_private_clear_permanent_private_state(self):
+        tested = private_clear_probe(self.control_child())
+        self.assertEqual(tested.returncode, 0, tested.stderr.decode())
+        self.assertTrue(json.loads(tested.stdout)["real_js_executed"])
+
+    def test_private_clear_temporary_preserves_both_drafts(self):
+        tested = private_clear_probe(self.control_child(), temporary=True)
+        self.assertEqual(tested.returncode, 0, tested.stderr.decode())
+        self.assertFalse(json.loads(tested.stdout)["state"]["expired"])
+
+    def test_private_clear_missing_cleanup_negative(self):
+        data = (ROOT / OWNED[0]).read_bytes()
+        for line, cause in (
+            (b"      deleteReplacement.replaceChildren();\n",
+             "private_clear_replacement_options_left"),
+            (b"      delete definitionForm.dataset.editingTarget;\n",
+             "private_clear_editing_target_left"),
+            (b'      definitionMode = "edit"; selectionPolicy.value = "keep"; bindingError = null;\n',
+             "private_clear_definition_selection_left"),
+        ):
+            self.assertEqual(data.count(line), 1, "cleanup_mutation_anchor_not_exact")
+            tested = private_clear_probe(self.control_child(), data=data.replace(line, b""))
+            self.assertEqual(tested.returncode, 1)
+            self.assertIn(cause, tested.stderr.decode())
+
     @staticmethod
     def response_row():
         data = b'{"ok":true,"revision":2,"sha256":"synthetic"}'
@@ -745,7 +929,7 @@ class Controls(unittest.TestCase):
 
     def test_historical_product_source_set_mode_and_head_negative(self):
         original, current = self.historical_fixture()
-        with control_git_diff(HISTORICAL_FIXTURE_READER) as binding:
+        with control_git_diff(HISTORICAL_FIXTURE_READER) as binding, control_historical_browser_source():
             self.assertEqual(set(binding["paths"]), READER_REPAIR_PATHS)
             self.assertTrue(verify_historical_source(original, current)["product_bytes_modes_equal"])
             for kind in ("product", "set", "mode", "head"):
@@ -768,10 +952,20 @@ class Controls(unittest.TestCase):
                                b"class Review(object):")
         self.assertNotEqual(browser_semantics(changed), original)
         report, current = self.historical_fixture()
-        with control_git_diff(HISTORICAL_FIXTURE_READER):
+        with control_git_diff(HISTORICAL_FIXTURE_READER), control_historical_browser_source():
             with patch.object(sys.modules[__name__], "baseline_reader_bytes", return_value=changed):
                 with self.assertRaisesRegex(AssertionError, "historical_browser_semantics_changed"):
                     verify_historical_source(report, current)
+
+    def test_current_private_clear_source_is_not_historical_browser(self):
+        original, current = self.historical_fixture()
+        with control_git_diff(HISTORICAL_FIXTURE_READER):
+            with self.assertRaisesRegex(AssertionError, "historical_browser_semantics_changed"):
+                verify_historical_source(original, current)
+            data = (ROOT / OWNED[0]).read_bytes()
+            current["files"][OWNED[0]].update(bytes=len(data), sha256=digest(data))
+            with self.assertRaisesRegex(AssertionError, "historical_product_source_changed"):
+                verify_historical_source(original, current)
 
     def test_actual_integration_git_difference_remains_rejected(self):
         original, current = self.historical_fixture()
@@ -1527,6 +1721,14 @@ class Review(legacy.Review):
             browser.wait("document.querySelector('.parametric-notice').textContent.includes('登录已失效')")
             require(browser.evaluate("document.querySelectorAll('[data-definition-parameter]').length===0 && "
                     "document.querySelectorAll('[data-parameter]').length===0 && "
+                    "document.querySelectorAll('[data-definition-replacement] option').length===0 && "
+                    "document.querySelectorAll('[data-definition-target] option').length===0 && "
+                    "!Object.prototype.hasOwnProperty.call(document.querySelector('.parametric-definition-editor').dataset,'editingTarget') && "
+                    "document.querySelector('[data-definition-name]').value==='' && "
+                    "document.querySelector('[data-definition-selection]').value==='keep' && "
+                    "document.querySelector('.parametric-definition-editor').hidden && "
+                    "Array.from(document.querySelectorAll('#parametric-panel button, #parametric-panel input, #parametric-panel select')).every(e=>e.disabled) && "
+                    "!document.querySelector('#parametric-panel').dataset.projectId && "
                     "!document.querySelector('.parametric-result').dataset.documentSha"), "expired_private_dom_left")
             self.reload(browser)
             self.login(browser, "config-alice", project)
@@ -1546,6 +1748,14 @@ class Review(legacy.Review):
             browser.wait("document.querySelector('.parametric-notice').textContent.includes('登录已失效')")
             require(browser.evaluate("document.querySelectorAll('[data-definition-parameter]').length===0 && "
                     "document.querySelectorAll('[data-parameter]').length===0 && "
+                    "document.querySelectorAll('[data-definition-replacement] option').length===0 && "
+                    "document.querySelectorAll('[data-definition-target] option').length===0 && "
+                    "!Object.prototype.hasOwnProperty.call(document.querySelector('.parametric-definition-editor').dataset,'editingTarget') && "
+                    "document.querySelector('[data-definition-name]').value==='' && "
+                    "document.querySelector('[data-definition-selection]').value==='keep' && "
+                    "document.querySelector('.parametric-definition-editor').hidden && "
+                    "Array.from(document.querySelectorAll('#parametric-panel button, #parametric-panel input, #parametric-panel select')).every(e=>e.disabled) && "
+                    "!document.querySelector('#parametric-panel').dataset.projectId && "
                     "!document.querySelector('.parametric-result').dataset.documentSha"),
                     "late_post_restored_revoked_private_dom")
             self.reload(browser)
@@ -1685,13 +1895,17 @@ def finalize_browser(record, review):
 
 
 def main(argv=None):
-    global CONTROL_RUNTIME
+    global CONTROL_RUNTIME, PRIVATE_CLEAR_BEFORE
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence-dir", type=Path, required=True)
     parser.add_argument("--runtime-root", type=Path)
     parser.add_argument("--source-root", type=Path, default=ROOT)
     parser.add_argument("--browser", default=legacy.DEFAULT_BROWSER)
     parser.add_argument("--selftest", action="store_true")
+    parser.add_argument("--private-clear-before", action="store_true",
+                        help="Exact 380 Git JS counterexample, no browser; requires --selftest.")
+    parser.add_argument("--private-clear-only", action="store_true",
+                        help="Only permanent/temporary shield execution and mutation controls.")
     parser.add_argument("--verify-evidence", type=Path)
     parser.add_argument("--verify-historical-evidence", type=Path,
                         help="Pinned c112-compatible historical producer; never rebinding old evidence.")
@@ -1723,8 +1937,14 @@ def main(argv=None):
     record.guard("source_root", lambda: require(args.source_root.resolve() == ROOT.resolve(),
                                                 "runner_source_mismatch"))
     record.guard("fixture_selftest_scope", lambda: require(
-        (not args.integration_fixture_selftest and not args.discovery_check) or args.selftest,
+        (not args.integration_fixture_selftest and not args.discovery_check and
+         not args.private_clear_before and not args.private_clear_only) or args.selftest,
         "fixture_modes_require_selftest"))
+    record.guard("private_clear_scope", lambda: require(
+        not ((args.private_clear_before or args.private_clear_only) and (
+            args.discovery_check or args.integration_fixture_selftest)) and
+        not (args.private_clear_before and args.private_clear_only),
+        "private_clear_modes_conflict"))
     before = record.capture("source_before")
     if record.report["first_cause"] is not None:
         return record.publish()
@@ -1778,7 +1998,14 @@ def main(argv=None):
         return record.publish()
     if args.selftest:
         CONTROL_RUNTIME = runtime
+        PRIVATE_CLEAR_BEFORE = args.private_clear_before
         names = sorted(unittest.defaultTestLoader.getTestCaseNames(Controls))
+        if args.private_clear_before:
+            names = ["test_private_clear_permanent_private_state"]
+        elif args.private_clear_only:
+            names = [name for name in names if name.startswith("test_private_clear_")]
+        record.report.update(browser_executed=False, runtime_root=str(runtime),
+                             private_clear_baseline=PRIVATE_CLEAR_BASE if args.private_clear_before else None)
         tested, log = None, None
         try:
             if args.discovery_check:
@@ -1791,7 +2018,7 @@ def main(argv=None):
                 require(suite.countTestCases() == len(names), "discovery_controls_count_mismatch")
                 record.report["discovery_verified"] = True
             else:
-                suite = unittest.defaultTestLoader.loadTestsFromTestCase(Controls)
+                suite = unittest.TestSuite(Controls(name) for name in names)
             log = (out / "tests.log").open("x")
             fixture = control_git_diff(INTEGRATION_FIXTURE_BASE) if (
                 args.integration_fixture_selftest) else nullcontext(None)
@@ -1808,6 +2035,15 @@ def main(argv=None):
             record.failure("selftest", traceback.format_exc())
         finally:
             if log is not None: record.guard("tests_log_close", log.close)
+        def retain_private_probes():
+            for binding in sorted(runtime.rglob("binding.json")):
+                if not (binding.parent / "probe.cjs").is_file():
+                    continue
+                child = out / "private-clear-fixtures" / binding.parent.relative_to(runtime)
+                child.mkdir(parents=True, exist_ok=False)
+                for name in ("binding.json", "probe.cjs", "product.js", "stdout.log", "stderr.log"):
+                    write(child / name, (binding.parent / name).read_bytes())
+        record.guard("private_clear_fixture_evidence", retain_private_probes)
         after = record.capture("source_after")
         record.report.update(tests=tested.testsRun if tested else None, expected_tests=len(names),
             expected_checks=len(names), test_names=names,

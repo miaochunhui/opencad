@@ -52,6 +52,44 @@ Unauthorized or changed identity clears this panel's private forms, definitions
 and result metadata. This is not a site-wide draft-clearing or locale-scan claim.
 All added labels are Simplified Chinese within the existing panel visual system.
 
+### Permanent Private-State Cleanup
+
+Permanent shield also empties the deletion-replacement options and removes
+`definitionForm.dataset.editingTarget`. Definition selection resets to keep,
+editing mode resets to edit, and the saved binding-error reference is released.
+Both private draft maps/rows and project/result metadata still clear. Temporary
+shield retains both drafts, private selections and the original binding error;
+its action restrictions, permanent expired notice and generation fences remain.
+The pending binding chain is not replaced or bypassed.
+
+The small gate executes the complete same-source JS in Node with a minimal DOM
+fixture and test-only closed-state access. It does not reproduce the shield body
+or infer cleanup from source strings. `--selftest --private-clear-before` executes
+the exact `380596370d614659964b15e5e33a3b5d312cb894` Git JS object and expects the
+same permanent-cleanup assertion to fail. The actual original parent rc1 and
+`private_clear_replacement_options_left` are retained under
+`/hf3fs-jd/data/tmp/opencad-config-crud-private-clear-before-20261012-v1`.
+`--selftest --private-clear-only` runs permanent cleanup, temporary draft/action
+preservation, and removed-cleanup mutation controls with actual Node child exits.
+The fixtures, complete instrumented JS, argv, original JS/runner hashes and child
+stdout/stderr are retained outside the source tree. Use fresh evidence and local
+runtime paths for each invocation. Missing Node fails loudly; no dependency is
+installed. Synthetic DOM controls are not Chromium/HTTP acceptance.
+
+Historical positive controls read the exact 380 test-file Git bytes through one
+test-only path substitution because the new browser assertions intentionally
+change scenario semantics. The production historical reader/allowlist are
+unchanged. A new negative control proves both this current browser scenario and
+current product JS remain rejected for historical compatibility; ordinary source
+capture is never substituted. The first full selftest failure at
+`opencad-config-crud-private-clear-controls-20261012-v1` remains preserved.
+
+The two real browser revocation boundaries additionally require empty replacement
+and target options, absent editing-target metadata, cleared name/project binding,
+reset selection and all panel actions disabled. The previous frozen browser
+results are not acceptance of this changed product source. Full desktop/mobile
+workflow validation must run on the later integrated frozen tree, not here.
+
 ## Independent Gate
 
 The new standalone `tests/test_parametric_config_crud_browser.py` owns its fresh
