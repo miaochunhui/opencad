@@ -38,6 +38,18 @@
 .parametric-panel .parametric-discard-confirmation {
   border: 1px solid #a36d30; background: #f5eddc; padding: .65rem; margin-top: .5rem;
 }
+.parametric-panel .parametric-definition-editor {
+  margin-top: 1rem; padding: .8rem; border: 1px solid var(--parametric-line);
+  background: linear-gradient(145deg, #f5f8f1, #e8f0e9);
+}
+.parametric-panel .parametric-definition-editor h3 { margin: 0 0 .65rem; font-size: .95rem; }
+.parametric-panel .parametric-definition-row { margin: .7rem 0; }
+.parametric-panel .parametric-definition-row label { display: flex; flex-wrap: wrap; gap: .35rem; }
+.parametric-panel .parametric-definition-row input[type="checkbox"] { width: auto; }
+.parametric-panel .parametric-definition-notice { font-size: .8rem; line-height: 1.6; }
+.parametric-panel .parametric-delete-confirmation {
+  border: 1px solid #a36d30; background: #f5eddc; padding: .65rem; margin-top: .5rem;
+}
 @media (max-width: 650px) {
   .parametric-panel .parametric-actions { display: grid; }
   .parametric-panel button { width: 100%; margin-right: 0; }
