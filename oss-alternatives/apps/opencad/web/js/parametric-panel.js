@@ -15,6 +15,7 @@
   const noReplacement = ":unselected:";
   const localePrefix = "panel.parametric.";
   const localeBindings = new WeakMap();
+  let localeBindingRelease = null, localeFailureAlert = null;
 
   function localeService() {
     const service = window.OpenCADLocale;
@@ -62,19 +63,58 @@
     }
     item.textContent = "";
   }
+  function releaseLocaleBinding() {
+    const release = localeBindingRelease;
+    localeBindingRelease = null;
+    if (release) release();
+  }
+
   function translatePanel() {
     if (!panel) return;
     const service = localeService();
-    service.bind(panel);
-    panel.querySelectorAll("[data-parametric-locale]").forEach(function (item) {
-      const bindings = localeBindings.get(item);
-      if (!bindings) throw new Error("parametric_locale_binding_missing");
-      bindings.forEach(function (binding, target) {
-        const text = service.t(binding.key, binding.args);
-        if (target === "text") item.textContent = text;
-        else item.setAttribute(target === "aria" ? "aria-label" : target, text);
+    releaseLocaleBinding();
+    let release = null;
+    try {
+      release = service.bind(panel);
+      if (typeof release !== "function") throw new Error("parametric_locale_release_missing");
+      panel.querySelectorAll("[data-parametric-locale]").forEach(function (item) {
+        const bindings = localeBindings.get(item);
+        if (!bindings) throw new Error("parametric_locale_binding_missing");
+        bindings.forEach(function (binding, target) {
+          const text = service.t(binding.key, binding.args);
+          if (target === "text") item.textContent = text;
+          else item.setAttribute(target === "aria" ? "aria-label" : target, text);
+        });
       });
-    });
+      localeBindingRelease = release;
+    } catch (error) {
+      if (release) release();
+      throw error;
+    }
+  }
+
+  function localeFailureNode() {
+    if (!localeFailureAlert) {
+      localeFailureAlert = node("output");
+      localeFailureAlert.setAttribute("role", "alert");
+      localeFailureAlert.setAttribute("lang", "en");
+      localeFailureAlert.setAttribute("data-opencad-public-locale-error", "parametric");
+      localeFailureAlert.hidden = true;
+      document.body.append(localeFailureAlert);
+    }
+    return localeFailureAlert;
+  }
+
+  function showLocaleFailure() {
+    const alert = localeFailureNode();
+    alert.textContent = "parametric_locale_initialization_failed";
+    alert.hidden = false;
+  }
+
+  function clearLocaleFailure() {
+    if (!localeFailureAlert) return;
+    localeFailureAlert.textContent = "";
+    localeFailureAlert.hidden = true;
   }
   function shieldKey(key, permanent, args) {
     shield("", permanent);
@@ -824,11 +864,28 @@
   });
   window.addEventListener("opencad:locale", translatePanel);
   function boot() {
-    const service = localeService();
-    Promise.resolve(service.ready).then(function () {
-      const target = document.querySelector("[data-parametric-host]") || document.querySelector("main > aside");
-      if (target) mount(target);
+    clearLocaleFailure();
+    if (panel) {
+      window.opencadParametric.ready = Promise.resolve(panel);
+      return window.opencadParametric.ready;
+    }
+    const attempt = Promise.resolve().then(function () {
+      const service = localeService();
+      return Promise.resolve(service.ready).then(function () {
+        const target = document.querySelector("[data-parametric-host]") || document.querySelector("main > aside");
+        if (!target) throw new Error("parametric_locale_target_missing");
+        mount(target);
+        return panel;
+      });
     });
+    window.opencadParametric.ready = attempt;
+    attempt.then(clearLocaleFailure, function () {
+      showLocaleFailure();
+      if (typeof console !== "undefined" && console.error) {
+        console.error("parametric_locale_initialization_failed");
+      }
+    });
+    return attempt;
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, {once: true});
   else boot();

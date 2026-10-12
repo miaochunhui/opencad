@@ -180,3 +180,50 @@ argv/exit/log bindings, a hashed result/log completion marker, chronological
 first/secondary failures and null unpublished hashes. All fixtures are local
 and retained. No remote, production, GPU, credential or permission operation
 is performed; new live browser/shared-service acceptance remains separate.
+
+## Chair Resume 2026-10-12: lifecycle and observable boot
+
+The next session resumed this paused seat under the existing user authorization
+and kept the original failed evidence. The product now owns one live locale
+binding at a time: before every rebind it calls the previous binding's release,
+then binds and immediately repaints the panel-owned dynamic bindings. A failed
+rebind releases the new token if one was already returned and leaves no token
+behind for the next event. Panel drafts, node identity, focus, revision/SHA and
+shield state are not changed by that release/bind path.
+
+Boot is now an observable promise exposed as `window.opencadParametric.ready`.
+The rejection is the original error object (ready rejection, service getter
+failure or mount failure all retain identity); the consumer receives it and
+there is no unhandled rejection. Any such failure creates at most one body
+direct public alert with the fixed text
+`parametric_locale_initialization_failed`. It contains no original message,
+code, detail, status, project data or user value. A later boot clears that same
+alert on success and mounts once. The alert uses the chair's strict public
+locale diagnostic shape: one `output[role=alert][lang=en]` with exactly the
+`data-opencad-public-locale-error="parametric"` marker, zero element children,
+no hidden/style, and no other attributes. The session shield may exempt only
+this fully checked shape; `role=alert` alone is never an exemption.
+
+The first resumed full run deliberately remains recorded as FAIL:
+`/hf3fs-jd/data/tmp/opencad-parametric-locale-chair-fix-20261012-v1`
+had 36 tests / 31 passed / parent rc 1. Four failures were the test probe
+reading uninitialised mount fields from `api.state()` after a boot failure, and
+one was a test accounting assertion counting failed bind attempts as live
+tokens. Neither failure was hidden. The probe now returns null drafts before
+mount; the accounting check now requires exactly one live token and compares
+actual successful token events. The v2 run is retained as a second FAIL at
+35/36 with the narrowed first cause. The v3 run returned parent rc 0:
+
+```
+out=/hf3fs-jd/data/tmp/opencad-parametric-locale-chair-fix-20261012-v3
+runtime=/data/tmp/oc-param-chair-fix-20261012-v3
+OPENCAD_PARAMETRIC_PANEL_LOCALE verdict=PASS tests=36 passed=36 actual_rc=0
+```
+
+The real Node children, logs, argv, product/instrumented/runner hashes and
+source before/after are retained there. This is still synthetic Node/locale
+evidence: it does not by itself prove the actual shared catalog, the real
+private session shield, a browser, or production. Integration must rerun this
+suite against the integrated driver and perform a separate real-catalog key/arg
+audit and browser acceptance. The three owned paths remain the product JS, this
+suite and this document.

@@ -99,7 +99,8 @@ EXPOSURE = r"""
     state: function () {
       return {current, specification, owner, blocked, expired, busy, dirty, reads, epoch,
         clearOverrides, definitionDirty, modelStale, definitionStale, definitionMode,
-        modelDraft: modelDraft(), definitionDraft: definitionDraft(),
+        modelDraft: fields ? modelDraft() : null,
+        definitionDraft: definitionForm ? definitionDraft() : null,
         bindingError: bindingError && bindingError.message};
     },
     references: function () { return {current, specification, bindingUpdate}; },
@@ -129,7 +130,13 @@ RUNNER = r"""
 const fs = require("fs"), vm = require("vm"), assert = require("assert"), crypto = require("crypto");
 const packs = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
 const scenario = process.argv[4], prefix = "panel.parametric.";
-let mutations = 0, requests = 0, binds = 0, updates = 0, translations = 0, readyResolve;
+let mutations = 0, requests = 0, binds = 0, unbinds = 0, paints = 0, peakTokens = 0;
+let updates = 0, translations = 0, readyResolve, readyReject;
+const tokens = new Map(), tokenEvents = [], unhandled = [];
+const originalRejection = Object.assign(new Error("private-ready-detail: 数据"), {
+  code: "private-code", detail: "private-detail", status: 403
+});
+process.on("unhandledRejection", reason => { unhandled.push(reason); });
 const listeners = {}, queries = [], calls = [];
 const allowed = new Set(["button, input, select", "button, select", "input, select", "button, input",
   "[data-definition-v2]", "[data-parametric-create]", "[data-parametric-discard]",
@@ -217,8 +224,9 @@ class Element {
   }
   focus() { document.activeElement = this; this.dispatchEvent({type: "focusin"}); }
 }
-const host = new Element("aside");
-const document = {readyState: "loading", activeElement: null,
+const host = new Element("aside"), body = new Element("body");
+body.append(host);
+const document = {readyState: "loading", activeElement: null, body,
   createElement(tag) {
     assert(["section", "form", "fieldset", "label", "input", "select", "option", "button",
       "p", "legend", "span", "small", "strong", "div", "h2", "h3", "output"].includes(tag),
@@ -247,12 +255,15 @@ function t(key, args) {
   return template.replace(/\{(\w+)\}/g, (_, name) => String(args[name]));
 }
 const service = {
-  ready: scenario === "ready" ? new Promise(resolve => { readyResolve = resolve; }) : Promise.resolve(),
+  ready: scenario === "ready" || scenario.startsWith("ready_")
+    ? new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; })
+    : Promise.resolve(),
   snapshot() { return {locale, strings: packs[locale]}; },
   t,
   update() { ++updates; throw Error("panel_must_not_update_locale"); },
   bind(root) {
     ++binds;
+    const selected = [];
     for (const [attr, target] of [["data-panel-i18n", null], ["data-panel-i18n-aria", "aria-label"],
         ["data-panel-i18n-placeholder", "placeholder"], ["data-panel-i18n-title", "title"],
         ["data-panel-i18n-alt", "alt"]]) {
@@ -260,10 +271,20 @@ const service = {
         const key = node.getAttribute(attr);
         if (key === null) continue;
         assert(target || !node.children.length, "locale_text_binding_must_be_leaf");
-        const value = t(key);
-        if (target) node.setAttribute(target, value); else node.textContent = value;
+        selected.push({node, target, value: t(key)});
       }
     }
+    const token = {};
+    tokens.set(token, root); tokenEvents.push("bind");
+    peakTokens = Math.max(peakTokens, tokens.size);
+    for (const {node, target, value} of selected) {
+      if (target) node.setAttribute(target, value); else node.textContent = value;
+    }
+    ++paints;
+    return function () {
+      assert(tokens.has(token), "fixture_duplicate_or_unknown_unbind");
+      tokens.delete(token); ++unbinds; tokenEvents.push("unbind");
+    };
   }
 };
 const spec = {parameters: {width: {expression: "60 * mm", unit: "length"}},
@@ -325,6 +346,64 @@ function editableDrafts(elements) {
   api.result();
 }
 (async function () {
+  if (scenario === "ready_rejection" || scenario === "ready_recovery" ||
+      scenario === "mount_rejection" || scenario === "service_rejection") {
+    if (scenario === "mount_rejection") {
+      const createElement = document.createElement;
+      document.createElement = function (tag) {
+        if (tag === "section") throw originalRejection;
+        return createElement(tag);
+      };
+    }
+    if (scenario === "service_rejection") {
+      Object.defineProperty(window, "OpenCADLocale", {get() { throw originalRejection; }});
+    }
+    for (const fn of listeners["dom:DOMContentLoaded"] || []) fn();
+    if (scenario.startsWith("ready_")) readyReject(originalRejection);
+    await new Promise(resolve => setImmediate(resolve));
+    assert(window.opencadParametric.ready &&
+      typeof window.opencadParametric.ready.then === "function", "boot_rejection_not_observable");
+    await assert.rejects(window.opencadParametric.ready, error => error === originalRejection,
+      "boot_original_rejection_lost");
+    const alerts = body.children.filter(node =>
+      node.getAttribute("data-opencad-public-locale-error") === "parametric");
+    assert(alerts.length === 1, "boot_public_alert_missing_or_duplicate");
+    const alert = alerts[0];
+    assert(alert.tagName === "OUTPUT" && alert.getAttribute("role") === "alert" &&
+      alert.getAttribute("lang") === "en" && !alert.hidden && !alert.hasAttribute("hidden") &&
+      !host.contains(alert) && !alert.children.length, "boot_alert_not_independent_or_visible");
+    assert(Object.keys(alert.attributes).sort().join(",") === "lang,role" &&
+      Object.keys(alert.dataset).sort().join(",") === "opencadPublicLocaleError" &&
+      alert.getAttribute("data-opencad-public-locale-error") === "parametric",
+      "boot_alert_contract_shape");
+    assert(alert.textContent === "parametric_locale_initialization_failed" &&
+      JSON.stringify({text: alert.textContent, attributes: alert.attributes,
+        dataset: alert.dataset}).includes("private") === false, "boot_alert_private_detail_leak");
+    assert(requests === 0 && api.state().current === null && api.state().owner === null,
+      "boot_failure_loaded_private_state");
+    assert(unhandled.length === 0, "boot_rejection_not_explicitly_received");
+    if (scenario === "ready_recovery") {
+      service.ready = Promise.resolve();
+      for (const fn of listeners["dom:DOMContentLoaded"] || []) fn();
+      await window.opencadParametric.ready;
+      await new Promise(resolve => setImmediate(resolve));
+      assert(alert.hidden && alert.textContent === "" && host.children.length === 1,
+        "boot_recovery_did_not_clear_public_alert");
+    }
+    console.log(JSON.stringify({scenario, requests, real_js: true, original_rejection: true,
+      unhandled: unhandled.length, public_alert: true, updates})); return;
+  }
+  if (scenario === "strict_unbind") {
+    const root = new Element("section"), leaf = new Element("p");
+    leaf.setAttribute("data-panel-i18n", prefix + "title"); root.append(leaf);
+    const release = service.bind(root);
+    assert(tokens.size === 1 && binds === 1 && paints === 1 &&
+      leaf.textContent === t(prefix + "title"), "fixture_bind_did_not_immediately_paint");
+    release();
+    assert(tokens.size === 0 && unbinds === 1, "fixture_unbind_did_not_release_token");
+    assert.throws(release, /fixture_duplicate_or_unknown_unbind/);
+    console.log(JSON.stringify({scenario, real_js: true, binds, unbinds, paints})); return;
+  }
   if (scenario === "ready") {
     for (const fn of listeners["dom:DOMContentLoaded"] || []) fn();
     await Promise.resolve();
@@ -340,7 +419,34 @@ function editableDrafts(elements) {
   assert(elements.panel.querySelectorAll("button, select").every(node => node.tagName !== "INPUT"),
     "fixture_selector_subset_not_exact");
   assert.throws(() => elements.panel.querySelectorAll("unknown, input"), /fixture_unknown_selector/);
-  if (scenario === "shield_missing_key") {
+  if (scenario === "tokens" || scenario === "token_failure") {
+    editableDrafts(elements);
+    const before = snapshot(elements), initialBinds = binds, initialUnbinds = unbinds;
+    if (scenario === "token_failure") {
+      missing = prefix + "title";
+      assert.throws(() => switchTo("en"), /missing_panel_translation/);
+      assert(tokens.size === 0, "failed_rebind_retained_old_token");
+      missing = null;
+    }
+    for (let index = 0; index < 60; ++index) {
+      const beforeBinds = binds, beforeUnbinds = unbinds, beforePaints = paints;
+      const hadToken = tokens.size;
+      switchTo(["en", "ja", "zh-CN"][index % 3]);
+      assert(tokens.size === 1 && peakTokens === 1, "locale_bind_token_leak");
+      assert(binds === beforeBinds + 1 && unbinds === beforeUnbinds + hadToken &&
+        paints === beforePaints + 1, "locale_bind_not_released_or_immediately_painted");
+      const title = elements.panel.children.find(node => node.tagName === "H2");
+      assert(title.textContent === t(prefix + "title"), "locale_rebind_did_not_paint");
+      assertInvariant(before, elements);
+    }
+    const tokenBinds = tokenEvents.filter(event => event === "bind").length;
+    const tokenUnbinds = tokenEvents.filter(event => event === "unbind").length;
+    assert(binds > initialBinds && unbinds > initialUnbinds && tokens.size === 1 &&
+      tokenBinds - tokenUnbinds === 1,
+      "locale_live_token_accounting_incorrect binds=" + binds +
+      " unbinds=" + unbinds + " initial=" + initialBinds + "/" + initialUnbinds +
+      " live=" + tokens.size + " token_delta=" + (tokenBinds - tokenUnbinds));
+  } else if (scenario === "shield_missing_key") {
     editableDrafts(elements);
     missing = prefix + "session_expired";
     assert.throws(() => api.suspend(true), /missing_panel_translation/);
@@ -464,7 +570,8 @@ function editableDrafts(elements) {
     }
   }
   assert(updates === 0, "panel_updated_shared_locale");
-  console.log(JSON.stringify({scenario, requests, binds, translations, updates, mutations,
+  console.log(JSON.stringify({scenario, requests, binds, unbinds, paints, peakTokens,
+    live_tokens: tokens.size, token_events: tokenEvents, translations, updates, mutations,
     real_js: true, keys: [...new Set(calls)], queries, state: api.state()}));
 }()).catch(error => { console.error(error.stack); process.exitCode = 1; });
 """
@@ -551,6 +658,27 @@ class Controls(unittest.TestCase):
 
     def test_ready_is_awaited(self):
         self.success("ready")
+
+    def test_ready_rejection_retains_original_and_public_safe_alert(self):
+        self.success("ready_rejection")
+
+    def test_ready_recovery_clears_only_public_alert(self):
+        self.success("ready_recovery")
+
+    def test_mount_rejection_retains_original_and_public_safe_alert(self):
+        self.success("mount_rejection")
+
+    def test_service_access_rejection_retains_original_and_public_safe_alert(self):
+        self.success("service_rejection")
+
+    def test_bind_tokens_are_released_before_each_immediate_paint(self):
+        self.success("tokens")
+
+    def test_failed_rebind_releases_old_token_and_can_recover(self):
+        self.success("token_failure")
+
+    def test_locale_double_strict_unbind_and_immediate_paint(self):
+        self.success("strict_unbind")
 
     def test_unknown_key_fails_loud(self):
         self.success("unknown_key")
